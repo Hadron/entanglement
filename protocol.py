@@ -6,7 +6,7 @@
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the file
 # LICENSE for details.
 
-import asyncio, json, struct
+import asyncio, json, struct, weakref
 
 _msg_header = ">I" # A 4-byte big-endien size
 _msg_header_size = struct.calcsize(_msg_header)
@@ -14,14 +14,15 @@ assert _msg_header_size == 4
 
 class SyncProtocol(asyncio.Protocol):
 
-    def __init__(self, loop, **kwargs):
+    def __init__(self, manager, **kwargs):
         super().__init__()
+        self._manager = manager
+        self.loop = manager.loop
         self.dirty = set()
         self.waiter = None
         self.task = None
-        self.loop = loop
         self.transport = None
-        self.reader = asyncio.StreamReader(loop = loop)
+        self.reader = asyncio.StreamReader(loop = self.loop)
 
     def synchronize_object(self,obj):
         """Send obj out to be synchronized"""
@@ -62,17 +63,20 @@ class SyncProtocol(asyncio.Protocol):
     def eof_received(self): return False
 
     def connection_lost(self, exc):
+        if not hasattr(self, 'loop'): return
         self.reader.feed_eof()
         if self.task: self.task.cancel()
         if self.reader_task: self.reader_task.cancel()
         if self.waiter: self.waiter.cancel()
         del self.transport
         del self.loop
+        del self._manager
 
     def connection_made(self, transport):
         self.transport = transport
         self.reader.set_transport(transport)
         self.reader_task = self.loop.create_task(self._read_task())
+        self._manager._transports.append(weakref.ref(self.transport))
 
     def pause_writing(self):
         if self.waiter: return

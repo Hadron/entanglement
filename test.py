@@ -10,7 +10,9 @@ import ssl, asyncio, json, os, unittest
 from unittest import mock
 
 
-import bandwidth, mixins, protocol
+import bandwidth, protocol
+from interface import Synchronizable, SyncServer
+
 
 
 
@@ -30,7 +32,7 @@ class TestProto(asyncio.Protocol):
         
         transport.write(b"blah blah blah")
 
-class TestSyncable(mixins.Synchronizable):
+class TestSyncable(Synchronizable):
 
     def __init__(self, id, pos):
         self.id = id
@@ -125,50 +127,39 @@ class TestBandwidth(unittest.TestCase):
 class TestSynchronization(unittest.TestCase):
 
     def setUp(self):
-        self.fixture = LoopFixture()
-        fixture = self.fixture
-        fixture.server.close()
-        fixture.server = fixture.loop.run_until_complete(
-            fixture.loop.create_server(lambda: protocol.SyncProtocol(loop = fixture.loop),
-                                       port = 9120, reuse_address = True,
-                                       ssl = fixture.sslctx_server,
-                                       ))
-        self.client = fixture.loop.create_connection(lambda: bandwidth.BwLimitProtocol(loop = fixture.loop,
-                                                                             chars_per_sec = 2000000, bw_quantum = 0.1,
-                                                                             upper_protocol = protocol.SyncProtocol(fixture.loop)),
-                                                     ssl = fixture.sslctx_client,
-                                                     port = 9120,
-                                                     host = "127.0.0.1", server_hostname = "host1"
-                                                     )
-        fixture.client.close()
-        fixture.ctransport, fixture.cbwprotocol = fixture.loop.run_until_complete(self.client)
-        fixture.cprotocol = fixture.cbwprotocol.protocol
-        fixture.transports.append(fixture.ctransport)
-
+        self.manager = SyncServer(cafile = 'ca.pem',
+                                  cert = "host1.pem", key = "host1.key",
+                                  port = 9120,
+                                  host = "127.0.0.1")
+        self.manager._protocol_factory = lambda: bandwidth.BwLimitProtocol(chars_per_sec = 2000000, bw_quantum = 0.1, \
+                                                                           loop=self.manager.loop, upper_protocol = protocol.SyncProtocol(self.manager))
+        client = self.manager.create_connection(host = "127.0.0.1", server_hostname = "host1")
+        self.transport, self.bwprotocol = self.manager.run_until_complete(client)
+        self.cprotocol = self.bwprotocol.protocol
+        self.loop = self.manager.loop
+        
     def tearDown(self):
-        self.fixture.close()
+        self.manager.close()
 
     def testOneSync(self):
         obj = TestSyncable(1,39)
-        fixture = self.fixture
-        assert fixture.cprotocol.task is None
-        fixture.cprotocol.synchronize_object(obj)
-        assert fixture.cprotocol.task is not None
-        task = fixture.cprotocol.task
-        fixture.loop.run_until_complete(task)
+        assert self.cprotocol.task is None
+        self.cprotocol.synchronize_object(obj)
+        assert self.cprotocol.task is not None
+        task = self.cprotocol.task
+        self.loop.run_until_complete(task)
         assert task.exception() is None
 
     def testNoSendPaused(self):
         "We do not send while paused"
-        fixture = self.fixture
         def fail_write(data):
             raise AssertionError("Write called while paused")
-        fixture.ctransport.write = fail_write
-        fixture.cprotocol.pause_writing()
+        self.transport.write = fail_write
+        self.cprotocol.pause_writing()
         obj = TestSyncable(1,39)
-        assert fixture.cprotocol.task is None
-        fixture.cprotocol.synchronize_object(obj)
-        assert fixture.cprotocol.task is not None
+        assert self.cprotocol.task is None
+        self.cprotocol.synchronize_object(obj)
+        assert self.cprotocol.task is not None
 
     # This has to be an asyncio.coroutine because you cannot yield
     # None (loop please just continue with someone else) from an async
@@ -178,7 +169,7 @@ class TestSynchronization(unittest.TestCase):
         while True:
             self.obj1.pos += 10
             self.obj1.serial += 1
-            self.fixture.cprotocol.synchronize_object(self.obj1)
+            self.cprotocol.synchronize_object(self.obj1)
             yield
 
     def testBwLimit(self):
@@ -186,7 +177,6 @@ class TestSynchronization(unittest.TestCase):
         def record_call(*args):
             nonlocal send_count
             send_count += 1
-        fixture = self.fixture
         send_count = 0
         self.obj1 = TestSyncable(1, 5)
         self.obj1.serial = 1
@@ -194,15 +184,16 @@ class TestSynchronization(unittest.TestCase):
         with mock.patch.object(self.obj1, 'to_sync',
                                wraps = self.obj1.to_sync,
                                side_effect = record_call):
-            fixture.cbwprotocol.bw_per_quantum = 10*approx_len
-            task = fixture.loop.create_task(self.lots_of_updates())
-            fixture.loop.run_until_complete(asyncio.sleep(0.25))
+            self.bwprotocol.bw_per_quantum = 10*approx_len
+            task = self.loop.create_task(self.lots_of_updates())
+            self.loop.run_until_complete(asyncio.sleep(0.25))
             assert self.obj1.serial > 1000
             self.assertGreater(send_count, 10)
             assert send_count < 25
-            self.assertTrue(fixture.cbwprotocol._paused)
-            assert fixture.cprotocol.waiter is not None
+            self.assertTrue(self.bwprotocol._paused)
+            assert self.cprotocol.waiter is not None
             task.cancel()
+            self.cprotocol.connection_lost(None)
             
             
 
