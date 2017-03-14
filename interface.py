@@ -36,7 +36,7 @@ class Synchronizable( metaclass = SynchronizableMeta):
         raise NotImplementedError()
 
     @classmethod
-    def sync_authorized_receive(self, msg):
+    def sync_authorized_listen(self, msg):
         '''Return True or raise SynchronizationUnauthorized'''
         return True
     
@@ -123,14 +123,14 @@ class SyncManager:
     def _sync_receive(self, msg):
         self._validate_message(msg)
         cls = self._find_registered_class(msg['_sync_type'])
-        if self.check_authorized_receive(msg, cls) is not True:
+        if self.should_listen(msg, cls) is not True:
             # Failure should raise because ignoring an exception takes
             # active work, leading to a small probability of errors.
             # However, active authorization should be an explicit true
             # not falling off the end of a function.
-            raise SyntaxError("check_authorized_received must either return True or raise")
+            raise SyntaxError("should_listen must either return True or raise")
         if msg['_sync_authorized'] != self:
-            raise SyntaxError("When SyncManager.check_authorized_received is overwridden, you must call super().check_authorized_receive")
+            raise SyntaxError("When SyncManager.should_listen is overwridden, you must call super().should_listen")
         del msg['_sync_authorized']
         cls.sync_receive(msg)
 
@@ -141,12 +141,12 @@ class SyncManager:
             if k.startswith('_') and k not in protocol.SYNc_magic_attributes:
                 raise protocol.MessageError('{} is not a valid attribute in a sync message'.format(k))
 
-    def check_authorized_receive(self, msg, cls):
+    def should_listen(self, msg, cls):
         msg['_sync_authorized'] = self #To confirm we've been called.
-        if cls.sync_registry.check_authorized_received(msg, cls)is not True:
-            raise SyntaxError('check_authorized_receive must return True or raise')
-        if cls.sync_authorized_receive(msg) is not True:
-            raise SyntaxError('sync_authorized_receive must return True or raise')
+        if cls.sync_registry.should_listen(msg, cls)is not True:
+            raise SyntaxError('should_listen must return True or raise')
+        if cls.sync_authorized_listen(msg) is not True:
+            raise SyntaxError('sync_authorized_listen must return True or raise')
         return True
     
     def _find_registered_class(self, name):
@@ -200,3 +200,28 @@ class SyncServer(SyncManager):
         super().close()
 
         
+
+class SyncDestination:
+
+    '''A SyncDestination represents a SyncManager other than ourselves that can receive (and generate) synchronizations.  The Synchronizable and subclasses of SyncDestination must cooperate to make sure that receiving and object does not create a loop by trying to Synchronize that object back to the sender.  One solution is for should_send on SyncDestination to return False (or raise) if the outgoing object is received from this destination.'''
+
+    def __init__(self, cert_hash, name, *,
+                 host = None, bw_per_sec = None):
+        self.host = host
+        self.cert_hash = cert_hash
+        self.name = name
+        self.bw_per_sec = bw_per_sec
+        
+    def __repr__(self):
+        return "<SyncDestination {name: '{name}', hash: {hash}".format(
+            name = self.name,
+            hash = self.cert_hash)
+
+    def should_send(self, obj, manager, msg, **kwargs):
+        return True
+
+    def should_listen(self, msg, manager, cls, **kwargs):
+        '''Must return True or raise'''
+        return True
+
+    
