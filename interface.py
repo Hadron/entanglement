@@ -99,6 +99,9 @@ class SyncManager:
             self.loop = asyncio.new_event_loop()
             self.loop_allocated = True
         self._transports = []
+        self._destinations = {}
+        self._connections = {}
+        self._connecting = {}
         self._ssl = self._new_ssl(cert, key = key,
                                  capath = capath, cafile = cafile)
         self.registries = registries
@@ -119,7 +122,7 @@ class SyncManager:
         return lambda: protocol.SyncProtocol(manager = self, incoming = True)
     
 
-async     def _create_connection(self, dest):
+    async     def _create_connection(self, dest):
         "Create a connection on the loop.  This is effectively a coroutine."
         loop = self.loop
         delta = 1
@@ -143,17 +146,18 @@ async     def _create_connection(self, dest):
                     transport, protocol = await \
                                           loop.create_connection(self._protocol_factory_client(dest),
                                                                  port = self.port, ssl = self._ssl,
-                                                                 host = dest.host)
+                                                                 host = dest.host,
+                                                                 server_hostname = dest.server_hostname)
                     logger.debug("Transport connection to {dest} made".format(dest = dest))
                     close_transport = transport
-                    await dest.connected(self)
+                    await dest.connected(self, protocol)
                     self._connections[dest.key_hash] = protocol
                     close_transport = None
                     logger.info("Connected to {hash} at {host}".format(
                         hash = dest.key_hash,
                         host = dest.host))
                     return transport, protocol
-                except asyncio.futures.CanceledError:
+                except asyncio.futures.CancelledError:
                     logger.debug("Connection to {dest} canceled".format(dest = dest))
                     raise
                 except (SyntaxError, Typeerror, LookupError, ValueError) as e:
@@ -163,16 +167,16 @@ async     def _create_connection(self, dest):
                     logger.exception("Error connecting to  {}".format(dest))
                     dest.connect_at = loop.time() + delta
         finally:
-            del self._connecting{dest.key_hash]
+            del self._connecting[dest.key_hash]
             if close_transport: close_transport.close()
 
     
                 
 
-    def add_destination(self, dest)):
+    def add_destination(self, dest):
         if dest.key_hash in self._destinations:
             raise KeyError("{} is already a destination".format(repr(dest)))
-        self._destinations{dest.key_hash} = dest
+        self._destinations[dest.key_hash] = dest
         assert dest.protocol is None
         assert dest.key_hash not in self._connecting
         self._connecting[dest.key_hash] = self.loop.create_task(self._create_connection(dest))
@@ -268,14 +272,19 @@ class SyncDestination:
     '''A SyncDestination represents a SyncManager other than ourselves that can receive (and generate) synchronizations.  The Synchronizable and subclasses of SyncDestination must cooperate to make sure that receiving and object does not create a loop by trying to Synchronize that object back to the sender.  One solution is for should_send on SyncDestination to return False (or raise) if the outgoing object is received from this destination.'''
 
     def __init__(self, key_hash, name, *,
-                 host = None, bw_per_sec = None):
+                 host = None, bw_per_sec = None,
+                 server_hostname = None):
+        if server_hostname is None: server_hostname = host
         self.host = host
         self.key_hash = key_hash
         self.name = name
+        self.server_hostname = server_hostname
         self.bw_per_sec = bw_per_sec
+        self.protocol = None
+        self.connect_at = 0
         
     def __repr__(self):
-        return "<SyncDestination {name: '{name}', hash: {hash}".format(
+        return "<SyncDestination {{name: '{name}', hash: {hash}}}".format(
             name = self.name,
             hash = self.key_hash)
 
@@ -286,4 +295,19 @@ class SyncDestination:
         '''Must return True or raise'''
         return True
 
+    
+
+    async def connected(self, manager, protocol):
+        '''Interface point; called by manager when an outgoing or incoming
+        connection is made to the destination.  Except in the case of
+        an unknown destination connecting to a server, the destination
+        is known and already in the manager's list of connecting
+        destinations.  The destination will not be added to the
+        manager's list of connections until this coroutine returns
+        true.  However, incoming synchronizations will be processed
+        and will result in calls to the destination's should_listen
+        method.  If this raises, the connection will be closed and aborted.
+        '''
+        self.protocol = protocol
+        return
     
