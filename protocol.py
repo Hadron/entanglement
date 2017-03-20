@@ -74,6 +74,8 @@ class SyncProtocol(asyncio.Protocol):
             if self.task: self.task.cancel()
             if self.reader_task: self.reader_task.cancel()
             if self.waiter: self.waiter.cancel()
+            if self.dest:
+                self.loop.create_task(self._manager._connection_lost(self, exc))
         del self.transport
         del self.loop
         del self._manager

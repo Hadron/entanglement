@@ -133,7 +133,8 @@ class TestSynchronization(unittest.TestCase):
                                   cert = "host1.pem", key = "host1.key",
                                   port = 9120,
                                   host = "127.0.0.1")
-        client = self.manager.add_destination(SyncDestination(certhash_from_file("host1.pem"),
+        self.cert_hash = certhash_from_file("host1.pem")
+        client = self.manager.add_destination(SyncDestination(self.cert_hash,
                                                               "destination1", host = "127.0.0.1", server_hostname = "host1",
                                                               bw_per_sec = 2000000))
         self.transport, self.cprotocol = self.manager.run_until_complete(client)
@@ -197,6 +198,21 @@ class TestSynchronization(unittest.TestCase):
             assert self.cprotocol.waiter is not None
             task.cancel()
             self.cprotocol.connection_lost(None)
+
+    def testReconnect(self):
+        "After connection lost, reconnect"
+        fut = self.loop.create_future()
+        def cb(*args, **kwargs): fut.set_result(True)
+        with mock.patch.object(self.manager._destinations[self.cert_hash],
+                               'connected',
+                               wraps = self.manager._destinations[self.cert_hash].connected,
+                               side_effect = cb):
+            self.cprotocol.close()
+            self.manager._destinations[self.cert_hash].connect_at = 0
+            try:self.loop.run_until_complete(asyncio.wait_for(fut, 0.3))
+            except asyncio.futures.TimeoutError:
+                raise AssertionError("Connection failed to be made") from None
+            
             
             
 

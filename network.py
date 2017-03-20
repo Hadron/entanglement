@@ -153,6 +153,16 @@ class SyncManager:
         finally:
             if dest.cert_hash in self._connecting and self._connecting[dest.cert_hash] == task:
                 del self._connecting[dest.cert_hash]
+
+    async def _connection_lost(self, protocol, exc):
+        if exc is None:
+            exc = EOFError()
+        if self._connections.get(protocol.dest.cert_hash,None)  == protocol:
+            del self._connections[protocol.dest.cert_hash]
+            logger.exception("Connection to {} lost:".format(protocol.dest),
+                             exc_info = exc)
+            self._connecting[protocol.dest.cert_hash] = self.loop.create_task(self._create_connection(protocol.dest))
+            
                     
                 
     def add_destination(self, dest):
