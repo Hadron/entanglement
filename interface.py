@@ -10,7 +10,7 @@
 
 import asyncio, logging, ssl
 import protocol
-from util import CertHash
+from util import CertHash, certhash_from_file
 from bandwidth import BwLimitProtocol
 logger = logging.getLogger("hadron.entanglement")
 
@@ -122,6 +122,7 @@ class SyncManager:
     def _new_ssl(self, cert, key, capath, cafile):
         sslctx = ssl.create_default_context()
         sslctx.load_cert_chain(cert, key)
+        self.cert_hash = certhash_from_file(cert)
         sslctx.load_verify_locations(cafile=cafile, capath = capath)
         return sslctx
 
@@ -145,6 +146,7 @@ class SyncManager:
         loop = self.loop
         delta = 1
         close_transport = None #Close this transport if we fail to
+        task = self._connecting[dest.cert_hash] #our task
         #connect There are two levels of try; the outer catches exceptions
         #that end all connection attempts and cleans up the cache of
         #destinations we're connecting to.
@@ -189,12 +191,44 @@ class SyncManager:
                     logger.exception("Error connecting to  {}".format(dest))
                     dest.connect_at = loop.time() + delta
         finally:
-            del self._connecting[dest.cert_hash]
+            if self._connecting.get(dest.cert_hash, None) == task:
+                del self._connecting[dest.cert_hash]
             if close_transport: close_transport.close()
 
     
                 
 
+    async def _incoming_connection(self, protocol):
+        old = None
+        task = None
+        if protocol.cert_hash not in self._destinations:
+            logger.error("Unexpected connection from {}".format(protocol.cert_hash))
+            protocol.close()
+        protocol.dest = self._destinations[protocol.cert_hash]
+        dest = protocol.dest
+        if self.cert_hash == dest.cert_hash:
+            logger.debug("Self connection to {}".format(dest.cert_hash))
+            return
+        if self._connections[dest.cert_hash]:
+            logger.warning("Replacing existing connection to {}".format(dest))
+            self._connections[dest.cert_hash].close()
+            del self._connections[dest.cert_hash]
+        if self._connecting[dest.cert_hash]:
+            logger.info("Replacing existing connection in progress to {}".format(dest))
+            old = self._connecting[dest.cert_hash]
+        try:
+            task = self.loop.create_task(dest.connected(self, protocol,
+                                                        bwprotocol = protocol.bwprotocol))
+            self._connecting[dest.cert_hash] = task
+            if old: old.cancel()
+            await self._connecting[dest.cert_hash]
+            self._connections[dest.cert_hash] = protocol
+            logger.info("New incoming connection from {}".format(dest))
+        finally:
+            if dest.cert_hash in self._connecting and self._connecting[dest.cert_hash] == task:
+                del self._connecting[dest.cert_hash]
+                    
+                
     def add_destination(self, dest):
         if dest.cert_hash in self._destinations:
             raise KeyError("{} is already a destination".format(repr(dest)))
@@ -244,6 +278,9 @@ class SyncManager:
     
     def close(self):
         if not hasattr(self,'_transports'): return
+        for c in self._connections.values():
+            c.close()
+        self._connections = {}
         for t in self._transports:
             if t(): t().close()
         if self.loop_allocated:

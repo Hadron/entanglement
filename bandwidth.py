@@ -38,7 +38,9 @@ class BwLimitProtocol(asyncio.protocols.Protocol):
 
         transport.write = bwlimit_write
         self.transport = transport
-        return self.protocol.connection_made(self.transport)
+        try: res =  self.protocol.connection_made(self.transport, bwprotocol = self)
+        except TypeError: res = self.protocol.connection_made(self.transport)
+        return res
 
     def connection_lost(self, exc):
         if hasattr(self.protocol, 'connection_lost'):

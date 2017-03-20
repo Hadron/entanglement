@@ -69,19 +69,31 @@ class SyncProtocol(asyncio.Protocol):
 
     def connection_lost(self, exc):
         if not hasattr(self, 'loop'): return
-        self.reader.feed_eof()
-        if self.task: self.task.cancel()
-        if self.reader_task: self.reader_task.cancel()
-        if self.waiter: self.waiter.cancel()
+        if not self.loop.is_closed():
+            self.reader.feed_eof()
+            if self.task: self.task.cancel()
+            if self.reader_task: self.reader_task.cancel()
+            if self.waiter: self.waiter.cancel()
         del self.transport
         del self.loop
         del self._manager
 
-    def connection_made(self, transport):
+    def close(self):
+        if not hasattr(self, 'loop'): return
+        self.transport.close()
+        self.connection_lost(None)
+
+    def __del__(self):
+        self.close()
+        
+    def connection_made(self, transport, bwprotocol):
         self.transport = transport
+        self.bwprotocol = bwprotocol
         self.reader.set_transport(transport)
         self.reader_task = self.loop.create_task(self._read_task())
         self._manager._transports.append(weakref.ref(self.transport))
+        if self._incoming:
+            self.loop.create_task(self._manager._incoming_connection(self))
 
     def pause_writing(self):
         if self.waiter: return

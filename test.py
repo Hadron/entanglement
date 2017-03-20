@@ -200,7 +200,8 @@ class TestSynchronization(unittest.TestCase):
             
 
 if __name__ == '__main__':
-    import unittest, unittest.main
+    import logging, unittest, unittest.main
+#    logging.basicConfig(level = 10)
     unittest.main(module = "test")
     
     
