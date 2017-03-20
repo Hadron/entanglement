@@ -10,6 +10,7 @@
 
 import asyncio, logging, ssl
 import protocol
+from util import CertHash
 
 logger = logging.getLogger("hadron.entanglement")
 
@@ -38,7 +39,7 @@ class Synchronizable( metaclass = SynchronizableMeta):
         raise NotImplementedError()
 
     @classmethod
-    def sync_authorized_listen(self, msg):
+    def sync_should_listen(self, msg):
         '''Return True or raise SynchronizationUnauthorized'''
         return True
     
@@ -79,6 +80,17 @@ class SyncRegistry:
             raise ValueError("`{} is already registered in this registry.".format(type_name))
         self.registry[type_name] = cls
 
+class SyncError(RuntimeError): pass
+
+class WrongSyncDestination(SyncError):
+
+    def __init__(msg = None, *args, dest = None, got_hash = None,
+                 **kwargs):
+        if not msg and dest:
+            msg = "Incorrect certificate hash received from connection to {dest}".format(dest)
+            if got_hash: msg = msg + " (got {got})".format(got = got_hash)
+        super().__init__(msg, *args, **kwargs)
+        
 class SyncManager:
 
     '''A SyncManager manages connections to other Synchronization
@@ -150,6 +162,9 @@ class SyncManager:
                                                                  server_hostname = dest.server_hostname)
                     logger.debug("Transport connection to {dest} made".format(dest = dest))
                     close_transport = transport
+                    if protocol.cert_hash != dest.cert_hash:
+                        raise WrongSyncDestination(dest = dest, got_hash = protocol.cert_hash)
+                
                     await dest.connected(self, protocol)
                     self._connections[dest.cert_hash] = protocol
                     close_transport = None
@@ -160,7 +175,7 @@ class SyncManager:
                 except asyncio.futures.CancelledError:
                     logger.debug("Connection to {dest} canceled".format(dest = dest))
                     raise
-                except (SyntaxError, Typeerror, LookupError, ValueError) as e:
+                except (SyntaxError, Typeerror, LookupError, ValueError, WrongSyncDestination) as e:
                     logger.exception("Connection to {} failed".format(dest.cert_hash))
                     raise
                 except:
@@ -211,8 +226,8 @@ class SyncManager:
         msg['_sync_authorized'] = self #To confirm we've been called.
         if cls.sync_registry.should_listen(msg, cls)is not True:
             raise SyntaxError('should_listen must return True or raise')
-        if cls.sync_authorized_listen(msg) is not True:
-            raise SyntaxError('sync_authorized_listen must return True or raise')
+        if cls.sync_should_listen(msg) is not True:
+            raise SyntaxError('sync_should_listen must return True or raise')
         return True
     
     def _find_registered_class(self, name):
@@ -276,7 +291,7 @@ class SyncDestination:
                  server_hostname = None):
         if server_hostname is None: server_hostname = host
         self.host = host
-        self.cert_hash = cert_hash
+        self.cert_hash = CertHash(cert_hash)
         self.name = name
         self.server_hostname = server_hostname
         self.bw_per_sec = bw_per_sec

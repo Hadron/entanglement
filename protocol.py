@@ -7,6 +7,7 @@
 # LICENSE for details.
 
 import asyncio, json, struct, weakref
+from util import CertHash
 
 _msg_header = ">I" # A 4-byte big-endien size
 _msg_header_size = struct.calcsize(_msg_header)
@@ -91,3 +92,9 @@ class SyncProtocol(asyncio.Protocol):
         self.waiter.set_result(None)
         self.waiter = None
         
+
+    @property
+    def cert_hash(self):
+        if  not self.transport: return None
+        return CertHash.from_der_cert(self.transport.get_extra_info('ssl_object').getpeercert(True))
+
