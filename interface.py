@@ -141,7 +141,7 @@ class SyncManager:
                     delta = min(2*delta, 10*60)
                 try:
                     logger.debug("Connecting to {hash} at {host}".format(
-                        hash = dest.key_hash,
+                        hash = dest.cert_hash,
                         host = dest.host))
                     transport, protocol = await \
                                           loop.create_connection(self._protocol_factory_client(dest),
@@ -151,36 +151,36 @@ class SyncManager:
                     logger.debug("Transport connection to {dest} made".format(dest = dest))
                     close_transport = transport
                     await dest.connected(self, protocol)
-                    self._connections[dest.key_hash] = protocol
+                    self._connections[dest.cert_hash] = protocol
                     close_transport = None
                     logger.info("Connected to {hash} at {host}".format(
-                        hash = dest.key_hash,
+                        hash = dest.cert_hash,
                         host = dest.host))
                     return transport, protocol
                 except asyncio.futures.CancelledError:
                     logger.debug("Connection to {dest} canceled".format(dest = dest))
                     raise
                 except (SyntaxError, Typeerror, LookupError, ValueError) as e:
-                    logger.exception("Connection to {} failed".format(dest.key_hash))
+                    logger.exception("Connection to {} failed".format(dest.cert_hash))
                     raise
                 except:
                     logger.exception("Error connecting to  {}".format(dest))
                     dest.connect_at = loop.time() + delta
         finally:
-            del self._connecting[dest.key_hash]
+            del self._connecting[dest.cert_hash]
             if close_transport: close_transport.close()
 
     
                 
 
     def add_destination(self, dest):
-        if dest.key_hash in self._destinations:
+        if dest.cert_hash in self._destinations:
             raise KeyError("{} is already a destination".format(repr(dest)))
-        self._destinations[dest.key_hash] = dest
+        self._destinations[dest.cert_hash] = dest
         assert dest.protocol is None
-        assert dest.key_hash not in self._connecting
-        self._connecting[dest.key_hash] = self.loop.create_task(self._create_connection(dest))
-        return self._connecting[dest.key_hash]
+        assert dest.cert_hash not in self._connecting
+        self._connecting[dest.cert_hash] = self.loop.create_task(self._create_connection(dest))
+        return self._connecting[dest.cert_hash]
     
 
     def run_until_complete(self, *args):
@@ -271,12 +271,12 @@ class SyncDestination:
 
     '''A SyncDestination represents a SyncManager other than ourselves that can receive (and generate) synchronizations.  The Synchronizable and subclasses of SyncDestination must cooperate to make sure that receiving and object does not create a loop by trying to Synchronize that object back to the sender.  One solution is for should_send on SyncDestination to return False (or raise) if the outgoing object is received from this destination.'''
 
-    def __init__(self, key_hash, name, *,
+    def __init__(self, cert_hash, name, *,
                  host = None, bw_per_sec = None,
                  server_hostname = None):
         if server_hostname is None: server_hostname = host
         self.host = host
-        self.key_hash = key_hash
+        self.cert_hash = cert_hash
         self.name = name
         self.server_hostname = server_hostname
         self.bw_per_sec = bw_per_sec
@@ -286,7 +286,7 @@ class SyncDestination:
     def __repr__(self):
         return "<SyncDestination {{name: '{name}', hash: {hash}}}".format(
             name = self.name,
-            hash = self.key_hash)
+            hash = self.cert_hash)
 
     def should_send(self, obj, manager , **kwargs):
         return True

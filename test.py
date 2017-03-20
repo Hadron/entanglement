@@ -12,6 +12,7 @@ from unittest import mock
 
 import bandwidth, protocol
 from interface import Synchronizable, SyncServer, SyncDestination
+from util import certhash_from_file
 
 
 
@@ -133,7 +134,7 @@ class TestSynchronization(unittest.TestCase):
                                   host = "127.0.0.1")
         self.manager._protocol_factory_client = lambda dest: lambda: bandwidth.BwLimitProtocol(chars_per_sec = 2000000, bw_quantum = 0.1, \
                                                                            loop=self.manager.loop, upper_protocol = protocol.SyncProtocol(self.manager, dest = dest))
-        client = self.manager.add_destination(SyncDestination("blah",
+        client = self.manager.add_destination(SyncDestination(certhash_from_file("host1.pem"),
                                                               "destination1", host = "127.0.0.1", server_hostname = "host1"))
         self.transport, self.bwprotocol = self.manager.run_until_complete(client)
         self.cprotocol = self.bwprotocol.protocol
