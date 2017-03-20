@@ -11,7 +11,8 @@ from unittest import mock
 
 
 import bandwidth, protocol
-from interface import Synchronizable, SyncServer, SyncDestination
+from interface import Synchronizable
+from network import  SyncServer, SyncDestination
 from util import certhash_from_file
 
 
