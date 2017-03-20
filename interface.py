@@ -11,7 +11,7 @@
 import asyncio, logging, ssl
 import protocol
 from util import CertHash
-
+from bandwidth import BwLimitProtocol
 logger = logging.getLogger("hadron.entanglement")
 
 class SynchronizableMeta(type):
@@ -127,11 +127,17 @@ class SyncManager:
 
     def _protocol_factory_client(self, dest):
         "This is more of a factory factory than a factory.  Construct a protocol object for a connection to a given outgoing SyncDestination"
-        return lambda: protocol.SyncProtocol(manager = self, dest = dest)
+        return lambda: BwLimitProtocol(chars_per_sec = 10000000,
+                                       bw_quantum = 0.1, loop = self.loop,
+                                       upper_protocol = protocol.SyncProtocol(manager = self, dest = dest))
 
     def _protocol_factory_server(self):
         "Factory factory for server connections"
-        return lambda: protocol.SyncProtocol(manager = self, incoming = True)
+        return lambda: BwLimitProtocol(
+            chars_per_sec = 10000000,
+            bw_quantum = 0.1,
+            loop = self.loop,
+            upper_protocol = protocol.SyncProtocol(manager = self, incoming = True))
     
 
     async     def _create_connection(self, dest):
@@ -155,17 +161,18 @@ class SyncManager:
                     logger.debug("Connecting to {hash} at {host}".format(
                         hash = dest.cert_hash,
                         host = dest.host))
-                    transport, protocol = await \
+                    transport, bwprotocol = await \
                                           loop.create_connection(self._protocol_factory_client(dest),
                                                                  port = self.port, ssl = self._ssl,
                                                                  host = dest.host,
                                                                  server_hostname = dest.server_hostname)
                     logger.debug("Transport connection to {dest} made".format(dest = dest))
                     close_transport = transport
+                    protocol = bwprotocol.protocol
                     if protocol.cert_hash != dest.cert_hash:
                         raise WrongSyncDestination(dest = dest, got_hash = protocol.cert_hash)
                 
-                    await dest.connected(self, protocol)
+                    await dest.connected(self, protocol, bwprotocol = bwprotocol)
                     self._connections[dest.cert_hash] = protocol
                     close_transport = None
                     logger.info("Connected to {hash} at {host}".format(
@@ -312,7 +319,7 @@ class SyncDestination:
 
     
 
-    async def connected(self, manager, protocol):
+    async def connected(self, manager, protocol, bwprotocol):
         '''Interface point; called by manager when an outgoing or incoming
         connection is made to the destination.  Except in the case of
         an unknown destination connecting to a server, the destination
@@ -324,5 +331,7 @@ class SyncDestination:
         method.  If this raises, the connection will be closed and aborted.
         '''
         self.protocol = protocol
+        self.bwprotocol = bwprotocol
+        bwprotocol.bw_per_quantum = self.bw_per_sec*bwprotocol.bw_quantum
         return
     
