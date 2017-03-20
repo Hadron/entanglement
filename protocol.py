@@ -14,7 +14,9 @@ assert _msg_header_size == 4
 
 class SyncProtocol(asyncio.Protocol):
 
-    def __init__(self, manager, **kwargs):
+    def __init__(self, manager, incoming = False,
+                 dest = None,
+                 **kwargs):
         super().__init__()
         self._manager = manager
         self.loop = manager.loop
@@ -23,6 +25,8 @@ class SyncProtocol(asyncio.Protocol):
         self.task = None
         self.transport = None
         self.reader = asyncio.StreamReader(loop = self.loop)
+        self.dest = dest
+        self._incoming = incoming
 
     def synchronize_object(self,obj):
         """Send obj out to be synchronized"""

@@ -8,8 +8,10 @@
 # LICENSE for details.
 
 
-import asyncio, ssl
+import asyncio, logging, ssl
 import protocol
+
+logger = logging.getLogger("hadron.entanglement")
 
 class SynchronizableMeta(type):
     '''A metaclass for capturing Synchronizable classes.  In python3.6, no metaclass will be needed; __init__subclass will be sufficient.'''
@@ -108,14 +110,74 @@ class SyncManager:
         sslctx.load_verify_locations(cafile=cafile, capath = capath)
         return sslctx
 
-    def _protocol_factory(self):
-        return protocol.SyncProtocol(manager = self)
+    def _protocol_factory_client(self, dest):
+        "This is more of a factory factory than a factory.  Construct a protocol object for a connection to a given outgoing SyncDestination"
+        return lambda: protocol.SyncProtocol(manager = self, dest = dest)
 
+    def _protocol_factory_server(self):
+        "Factory factory for server connections"
+        return lambda: protocol.SyncProtocol(manager = self, incoming = True)
+    
 
-    def create_connection(self, **kwargs):
+async     def _create_connection(self, dest):
         "Create a connection on the loop.  This is effectively a coroutine."
-        return self.loop.create_connection(self._protocol_factory, port = self.port, ssl = self._ssl,
-                                           **kwargs)
+        loop = self.loop
+        delta = 1
+        close_transport = None #Close this transport if we fail to
+        #connect There are two levels of try; the outer catches exceptions
+        #that end all connection attempts and cleans up the cache of
+        #destinations we're connecting to.
+        try:
+            while True: # not connected
+                if dest.connect_at > loop.time():
+                    logger.info("Waiting until {time} to connect to {dest}".format(
+                    time = time.ctime(dest.connect_at),
+                    dest = dest))
+                    delta = dest.connect_at-loop.time()
+                    await asyncio.sleep(delta)
+                    delta = min(2*delta, 10*60)
+                try:
+                    logger.debug("Connecting to {hash} at {host}".format(
+                        hash = dest.key_hash,
+                        host = dest.host))
+                    transport, protocol = await \
+                                          loop.create_connection(self._protocol_factory_client(dest),
+                                                                 port = self.port, ssl = self._ssl,
+                                                                 host = dest.host)
+                    logger.debug("Transport connection to {dest} made".format(dest = dest))
+                    close_transport = transport
+                    await dest.connected(self)
+                    self._connections[dest.key_hash] = protocol
+                    close_transport = None
+                    logger.info("Connected to {hash} at {host}".format(
+                        hash = dest.key_hash,
+                        host = dest.host))
+                    return transport, protocol
+                except asyncio.futures.CanceledError:
+                    logger.debug("Connection to {dest} canceled".format(dest = dest))
+                    raise
+                except (SyntaxError, Typeerror, LookupError, ValueError) as e:
+                    logger.exception("Connection to {} failed".format(dest.key_hash))
+                    raise
+                except:
+                    logger.exception("Error connecting to  {}".format(dest))
+                    dest.connect_at = loop.time() + delta
+        finally:
+            del self._connecting{dest.key_hash]
+            if close_transport: close_transport.close()
+
+    
+                
+
+    def add_destination(self, dest)):
+        if dest.key_hash in self._destinations:
+            raise KeyError("{} is already a destination".format(repr(dest)))
+        self._destinations{dest.key_hash} = dest
+        assert dest.protocol is None
+        assert dest.key_hash not in self._connecting
+        self._connecting[dest.key_hash] = self.loop.create_task(self._create_connection(dest))
+        return self._connecting[dest.key_hash]
+    
 
     def run_until_complete(self, *args):
         return self.loop.run_until_complete(*args)
@@ -187,7 +249,7 @@ class SyncServer(SyncManager):
                                          capath = capath)
         self._ssl_server.check_hostname = False
         self._server = self.loop.run_until_complete(self.loop.create_server(
-            self._protocol_factory,
+            self._protocol_factory_server(),
 #            host = host,
             port = port,
             ssl = self._ssl_server,
@@ -205,19 +267,19 @@ class SyncDestination:
 
     '''A SyncDestination represents a SyncManager other than ourselves that can receive (and generate) synchronizations.  The Synchronizable and subclasses of SyncDestination must cooperate to make sure that receiving and object does not create a loop by trying to Synchronize that object back to the sender.  One solution is for should_send on SyncDestination to return False (or raise) if the outgoing object is received from this destination.'''
 
-    def __init__(self, cert_hash, name, *,
+    def __init__(self, key_hash, name, *,
                  host = None, bw_per_sec = None):
         self.host = host
-        self.cert_hash = cert_hash
+        self.key_hash = key_hash
         self.name = name
         self.bw_per_sec = bw_per_sec
         
     def __repr__(self):
         return "<SyncDestination {name: '{name}', hash: {hash}".format(
             name = self.name,
-            hash = self.cert_hash)
+            hash = self.key_hash)
 
-    def should_send(self, obj, manager, msg, **kwargs):
+    def should_send(self, obj, manager , **kwargs):
         return True
 
     def should_listen(self, msg, manager, cls, **kwargs):
