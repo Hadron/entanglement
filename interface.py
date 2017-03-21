@@ -149,7 +149,7 @@ class Synchronizable( metaclass = SynchronizableMeta):
 
 
     @classmethod
-    def sync_receive(cls, msg):
+    def sync_receive(cls, msg, **kwargs):
         obj = cls._sync_construct(msg)
         for k, v in msg.items():
             if k not in cls._sync_properties:
@@ -223,7 +223,7 @@ class SyncRegistry:
         "Called after the object is constructed. May do nothing, may arrange to merge into a database, etc."
         pass
 
-    def exception_receiving(exc, **kwargs):
+    def exception_receiving(self, exc, **kwargs):
         "Called when an exception happens constructing an object. or in registry.sync_receive.  The manager will make sure the exception is logged."
         pass
 
