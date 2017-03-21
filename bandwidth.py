@@ -44,7 +44,7 @@ class BwLimitProtocol(asyncio.protocols.Protocol):
 
     def connection_lost(self, exc):
         if hasattr(self.protocol, 'connection_lost'):
-            return self.protocol.connection_lost(self, exc)
+            return self.protocol.connection_lost(exc)
 
     def eof_received(self):
         return self.protocol.eof_received()
