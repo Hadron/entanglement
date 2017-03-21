@@ -11,7 +11,7 @@ from unittest import mock
 
 
 import bandwidth, protocol
-from interface import Synchronizable
+from interface import Synchronizable, sync_property
 from network import  SyncServer, SyncDestination
 from util import certhash_from_file
 
@@ -40,9 +40,8 @@ class TestSyncable(Synchronizable):
         self.id = id
         self.pos = pos
 
-    def to_sync(self):
-        return {'id': self.id,
-                'pos': self.pos}
+    id = sync_property()
+    pos = sync_property()
 
     sync_primary_keys = ('id',)
 
