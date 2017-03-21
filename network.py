@@ -13,7 +13,9 @@ import asyncio, logging, ssl
 import protocol
 from util import CertHash, certhash_from_file
 from bandwidth import BwLimitProtocol
-from interface import WrongSyncDestination
+from interface import WrongSyncDestination, UnregisteredSyncClass
+import interface
+
 logger = protocol.logger
 
 
@@ -197,17 +199,17 @@ class SyncManager:
             registry.sync_receive(cls.sync_receive(msg, **info), **info)
         except Exception as e:
             registry.exception_receiving(e, sync_type = cls, **info)
-            logger.exception("Error receiving a {}".format(cls.__name__"),
+            logger.exception("Error receiving a {}".format(cls.__name__),
 exc_info = e)
 
     def _validate_message(self, msg):
         if not isinstance(msg, dict):
             raise protocol.MessageError('Message is a {} not a dict'.format(msg.__class__.__name__))
         for k in msg:
-            if k.startswith('_') and k not in protocol.SYNc_magic_attributes:
-                raise protocol.MessageError('{} is not a valid attribute in a sync message'.format(k))
+            if k.startswith('_') and k not in protocol.sync_magic_attributes:
+                raise interface.SyncBadEncodingError('{} is not a valid attribute in a sync message'.format(k), msg = msg)
 
-            def should_listen(self, msg, cls, registry):
+    def should_listen(self, msg, cls, registry):
         msg['_sync_authorized'] = self #To confirm we've been called.
         if registry.should_listen(msg, cls)is not True:
             raise SyntaxError('should_listen must return True or raise')

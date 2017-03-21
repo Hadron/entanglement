@@ -251,6 +251,11 @@ class SyncError(RuntimeError, Synchronizable):
     sync_registry = error_registry
     sync_primary_keys = Unique
 
+    def to_sync(selff):
+        d = super().to_sync()
+        d['_sync_is_error'] = True
+        return d
+
 class UnregisteredSyncClass(SyncError): pass
 
 class WrongSyncDestination(SyncError):

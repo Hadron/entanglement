@@ -67,7 +67,7 @@ class SyncProtocol(asyncio.Protocol):
                 self._manager._sync_receive(sync_repr, self)
             except Exception as e:
                 logger.exception("Error receiving {}".format(sync_repr))
-                if isinstance(e,SyncError):
+                if isinstance(e,SyncError) and not '_sync_is_error' in sync_repr:
                     self.synchronize_object(e)
                     
 
@@ -120,4 +120,7 @@ class SyncProtocol(asyncio.Protocol):
     def cert_hash(self):
         if  not self.transport: return None
         return CertHash.from_der_cert(self.transport.get_extra_info('ssl_object').getpeercert(True))
+
+
+sync_magic_attributes = ('_sync_type', '_sync_is_error')
 
