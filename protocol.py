@@ -6,8 +6,11 @@
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the file
 # LICENSE for details.
 
-import asyncio, json, struct, weakref
+import asyncio, json, logging, struct, weakref
 from util import CertHash
+from interface import SyncError
+
+logger = logging.getLogger("hadron.entanglement")
 
 _msg_header = ">I" # A 4-byte big-endien size
 _msg_header_size = struct.calcsize(_msg_header)
@@ -59,8 +62,14 @@ class SyncProtocol(asyncio.Protocol):
             jslen = struct.unpack(_msg_header, header)[0]
             assert jslen <= 65536
             js = await self.reader.readexactly(jslen)
-            sync_repr = json.loads(str(js, 'utf-8'))
-            print(sync_repr)
+            try:
+                sync_repr = json.loads(str(js, 'utf-8'))
+                self._manager._sync_receive(sync_repr, self)
+            except Exception as e:
+                logger.exception("Error receiving {}".format(sync_repr))
+                if isinstance(e,SyncError):
+                    self.synchronize_object(e)
+                    
 
     def data_received(self, data):
         self.reader.feed_data(data)
