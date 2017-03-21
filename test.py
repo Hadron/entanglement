@@ -11,7 +11,7 @@ from unittest import mock
 
 
 import bandwidth, protocol
-from interface import Synchronizable, sync_property
+from interface import Synchronizable, sync_property, SyncRegistry
 from network import  SyncServer, SyncDestination
 from util import certhash_from_file
 
@@ -34,17 +34,40 @@ class TestProto(asyncio.Protocol):
         
         transport.write(b"blah blah blah")
 
+reg = SyncRegistry()
+
 class TestSyncable(Synchronizable):
 
     def __init__(self, id, pos):
         self.id = id
         self.pos = pos
 
-    id = sync_property()
-    pos = sync_property()
+    id = sync_property(constructor = 1)
+    pos = sync_property(constructor = 2)
 
     sync_primary_keys = ('id',)
+    sync_registry = reg
 
+class TestSyncable2(TestSyncable):
+    "This one stores itself"
+
+    @classmethod
+    def get(cls, id):
+        if id not in cls.objects:
+            cls.objects[id] = TestSyncable2(id, 0)
+        return cls.objects[id]
+
+    objects = {}
+
+    @classmethod
+    def _sync_construct(cls, msg):
+#This is crude; one example is that it doesn't use id's decoder.
+        #_sync_primary_keys_dict would be better
+        id = msg['id']
+        del msg['id']
+        return cls.get(id)
+    
+        
     
 
 class LoopFixture:
@@ -131,6 +154,7 @@ class TestSynchronization(unittest.TestCase):
         self.manager = SyncServer(cafile = 'ca.pem',
                                   cert = "host1.pem", key = "host1.key",
                                   port = 9120,
+                                  registries = [reg],
                                   host = "127.0.0.1")
         self.cert_hash = certhash_from_file("host1.pem")
         client = self.manager.add_destination(SyncDestination(self.cert_hash,
@@ -211,12 +235,30 @@ class TestSynchronization(unittest.TestCase):
             try:self.loop.run_until_complete(asyncio.wait_for(fut, 0.3))
             except asyncio.futures.TimeoutError:
                 raise AssertionError("Connection failed to be made") from None
-            
+
+
+    def testReception(self):
+        "Confirm that we can receive an update"
+        fut = self.loop.create_future()
+        def cb(*args, **kwargs): fut.set_result(True)
+        obj_send = TestSyncable2(1,90)
+        obj_receive = TestSyncable2.get(obj_send.id)
+        assert obj_send is not obj_receive # We cheat so this is true
+        assert obj_send.pos != obj_receive.pos
+        self.cprotocol.synchronize_object(obj_send)
+        with mock.patch.object(reg, 'sync_receive',
+                        wraps = cb):
+            self.manager.run_until_complete(self.cprotocol.task)
+            self.manager.run_until_complete(asyncio.wait_for(fut,0.4))
+        self.assertEqual(obj_send.id, obj_receive.id)
+        self.assertEqual(obj_send.pos, obj_receive.pos)
+        
             
             
 
 if __name__ == '__main__':
     import logging, unittest, unittest.main
+    logging.basicConfig(level = 'ERROR')
 #    logging.basicConfig(level = 10)
     unittest.main(module = "test")
     
