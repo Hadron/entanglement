@@ -45,6 +45,7 @@ class SyncManager:
         self._ssl = self._new_ssl(cert, key = key,
                                  capath = capath, cafile = cafile)
         self.registries = registries
+        self.registries.append(interface.error_registry)
         self.port = port
 
     def _new_ssl(self, cert, key, capath, cafile):
@@ -186,7 +187,7 @@ class SyncManager:
         if protocol.dest: info['sender'] = protocol.dest
         self._validate_message(msg)
         cls, registry = self._find_registered_class(msg['_sync_type'])
-        if self.should_listen(msg, cls) is not True:
+        if self.should_listen(msg, cls, registry) is not True:
             # Failure should raise because ignoring an exception takes
             # active work, leading to a small probability of errors.
             # However, active authorization should be an explicit true
