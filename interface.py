@@ -18,8 +18,12 @@ class SynchronizableMeta(type):
             if not isinstance(cls.sync_registry, SyncRegistry):
                 raise TypeError("Class {cls} sets sync_registry to something that is not a SyncRegistry".format(cls = cls.__name__))
             cls.sync_registry.register_syncable(cls.sync_type, cls)
+        super().__init__( name, bases, _dict)
 
     def __new__(cls, name, bases, ns):
+        if 'sync_registry' in ns:
+            ns['_sync_registry'] = ns['sync_registry']
+            del ns['sync_registry']
         sync_meta = {}
         def default_encoder(propname):
             return lambda obj: getattr(obj, propname, None)
@@ -27,7 +31,7 @@ class SynchronizableMeta(type):
             if isinstance(v, sync_property):
                 sync_meta[k] = v
                 v.declaring_class = name
-                if v.wraps:
+                if v.wraps is not None:
                     ns[k] = v.wraps
                 else: del ns[k]
                 del v.wraps
@@ -40,9 +44,12 @@ class SynchronizableMeta(type):
 
     @sync_registry.getter
     def sync_registry(inst):
-        for c in inst.__mro__:
-            if 'sync_registry' in c.__dict__: return c.__dict__['sync_registry']
-        return None
+        return getattr(inst,"_sync_registry", None)
+
+    @sync_registry.setter
+    def sync_registry(inst, value):
+        inst._sync_registry = value
+        
 
 
     @property
@@ -87,7 +94,7 @@ class sync_property:
         self.decoderfn = decoder
         self.constructor = constructor
         self.__doc__ = doc
-        if wraps and not doc:
+        if wraps is not None and not doc:
             if hasattr(wraps, '__doc__'):
                 self.__doc__ = wraps.__doc__
 

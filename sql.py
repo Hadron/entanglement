@@ -9,10 +9,11 @@
 
 import datetime
 
-from sqlalchemy import Column, Table, String, Integer, DateTime, ForeignKey
+from sqlalchemy import Column, Table, String, Integer, DateTime, ForeignKey, inspect
+import sqlalchemy.exc
 import sqlalchemy.orm, sqlalchemy.ext.declarative, sqlalchemy.ext.declarative.api
 from util import CertHash, SqlCertHash
-from interface import SynchronizableMeta
+import interface
 
 class SyncSqlSession(sqlalchemy.orm.Session):
 
@@ -32,6 +33,33 @@ class SyncSqlSession(sqlalchemy.orm.Session):
 def sync_session_maker(*args, **kwargs):
     return sqlalchemy.orm.sessionmaker(class_ = SyncSqlSession, *args, **kwargs)
 
+class SqlSyncMeta(interface.SynchronizableMeta, sqlalchemy.ext.declarative.api.DeclarativeMeta):
+
+    def __new__(cls, name, bases, ns):
+        registry = None
+        for c in bases:
+            registry = getattr(c,'registry', None)
+            if registry is not None: break
+        if not 'sync_registry' in ns: ns['sync_registry'] = registry
+        for k,v in ns.items():
+            if isinstance(v, (Column, )):
+                ns[k] = interface.sync_property(wraps = v)
+        return interface.SynchronizableMeta.__new__(cls, name, bases, ns)
+
+    def __init__(cls, name, bases, ns):
+        super().__init__(name, bases, ns)
+        if not hasattr(cls,'registry'):
+            setattr(cls,'registry', SqlSyncRegistry())
+        if isinstance(cls.sync_primary_keys, property):
+            try:
+                cls.sync_primary_keys = tuple(map(
+                        lambda x: x.name, inspect(cls).primary_key))
+            except sqlalchemy.exc.NoInspectionAvailable: pass
+
+
+class SqlSyncRegistry(interface.SyncRegistry): pass
+
+    
 _internal_base = sqlalchemy.ext.declarative.declarative_base()
 
 class Serial(_internal_base):
@@ -57,18 +85,19 @@ class SyncOwner(_internal_base):
     
 
 
-class SqlSynchronizable:
-    sync_serial =Column(Integer, nullable=False, index = True)
+class SqlSynchronizable(interface.Synchronizable):
+
+    sync_serial =interface.sync_property(wraps = Column(Integer, nullable=False, index = True))
 
     @sqlalchemy.ext.declarative.api.declared_attr
     def sync_owner(self):
         return Column(Integer, ForeignKey(SyncOwner.id))
+    
 
-        @sqlalchemy.ext.declarative.api.declared_attr
-        def sync_serial_rel(self):
-            return sqlalchemy.orm.relationship(Serial)
         
     @property
     def sync_is_local(self):
         return self.sync_owner is None
     
+def sql_sync_declarative_base(*args, **kwargs):
+    return sqlalchemy.ext.declarative.declarative_base(cls = SqlSynchronizable, metaclass = SqlSyncMeta, *args, **kwargs)

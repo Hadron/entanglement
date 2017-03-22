@@ -16,8 +16,7 @@ from network import  SyncServer, SyncDestination
 from util import certhash_from_file, CertHash, SqlCertHash
 from sqlalchemy import create_engine, Column, Integer
 from sqlalchemy.orm import sessionmaker
-from sqlalchemy.ext.declarative import declarative_base
-from sql import SqlSynchronizable, _internal_base, sync_session_maker
+from sql import SqlSynchronizable, _internal_base, sync_session_maker, sql_sync_declarative_base
 
 
 
@@ -261,7 +260,7 @@ class TestSynchronization(unittest.TestCase):
             
 
 # SQL declaration
-Base = declarative_base()
+Base = sql_sync_declarative_base()
 
 class Table1(Base, SqlSynchronizable):
     __tablename__ = 'test_table'
@@ -284,7 +283,9 @@ class TestSql(unittest.TestCase):
         self.session.commit()
         #That will expire t.ch
         self.assertEqual(t.ch, CertHash(b'o' *32))
-        
+        as_sync = t.to_sync()
+        self.assertEqual(set(as_sync.keys()),
+                         {'id', 'ch', 'sync_serial'})
 
        
 
