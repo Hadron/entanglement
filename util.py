@@ -14,6 +14,11 @@ try:
 except ImportError:
     _crypto  = None
 
+try:
+    from sqlalchemy.types import TypeDecorator, String
+except ImportError:
+    TypeDecorator = None
+    
 class CertHash(bytes):
     "represents a hash of a certificate"
 
@@ -64,3 +69,17 @@ def certhash_from_file(fn):
                                                                      f.read()))
     return CertHash(hashlib.sha256(der_cert).digest())
 
+
+if TypeDecorator:
+    class SqlCertHash(TypeDecorator):
+        impl = String
+
+        def process_bind_param(self, value, dialect):
+            return str(CertHash(value))
+
+        def process_result_value(self, value, dialect):
+            return CertHash(value)
+
+        def __init__(self, *args, **kwargs):
+            super().__init__(50, *args, **kwargs)
+            
