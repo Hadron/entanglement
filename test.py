@@ -17,6 +17,7 @@ from util import certhash_from_file, CertHash, SqlCertHash
 from sqlalchemy import create_engine, Column, Integer
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.ext.declarative import declarative_base
+from sql import SqlSynchronizable, _internal_base, sync_session_maker
 
 
 
@@ -262,7 +263,7 @@ class TestSynchronization(unittest.TestCase):
 # SQL declaration
 Base = declarative_base()
 
-class Table1(Base):
+class Table1(Base, SqlSynchronizable):
     __tablename__ = 'test_table'
     id = Column(Integer, primary_key = True)
     ch = Column(SqlCertHash)
@@ -271,8 +272,9 @@ class TestSql(unittest.TestCase):
 
     def setUp(self):
         self.e1 = create_engine('sqlite:///:memory')
-        Session = sessionmaker()
+        Session = sync_session_maker()
         self.session = Session(bind = self.e1)
+        _internal_base.metadata.create_all(bind = self.e1)
         Base.metadata.create_all(bind = self.e1)
 
     def testCertHash(self):
