@@ -13,10 +13,11 @@ from unittest import mock
 
 from interface import Synchronizable, sync_property, SyncRegistry
 from network import  SyncServer, SyncDestination, SyncManager
-from util import certhash_from_file, CertHash, SqlCertHash
-from sqlalchemy import create_engine, Column, Integer
+from util import certhash_from_file, CertHash, SqlCertHash, get_or_create
+from sqlalchemy import create_engine, Column, Integer, inspect
 from sqlalchemy.orm import sessionmaker
 from sql import SqlSynchronizable, _internal_base, sync_session_maker, sql_sync_declarative_base
+import sql
 
 @contextmanager
 def wait_for_call(loop, obj, method):
@@ -31,6 +32,7 @@ def wait_for_call(loop, obj, method):
     except  asyncio.futures.TimeoutError:
         raise AssertionError("Timeout waiting for call to {} of {}".format(
             method, obj)) from None
+
 # SQL declaration
 Base = sql_sync_declarative_base()
 
@@ -46,6 +48,7 @@ class TestSql(unittest.TestCase):
         self.e2 = create_engine('sqlite:///:memory:')
         Session = sync_session_maker()
         self.session = Session(bind = self.e2)
+        Base.registry.session.bind = self.e1
         _internal_base.metadata.create_all(bind = self.e1)
         Base.metadata.create_all(bind = self.e1)
         _internal_base.metadata.create_all(bind = self.e2)
@@ -68,6 +71,7 @@ class TestSql(unittest.TestCase):
                                   "client")
         self.server.add_destination(self.d2)
         self.manager.add_destination(self.d1)
+        self.manager.run_until_complete(asyncio.wait(self.manager._connecting.values()))
 
     def tearDown(self):
         self.manager.close()
@@ -85,11 +89,32 @@ class TestSql(unittest.TestCase):
                          {'id', 'ch', 'sync_serial'})
 
     def testSendObject(self):
+        self.session.manager = self.manager
         t = Table1(ch = self.d1.cert_hash)
         with wait_for_call(self.loop, Base.registry, 'sync_receive'):
             self.session.add(t)
             self.session.commit()
-            
+        t2 = Base.registry.session.query(Table1).get(t.id)
+        assert t2 is not None
+        self.assertEqual(t2.ch, t.ch)
+
+    def testGetOrCreate(self):
+        "test our get or create method"
+        session = self.session
+        session.autoflush = False
+        t1 = Table1(ch = self.d2.cert_hash)
+        session.add(t1)
+        session.commit()
+        t2 = get_or_create(session, Table1, {'id' : t1.id})
+        self.assertIs(t1,t2)
+        dest = get_or_create(session, sql.SqlSyncDestination,
+                             {'cert_hash': self.d1.cert_hash},
+                             {'name' : "blah", 'host': "127.0.0.1"})
+        session.commit()
+        dest2 = get_or_create(session, sql.SqlSyncDestination,
+                              {'cert_hash' : dest.cert_hash})
+        self.assertEqual(dest.id, dest2.id)
+        
         
 if __name__ == '__main__':
     import logging, unittest, unittest.main

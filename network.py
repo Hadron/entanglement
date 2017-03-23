@@ -70,6 +70,11 @@ class SyncManager:
             upper_protocol = protocol.SyncProtocol(manager = self, incoming = True))
     
 
+    def synchronize(self, objects):
+        for o in objects:
+            for c in self._connections.values():
+                c.synchronize_object(o)
+                
     async     def _create_connection(self, dest):
         "Create a connection on the loop.  This is effectively a coroutine."
         if not hasattr(self, 'loop'): return
