@@ -26,7 +26,11 @@ class SynchronizableMeta(type):
             del ns['sync_registry']
         sync_meta = {}
         def default_encoder(propname):
-            return lambda obj: getattr(obj, propname, None)
+            def encode(obj):
+                val = getattr(obj, propname, None)
+                if hasattr(val,'sync_encode_value'): val = val.sync_encode_value()
+                return val
+            return encode
         for k,v in list(ns.items()):
             if isinstance(v, sync_property):
                 sync_meta[k] = v

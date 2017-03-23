@@ -16,6 +16,7 @@ except ImportError:
 
 try:
     from sqlalchemy.types import TypeDecorator, String
+    from sqlalchemy import inspect
 except ImportError:
     TypeDecorator = None
     
@@ -41,7 +42,8 @@ class CertHash(bytes):
 
     def __repr__(self):
         return '"'+str(self)+'"'
-    
+
+    def sync_encode_value(self): return str(self)
 
     def __eq__(self, other):
         res = super().__eq__(other)
@@ -83,3 +85,19 @@ if TypeDecorator:
         def __init__(self, *args, **kwargs):
             super().__init__(50, *args, **kwargs)
             
+
+def get_or_create(session, model, filter_by, defaults = {}):
+    primary_key = tuple(map(lambda x:x.name, inspect(model).primary_key)
+                        )
+    primary_key_set = set(primary_key)
+    filter_by_set = set(filter_by.keys())
+    if filter_by_set == primary_key_set:
+        primary_key_values = tuple(map(lambda x: filter_by.get(x), primary_key))
+        inst = session.query(model).get(primary_key_values)
+    else: inst = session.query(model).filter_by(**filter_by).first()
+    if inst: return inst
+    d = filter_by.copy()
+    d.update(defaults)
+    inst = model(**d)
+    session.add(inst)
+    return inst
