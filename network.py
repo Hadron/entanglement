@@ -72,6 +72,7 @@ class SyncManager:
 
     async     def _create_connection(self, dest):
         "Create a connection on the loop.  This is effectively a coroutine."
+        if not hasattr(self, 'loop'): return
         loop = self.loop
         delta = 1
         close_transport = None #Close this transport if we fail to
@@ -113,7 +114,7 @@ class SyncManager:
                 except asyncio.futures.CancelledError:
                     logger.debug("Connection to {dest} canceled".format(dest = dest))
                     raise
-                except (SyntaxError, Typeerror, LookupError, ValueError, WrongSyncDestination) as e:
+                except (SyntaxError, TypeError, LookupError, ValueError, WrongSyncDestination) as e:
                     logger.exception("Connection to {} failed".format(dest.cert_hash))
                     raise
                 except:
@@ -138,11 +139,11 @@ class SyncManager:
         if self.cert_hash == dest.cert_hash:
             logger.debug("Self connection to {}".format(dest.cert_hash))
             return
-        if self._connections[dest.cert_hash]:
+        if dest.cert_hash in self._connections:
             logger.warning("Replacing existing connection to {}".format(dest))
             self._connections[dest.cert_hash].close()
             del self._connections[dest.cert_hash]
-        if self._connecting[dest.cert_hash]:
+        if dest.cert_hash in self._connecting:
             logger.info("Replacing existing connection in progress to {}".format(dest))
             old = self._connecting[dest.cert_hash]
         try:
@@ -174,6 +175,7 @@ class SyncManager:
         self._destinations[dest.cert_hash] = dest
         assert dest.protocol is None
         assert dest.cert_hash not in self._connecting
+        if dest.host is None: return
         self._connecting[dest.cert_hash] = self.loop.create_task(self._create_connection(dest))
         return self._connecting[dest.cert_hash]
     
@@ -248,7 +250,7 @@ class SyncServer(SyncManager):
 
     "A SyncManager that accepts incoming connections"
 
-    def __init__(self, cert, port, *, host, cafile = None, capath = None,
+    def __init__(self, cert, port, *, host = None, cafile = None, capath = None,
                  key = None, **kwargs):
         super().__init__(cert, port, capath = capath,
                          cafile = cafile, key = key,
@@ -260,7 +262,7 @@ class SyncServer(SyncManager):
         self._ssl_server.check_hostname = False
         self._server = self.loop.run_until_complete(self.loop.create_server(
             self._protocol_factory_server(),
-#            host = host,
+                        host = host,
             port = port,
             ssl = self._ssl_server,
             reuse_address = True, reuse_port = True))
@@ -278,7 +280,7 @@ class SyncDestination:
     '''A SyncDestination represents a SyncManager other than ourselves that can receive (and generate) synchronizations.  The Synchronizable and subclasses of SyncDestination must cooperate to make sure that receiving and object does not create a loop by trying to Synchronize that object back to the sender.  One solution is for should_send on SyncDestination to return False (or raise) if the outgoing object is received from this destination.'''
 
     def __init__(self, cert_hash, name, *,
-                 host = None, bw_per_sec = None,
+                 host = None, bw_per_sec = 10000000,
                  server_hostname = None):
         if server_hostname is None: server_hostname = host
         self.host = host

@@ -130,7 +130,7 @@ class Synchronizable( metaclass = SynchronizableMeta):
         return d
 
     @classmethod
-    def _sync_construct(cls, msg):
+    def _sync_construct(cls, msg, **kwargs):
         '''Return a new object of cls consistent with msg that can be filled in with the rest of the contents of msg.
 
         For many classes, this could simply call the class.  It could also be overridden to look up an existing instance of a class in a database.  The default implementation calls the constructor with sync properties where the constructor argument to the property is set.  If constructor is set to a number, that ordinal index is used.  If True, the property name is used as a constructor keyword.
@@ -157,7 +157,7 @@ class Synchronizable( metaclass = SynchronizableMeta):
 
     @classmethod
     def sync_receive(cls, msg, **kwargs):
-        obj = cls._sync_construct(msg)
+        obj = cls._sync_construct(msg, **kwargs)
         for k, v in msg.items():
             if k not in cls._sync_properties:
                 if k.startswith('_'): continue
