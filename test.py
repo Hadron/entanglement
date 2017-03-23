@@ -14,9 +14,6 @@ import bandwidth, protocol
 from interface import Synchronizable, sync_property, SyncRegistry
 from network import  SyncServer, SyncDestination
 from util import certhash_from_file, CertHash, SqlCertHash
-from sqlalchemy import create_engine, Column, Integer
-from sqlalchemy.orm import sessionmaker
-from sql import SqlSynchronizable, _internal_base, sync_session_maker, sql_sync_declarative_base
 
 
 
@@ -64,7 +61,7 @@ class TestSyncable2(TestSyncable):
     objects = {}
 
     @classmethod
-    def _sync_construct(cls, msg):
+    def _sync_construct(cls, msg, **kwargs):
 #This is crude; one example is that it doesn't use id's decoder.
         #_sync_primary_keys_dict would be better
         id = msg['id']
@@ -259,33 +256,6 @@ class TestSynchronization(unittest.TestCase):
         
             
 
-# SQL declaration
-Base = sql_sync_declarative_base()
-
-class Table1(Base, SqlSynchronizable):
-    __tablename__ = 'test_table'
-    id = Column(Integer, primary_key = True)
-    ch = Column(SqlCertHash)
-            
-class TestSql(unittest.TestCase):
-
-    def setUp(self):
-        self.e1 = create_engine('sqlite:///:memory')
-        Session = sync_session_maker()
-        self.session = Session(bind = self.e1)
-        _internal_base.metadata.create_all(bind = self.e1)
-        Base.metadata.create_all(bind = self.e1)
-
-    def testCertHash(self):
-        t = Table1()
-        t.ch = CertHash(b'o' *32)
-        self.session.add(t)
-        self.session.commit()
-        #That will expire t.ch
-        self.assertEqual(t.ch, CertHash(b'o' *32))
-        as_sync = t.to_sync()
-        self.assertEqual(set(as_sync.keys()),
-                         {'id', 'ch', 'sync_serial'})
 
        
 
