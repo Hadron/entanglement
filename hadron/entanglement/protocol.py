@@ -7,8 +7,8 @@
 # LICENSE for details.
 
 import asyncio, json, logging, struct, weakref
-from util import CertHash
-from interface import SyncError
+from .util import CertHash
+from .interface import SyncError
 
 logger = logging.getLogger("hadron.entanglement")
 

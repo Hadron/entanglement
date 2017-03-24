@@ -10,10 +10,10 @@ import ssl, asyncio, json, os, unittest
 from unittest import mock
 
 
-import bandwidth, protocol
-from interface import Synchronizable, sync_property, SyncRegistry
-from network import  SyncServer, SyncDestination
-from util import certhash_from_file, CertHash, SqlCertHash
+from . import bandwidth, protocol
+from .interface import Synchronizable, sync_property, SyncRegistry
+from .network import  SyncServer, SyncDestination
+from .util import certhash_from_file, CertHash, SqlCertHash
 
 
 
@@ -265,6 +265,6 @@ if __name__ == '__main__':
     import logging, unittest, unittest.main
     logging.basicConfig(level = 'ERROR')
 #    logging.basicConfig(level = 10)
-    unittest.main(module = "test")
+    unittest.main(module = "hadron.entanglement.test")
     
     

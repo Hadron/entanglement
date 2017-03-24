@@ -11,13 +11,13 @@ import asyncio, ssl, unittest
 from contextlib import contextmanager
 from unittest import mock
 
-from interface import Synchronizable, sync_property, SyncRegistry
-from network import  SyncServer, SyncDestination, SyncManager
-from util import certhash_from_file, CertHash, SqlCertHash, get_or_create
+from .interface import Synchronizable, sync_property, SyncRegistry
+from .network import  SyncServer, SyncDestination, SyncManager
+from .util import certhash_from_file, CertHash, SqlCertHash, get_or_create
 from sqlalchemy import create_engine, Column, Integer, inspect
 from sqlalchemy.orm import sessionmaker
-from sql import SqlSynchronizable, _internal_base, sync_session_maker, sql_sync_declarative_base
-import sql
+from .sql import SqlSynchronizable, _internal_base, sync_session_maker, sql_sync_declarative_base
+from . import sql
 
 @contextmanager
 def wait_for_call(loop, obj, method):
@@ -120,6 +120,6 @@ if __name__ == '__main__':
     import logging, unittest, unittest.main
     logging.basicConfig(level = 'ERROR')
 #    logging.basicConfig(level = 10)
-    unittest.main(module = "sql_test")
+    unittest.main(module = "hadron.entanglement.sql_test")
     
     

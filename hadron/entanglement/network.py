@@ -10,11 +10,11 @@
 
 
 import asyncio, logging, ssl
-import protocol
-from util import CertHash, certhash_from_file
-from bandwidth import BwLimitProtocol
-from interface import WrongSyncDestination, UnregisteredSyncClass
-import interface
+from . import protocol
+from .util import CertHash, certhash_from_file
+from .bandwidth import BwLimitProtocol
+from .interface import WrongSyncDestination, UnregisteredSyncClass
+from . import interface
 
 logger = protocol.logger
 

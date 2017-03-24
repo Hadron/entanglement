@@ -12,8 +12,8 @@ import datetime
 from sqlalchemy import Column, Table, String, Integer, DateTime, ForeignKey, inspect
 import sqlalchemy.exc
 import sqlalchemy.orm, sqlalchemy.ext.declarative, sqlalchemy.ext.declarative.api
-from util import CertHash, SqlCertHash, get_or_create
-import interface
+from .util import CertHash, SqlCertHash, get_or_create
+from . import interface
 
 class SyncSqlSession(sqlalchemy.orm.Session):
 
