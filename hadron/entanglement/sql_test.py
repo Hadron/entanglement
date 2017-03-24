@@ -16,7 +16,7 @@ from .network import  SyncServer, SyncDestination, SyncManager
 from .util import certhash_from_file, CertHash, SqlCertHash, get_or_create
 from sqlalchemy import create_engine, Column, Integer, inspect
 from sqlalchemy.orm import sessionmaker
-from .sql import SqlSynchronizable, _internal_base, sync_session_maker, sql_sync_declarative_base
+from .sql import SqlSynchronizable,  sync_session_maker, sql_sync_declarative_base
 from . import sql
 
 @contextmanager

@@ -12,10 +12,10 @@ import datetime
 from sqlalchemy import Column, Table, String, Integer, DateTime, ForeignKey, inspect
 import sqlalchemy.exc
 import sqlalchemy.orm, sqlalchemy.ext.declarative, sqlalchemy.ext.declarative.api
-from .util import CertHash, SqlCertHash, get_or_create
-from . import interface
+from ..util import CertHash, SqlCertHash, get_or_create
+from .. import interface
 
-class SyncSqlSession(sqlalchemy.orm.Session):
+class SqlSyncSession(sqlalchemy.orm.Session):
 
     def __init__(self, *args, manager = None, **kwargs):
         super().__init__(*args, **kwargs)
@@ -44,7 +44,7 @@ class SyncSqlSession(sqlalchemy.orm.Session):
                 
 
 def sync_session_maker(*args, **kwargs):
-    return sqlalchemy.orm.sessionmaker(class_ = SyncSqlSession, *args, **kwargs)
+    return sqlalchemy.orm.sessionmaker(class_ = SqlSyncSession, *args, **kwargs)
 
 class SqlSyncMeta(interface.SynchronizableMeta, sqlalchemy.ext.declarative.api.DeclarativeMeta):
 
