@@ -94,7 +94,7 @@ class SyncManager:
                     dest = dest))
                     delta = dest.connect_at-loop.time()
                     await asyncio.sleep(delta)
-                    delta = min(2*delta, 10*60)
+                delta = min(2*delta, 10*60)
                 try:
                     logger.debug("Connecting to {hash} at {host}".format(
                         hash = dest.cert_hash,
@@ -116,6 +116,7 @@ class SyncManager:
                     logger.info("Connected to {hash} at {host}".format(
                         hash = dest.cert_hash,
                         host = dest.host))
+                    dest.connect_at = loop.time()+delta
                     return transport, protocol
                 except asyncio.futures.CancelledError:
                     logger.debug("Connection to {dest} canceled".format(dest = dest))
@@ -176,6 +177,8 @@ class SyncManager:
                     
                 
     def add_destination(self, dest):
+        if dest.cert_hash is None or dest.name is None:
+            raise ValueError("cert_hash and name are required in SyncDestination before adding")
         if dest.cert_hash in self._destinations:
             raise KeyError("{} is already a destination".format(repr(dest)))
         self._destinations[dest.cert_hash] = dest
@@ -184,7 +187,18 @@ class SyncManager:
         if dest.host is None: return
         self._connecting[dest.cert_hash] = self.loop.create_task(self._create_connection(dest))
         return self._connecting[dest.cert_hash]
-    
+
+    def remove_destination(self, dest):
+        assert dest.cert_hash in self._destinations
+        logger.info("Removing destination {}".format(dest))
+        if dest.cert_hash in self._connections:
+            self._connections[dest.cert_hash].close()
+            dest.protocol = None
+            del self._connections[dest.cert_hash]
+        if dest.cert_hash in self._connecting:
+            self._connecting[dest.cert_hash].cancel()
+            del self._connecting[dest.cert_hash]
+        del self._destinations[dest.cert_hash]
 
     def run_until_complete(self, *args):
         return self.loop.run_until_complete(*args)
@@ -285,7 +299,7 @@ class SyncDestination:
 
     '''A SyncDestination represents a SyncManager other than ourselves that can receive (and generate) synchronizations.  The Synchronizable and subclasses of SyncDestination must cooperate to make sure that receiving and object does not create a loop by trying to Synchronize that object back to the sender.  One solution is for should_send on SyncDestination to return False (or raise) if the outgoing object is received from this destination.'''
 
-    def __init__(self, cert_hash, name, *,
+    def __init__(self, cert_hash = None, name = None, *,
                  host = None, bw_per_sec = 10000000,
                  server_hostname = None):
         if server_hostname is None: server_hostname = host

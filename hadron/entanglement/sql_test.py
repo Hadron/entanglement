@@ -12,11 +12,11 @@ from contextlib import contextmanager
 from unittest import mock
 
 from .interface import Synchronizable, sync_property, SyncRegistry
-from .network import  SyncServer, SyncDestination, SyncManager
+from .network import  SyncServer,  SyncManager
 from .util import certhash_from_file, CertHash, SqlCertHash, get_or_create
 from sqlalchemy import create_engine, Column, Integer, inspect
 from sqlalchemy.orm import sessionmaker
-from .sql import SqlSynchronizable,  sync_session_maker, sql_sync_declarative_base
+from .sql import SqlSynchronizable,  sync_session_maker, sql_sync_declarative_base, SqlSyncDestination
 from . import sql
 
 @contextmanager
@@ -64,10 +64,10 @@ class TestSql(unittest.TestCase):
                                    registries = [Base.registry],
                                    port = 9120)
         self.loop = self.server.loop
-        self.d1 = SyncDestination(certhash_from_file("host1.pem"),
+        self.d1 = SqlSyncDestination(certhash_from_file("host1.pem"),
                                   "server", host = "127.0.0.1",
                                   server_hostname = "host1")
-        self.d2 = SyncDestination(certhash_from_file("host2.pem"),
+        self.d2 = SqlSyncDestination(certhash_from_file("host2.pem"),
                                   "client")
         self.server.add_destination(self.d2)
         self.manager.add_destination(self.d1)

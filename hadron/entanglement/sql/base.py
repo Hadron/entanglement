@@ -7,13 +7,15 @@
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the file
 # LICENSE for details.
 
-import datetime
+import datetime, sqlalchemy
 
 from sqlalchemy import Column, Table, String, Integer, DateTime, ForeignKey, inspect
 import sqlalchemy.exc
 import sqlalchemy.orm, sqlalchemy.ext.declarative, sqlalchemy.ext.declarative.api
 from ..util import CertHash, SqlCertHash, get_or_create
-from .. import interface
+from .. import interface, network
+
+from . import internal as _internal
 
 class SqlSyncSession(sqlalchemy.orm.Session):
 
@@ -108,12 +110,45 @@ class Serial(_internal_base):
     serial = Column(Integer, primary_key = True)
     timestamp = Column(DateTime, default = datetime.datetime.now)
 
-class  SqlSyncDestination(_internal_base):
+class  SqlSyncDestination(_internal_base, network.SyncDestination):
     __tablename__ = "sync_destinations"
     id = Column(Integer, primary_key = True)
     cert_hash = Column(SqlCertHash, unique = True, nullable = False)
     name = Column(String(64), nullable = False)
     host = Column(String(128))
+
+    incoming_serial = Column(Integer, default = 0, nullable = False)
+    incoming_epoch = Column(sqlalchemy.types.DateTime,
+                          default = datetime.datetime.utcnow(), nullable = False)
+    outgoing_epoch = Column(sqlalchemy.types.DateTime,
+                          default = datetime.datetime.utcnow(), nullable = False)
+
+    def __init__(self, *args, **kwargs):
+        network.SyncDestination.__init__(self, *args, **kwargs)
+    def clear_all_objects(self, manager = None,
+                          *, registries = None, session = None):
+        if manager:
+            session = manager.session
+            registries = manager.registries
+        assert session and registries
+        subquery = session.Query(base.SyncOwner).filter(base.SyncOwner.destination == self)
+        for reg in registries:
+            for c in reg.registry:
+                if isinstance(c, SqlSynchronizable):
+                    session.query(c).filter(c.sync_owner.in_(subquery)).delete(False)
+
+    async def connected(self, manager, *args, **kwargs):
+        res = await super().connected(manager, *args, **kwargs)
+        if not self in manager.session: manager.session.add(self)
+        manager.session.flush()
+        i_have = _internal.IHave()
+        i_have.serial = self.incoming_serial
+        i_have.epoch = self.incoming_epoch
+        self.protocol.synchronize_object(i_have)
+        return res
+
+
+    
 
 class SyncOwner(_internal_base):
     __tablename__ = "sync_owners"
