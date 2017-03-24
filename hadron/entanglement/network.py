@@ -47,6 +47,7 @@ class SyncManager:
         self.registries = registries
         self.registries.append(interface.error_registry)
         self.port = port
+        for r in self.registries: r.associate_with_manager(self)
 
     def _new_ssl(self, cert, key, capath, cafile):
         sslctx = ssl.create_default_context()

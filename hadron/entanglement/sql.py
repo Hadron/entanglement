@@ -35,7 +35,7 @@ class SyncSqlSession(sqlalchemy.orm.Session):
         @sqlalchemy.events.event.listens_for(self, "after_commit")
         def receive_after_commit(session):
             if self.manager:
-                self.manager.synchronize(self.sync_dirty)
+                self.manager.synchronize(list(map( lambda x: self.manager.session.merge(x), self.sync_dirty)))
             self.sync_dirty.clear()
         @sqlalchemy.events.event.listens_for(self, 'after_rollback')
         def after_rollback(session):
@@ -76,16 +76,26 @@ class SqlSyncRegistry(interface.SyncRegistry):
                  sessionmaker = sync_session_maker(),
                  bind = None,
                  **kwargs):
-        d = {}
-        if bind is not None: d['bind'] = bind
+        if bind is not None: sessionmaker.configure(bind = bind)
+        self.sessionmaker = sessionmaker
         super().__init__(*args, **kwargs)
-        self.session = sessionmaker(**d)
 
-    def sync_receive(self, object, **info):
+    def create_bookkeeping(self, bind):
+        _internal_base.metadata.create_all(bind = bind)
+    def ensure_session(self, manager):
+        if not hasattr(manager, 'session'):
+            manager.session = self.sessionmaker()
+            if not manager.session.is_active: manager.session.rollback()
+
+    def associate_with_manager(self, manager):
+        self.ensure_session(manager)
+        
+
+    def sync_receive(self, object, manager, **info):
         # By this point the owner check has already been done
         assert object.sync_owner is not None
-        assert object in self.session
-        self.session.commit()
+        assert object in manager.session
+        manager.session.commit()
         
 
     
@@ -141,17 +151,16 @@ class SqlSynchronizable(interface.Synchronizable):
         return self.sync_owner is None
 
     @classmethod
-    def _sync_construct(cls, msg, **info):
+    def _sync_construct(cls, msg, manager = None, registry = None, **info):
+        if manager and registry: registry.ensure_session(manager)
         obj = None
-        if cls.sync_registry.session:
-            if cls.sync_registry.session.is_active == False:
-                cls.sync_registry.session.rollback()
+        if hasattr(manager,'session'):
             primary_keys = map(lambda x:x.name, inspect(cls).primary_key)
             try: primary_key_values = tuple(map(lambda k: msg[k], primary_keys))
             except KeyError as e:
-                raise interface.SyncBadEncodingError("All primary keys must be present in the encoding") from e
-            obj = cls.sync_registry.session.query(cls).get(primary_key_values)
-            owner = SyncOwner.find_or_create(cls.sync_registry.session, info['sender'], msg)
+                raise interface.SyncBadEncodingError("All primary keys must be present in the encoding", msg = msg) from e
+            obj = manager.session.query(cls).get(primary_key_values)
+            owner = SyncOwner.find_or_create(manager.session, info['sender'], msg)
         if obj is not None and obj.sync_owner_id != owner.id:
             raise interface.SyncBadOwnerError("Object owned by {}, but sent by {}".format(
                 obj.sync_owner.destination, owner.destination))
@@ -160,7 +169,8 @@ class SqlSynchronizable(interface.Synchronizable):
             return obj
         obj =  super()._sync_construct(msg,**info)
         obj.sync_owner = owner
-        cls.sync_registry.session.add(obj)
+        if hasattr(manager, 'session'):
+            manager.session.add(obj)
         return obj
     
         

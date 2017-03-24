@@ -221,6 +221,10 @@ class SyncRegistry:
     def __init__(self):
         self.registry = {}
 
+    def associate_with_manager(self, manager):
+        "Called by a manager when the registry is in the manager's list of registries.  Should not hold a non weak reference to the manager"
+        pass
+    
     def register_syncable(self, type_name, cls):
         if type_name in self.registry:
             raise ValueError("`{} is already registered in this registry.".format(type_name))

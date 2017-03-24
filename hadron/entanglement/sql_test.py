@@ -44,15 +44,15 @@ class Table1(Base, SqlSynchronizable):
 class TestSql(unittest.TestCase):
 
     def setUp(self):
-        self.e1 = create_engine('sqlite:///:memory:')
-        self.e2 = create_engine('sqlite:///:memory:')
+        self.e1 = create_engine('sqlite:///:memory:', echo = False)
+        self.e2 = create_engine('sqlite:///:memory:', echo = False)
         Session = sync_session_maker()
         self.session = Session(bind = self.e2)
-        Base.registry.session.bind = self.e1
-        _internal_base.metadata.create_all(bind = self.e1)
+        Base.registry.sessionmaker.configure(bind = self.e1)
         Base.metadata.create_all(bind = self.e1)
-        _internal_base.metadata.create_all(bind = self.e2)
         Base.metadata.create_all(bind = self.e2)
+        Base.registry.create_bookkeeping(self.e1)
+        Base.registry.create_bookkeeping(self.e2)
         self.server = SyncServer(cafile = "ca.pem",
                                  cert = "host1.pem", key = "host1.key",
                                  port = 9120,
@@ -76,6 +76,7 @@ class TestSql(unittest.TestCase):
     def tearDown(self):
         self.manager.close()
         self.server.close()
+        self.session.close()
         
     def testCertHash(self):
         t = Table1()
@@ -94,7 +95,7 @@ class TestSql(unittest.TestCase):
         with wait_for_call(self.loop, Base.registry, 'sync_receive'):
             self.session.add(t)
             self.session.commit()
-        t2 = Base.registry.session.query(Table1).get(t.id)
+        t2 = self.server.session.query(Table1).get(t.id)
         assert t2 is not None
         self.assertEqual(t2.ch, t.ch)
 
@@ -118,7 +119,7 @@ class TestSql(unittest.TestCase):
         
 if __name__ == '__main__':
     import logging, unittest, unittest.main
-    logging.basicConfig(level = 'ERROR')
+#    logging.basicConfig(level = 'ERROR')
 #    logging.basicConfig(level = 10)
     unittest.main(module = "hadron.entanglement.sql_test")
     
