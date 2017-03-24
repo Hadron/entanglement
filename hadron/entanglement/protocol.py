@@ -24,7 +24,13 @@ class SyncProtocol(asyncio.Protocol):
         super().__init__()
         self._manager = manager
         self.loop = manager.loop
+        #self.dirty is where we add new object not equal to anything we are currently considering
+        # self.current_dirty is where we send from, which may be self.dirty
+        #In a drain, we'll stop adding objects to self.current_dirty (switching the pointers) and wait for the sync to complete
+        #Note though that objects equal to something in current_dirty are added there
         self.dirty = set()
+        self.current_dirty = self.dirty
+        self.drain_future = None
         self.waiter = None
         self.task = None
         self.transport = None
@@ -34,19 +40,49 @@ class SyncProtocol(asyncio.Protocol):
 
     def synchronize_object(self,obj):
         """Send obj out to be synchronized"""
-        self.dirty.add(obj)
+        if obj in self.current_dirty:
+            self.current_dirty.remove(obj)
+            self.current_dirty.add(obj)
+        else:
+            self.dirty.discard(obj)
+            self.dirty.add(obj)
         if self.task is None:
             self.task = self.loop.create_task(self._run_sync())
 
+    def sync_drain(self):
+        "Returns a future; when this future is done, all objects synchronized before sync_drain is called have been sent.  Note that some objects synchronized after sync_drain is called may have been sent."
+        if self.drain_future:
+            for elt in self.dirty:
+                self.current_dirty.discard(elt)
+                self.current_dirty.add(elt)
+            self.dirty.clear()
+        else:
+            if self.task: 
+                self.drain_future = self.loop.create_future()
+                self.dirty = set()
+                return self.drain_future
+            else: #We're not currently synchronizing
+                fut = self.loop.create_future()
+                fut.set_result(True)
+                return fut
+                
     async def _run_sync(self):
         if self.waiter: await self.waiter
         try:
             while True:
-                elt = self.dirty.pop()
-                self._send_sync_message(elt)
+                elt = self.current_dirty.pop()
+                try:self._send_sync_message(elt)
+                except:
+                    logger.exception("Error sending {}".format(repr(elt)))
                 if self.waiter: await self.waiter
         except KeyError: #empty set
             self.task = None
+            if self.drain_future:
+                self.drain_future.set_result(True)
+                self.drain_future = None
+                self.current_dirty = self.dirty
+                if len(self.dirty) > 0:
+                    self.task = self.loop.create_task(self._run_sync())
 
     def _send_sync_message(self, obj):
         sync_rep = obj.to_sync()

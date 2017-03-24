@@ -46,6 +46,10 @@ class SyncManager:
                                  capath = capath, cafile = cafile)
         self.registries = registries
         self.registries.append(interface.error_registry)
+        for r in list(self.registries):
+            if hasattr(r, 'inherited_registries'):
+                self.registries.extend(r.inherited_registries)
+            self.registries = set(self.registries) # Remove duplicates
         self.port = port
         for r in self.registries: r.associate_with_manager(self)
 

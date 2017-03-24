@@ -26,16 +26,18 @@ class _SqlMetaRegistry(SyncRegistry):
 
     async def handle_i_have(self, obj, sender, manager):
         from .base import SqlSynchronizable
+        if sender.cert_hash not in manager._connections: return
         if sender.outgoing_epoch != obj.epoch:
             sender.protocol.synchronize_object( WrongEpoch(sender.outgoing_epoch))
         session = manager.session
         max_serial = 0
         for reg in manager.registries:
-            for c in reg.registry: #enumerate all classes
-                to_sync = session.query(c).filter(c.sync_serial > obj.serial, c.sync_owner == None).all()
-                for o in to_sync:
-                    max_serial = max(o.sync_serial, max_serial)
-                    sender.protocol.synchronize_object(o)
+            for c in reg.registry.values(): #enumerate all classes
+                if isinstance(c, SqlSynchronizable):
+                    to_sync = session.query(c).filter(c.sync_serial > obj.serial, c.sync_owner == None).all()
+                    for o in to_sync:
+                        max_serial = max(o.sync_serial, max_serial)
+                        sender.protocol.synchronize_object(o)
         await  sender.protocol.sync_drain()
         you_have = YouHave()
         you_have.serial =max_serial
@@ -48,7 +50,7 @@ class _SqlMetaRegistry(SyncRegistry):
         if not sender in manager.session: manager.session.add(sender)
         manager.session.commit()
 
-    def handle_wrong_epoch(self, obj):
+    def handle_wrong_epoch(self, obj,  sender, manager):
         if sender not in manager.session: manager.session.add(sender)
         sender.clear_all_objects(manager)
         sender.incoming_epoch = obj.new_epoch
@@ -75,8 +77,8 @@ class YouHave(IHave):
 class WrongEpoch(SyncError):
     sync_registry = sql_meta_messages
     new_epoch = sync_property(constructor = 1,
-                              encoder = encoders.datetime_encoder,
-                              decoder = encoders.datetime_decoder)
+                              encoder = encoders.datetime_encoder('new_epoch'),
+                              decoder = encoders.datetime_decoder('new_epoch'))
 
     def __init__(self, newepoch, **args):
         self.new_epoch = newepoch

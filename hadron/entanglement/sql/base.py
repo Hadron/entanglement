@@ -74,6 +74,8 @@ class SqlSyncMeta(interface.SynchronizableMeta, sqlalchemy.ext.declarative.api.D
 
 class SqlSyncRegistry(interface.SyncRegistry):
 
+    inherited_registries = [_internal.sql_meta_messages]
+
     def __init__(self, *args,
                  sessionmaker = sync_session_maker(),
                  bind = None,
@@ -131,9 +133,10 @@ class  SqlSyncDestination(_internal_base, network.SyncDestination):
             session = manager.session
             registries = manager.registries
         assert session and registries
-        subquery = session.Query(base.SyncOwner).filter(base.SyncOwner.destination == self)
+        session.flush()
+        subquery = session.query(SyncOwner).filter(SyncOwner.destination == self)
         for reg in registries:
-            for c in reg.registry:
+            for c in reg.registry.values():
                 if isinstance(c, SqlSynchronizable):
                     session.query(c).filter(c.sync_owner.in_(subquery)).delete(False)
 
