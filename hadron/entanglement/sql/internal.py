@@ -7,7 +7,7 @@
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the file
 # LICENSE for details.
 
-import iso8601
+import asyncio, iso8601
 
 from ..interface import Synchronizable, SyncRegistry, SyncError, sync_property
 from . import encoders
@@ -88,3 +88,18 @@ class WrongEpoch(SyncError):
         self.new_epoch = newepoch
         super().__init__(*args)
         
+
+you_have_timeout = 0.5
+
+async def gen_you_have_task(sender):
+    await asyncio.sleep(you_have_timeout)
+    try:
+        if not sender.protocol and not sender.protocol.loop: return
+    except: return #loop or connection closed
+    serial = sender.outgoing_serial
+    await sender.protocol.sync_drain()
+    sender.you_have_task = None
+    you_have = YouHave()
+    you_have.epoch = sender.outgoing_epoch
+    you_have.serial = sender.outgoing_serial
+    sender.protocol.synchronize_object(you_have)

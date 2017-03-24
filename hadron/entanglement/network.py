@@ -268,7 +268,11 @@ exc_info = e)
 
     def __del__(self):
         self.close()
-        
+
+    @property
+    def connections(self):
+        "Return a list of all active protocol objects"
+        return list(self._connections.values())
 
 class SyncServer(SyncManager):
 

@@ -39,12 +39,24 @@ class SqlSyncSession(sqlalchemy.orm.Session):
         def receive_after_commit(session):
             if self.manager:
                 for x in self.sync_dirty: assert not self.is_modified(x)
-                self.manager.synchronize(list(map( lambda x: self.manager.session.merge(x), self.sync_dirty)))
+                self.manager.loop.call_soon_threadsafe(self._do_sync, list(self.sync_dirty))
             self.sync_dirty.clear()
         @sqlalchemy.events.event.listens_for(self, 'after_rollback')
         def after_rollback(session):
             session.sync_dirty.clear()
-            
+
+    def _do_sync(self, objects):
+        #This is called in the event loop and thus in the thread of the manager
+        objects = list(map(lambda x: self.manager.session.merge(x), objects))
+        serial = max(map( lambda x: x.sync_serial, objects))
+        self.manager.synchronize(objects)
+        for c in self.manager.connections:
+            dest = c.dest
+            dest.outgoing_serial = max(dest.outgoing_serial, serial)
+            if not dest.you_have_task:
+                dest.you_have_task = self.manager.loop.create_task(_internal.gen_you_have_task(dest))
+                dest.you_have_task._log_destroy_pending = False
+                
                 
 
 def sync_session_maker(*args, **kwargs):
@@ -122,6 +134,7 @@ class  SqlSyncDestination(_internal_base, network.SyncDestination):
     host = Column(String(128))
 
     incoming_serial = Column(Integer, default = 0, nullable = False)
+    #outgoing_serial is managed but is transient
     incoming_epoch = Column(sqlalchemy.types.DateTime,
                           default = datetime.datetime.utcnow(), nullable = False)
     outgoing_epoch = Column(sqlalchemy.types.DateTime,
@@ -129,6 +142,9 @@ class  SqlSyncDestination(_internal_base, network.SyncDestination):
 
     def __init__(self, *args, **kwargs):
         network.SyncDestination.__init__(self, *args, **kwargs)
+        self.outgoing_serial = 0
+        self.you_have_task = None
+
     def clear_all_objects(self, manager = None,
                           *, registries = None, session = None):
         if manager:
