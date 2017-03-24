@@ -28,7 +28,7 @@ class _SqlMetaRegistry(SyncRegistry):
         from .base import SqlSynchronizable
         if sender.cert_hash not in manager._connections: return
         if sender.outgoing_epoch != obj.epoch:
-            sender.protocol.synchronize_object( WrongEpoch(sender.outgoing_epoch))
+            return sender.protocol.synchronize_object( WrongEpoch(sender.outgoing_epoch))
         session = manager.session
         max_serial = 0
         for reg in manager.registries:
@@ -56,6 +56,10 @@ class _SqlMetaRegistry(SyncRegistry):
         sender.incoming_epoch = obj.new_epoch
         sender.incoming_serial = 0
         manager.session.commit()
+        i_have = IHave()
+        i_have.serial = 0
+        i_have.epoch = sender.incoming_epoch
+        sender.protocol.synchronize_object(i_have)
         
 
 sql_meta_messages = _SqlMetaRegistry()

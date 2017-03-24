@@ -33,10 +33,12 @@ class SqlSyncSession(sqlalchemy.orm.Session):
                     if not serial_flushed:
                         new_serial = session.execute(serial_insert).lastrowid
                         serial_flushed = True
-                    if inst.sync_owner_id is None: inst.sync_serial = new_serial
+                    if inst.sync_owner_id is None and inst.sync_owner is None:
+                        inst.sync_serial = new_serial
         @sqlalchemy.events.event.listens_for(self, "after_commit")
         def receive_after_commit(session):
             if self.manager:
+                for x in self.sync_dirty: assert not self.is_modified(x)
                 self.manager.synchronize(list(map( lambda x: self.manager.session.merge(x), self.sync_dirty)))
             self.sync_dirty.clear()
         @sqlalchemy.events.event.listens_for(self, 'after_rollback')
@@ -192,6 +194,7 @@ class SqlSynchronizable(interface.Synchronizable):
     def _sync_construct(cls, msg, manager = None, registry = None, **info):
         if manager and registry: registry.ensure_session(manager)
         obj = None
+        owner = None
         if hasattr(manager,'session'):
             primary_keys = map(lambda x:x.name, inspect(cls).primary_key)
             try: primary_key_values = tuple(map(lambda k: msg[k], primary_keys))
@@ -208,6 +211,7 @@ class SqlSynchronizable(interface.Synchronizable):
         obj =  super()._sync_construct(msg,**info)
         obj.sync_owner = owner
         if hasattr(manager, 'session'):
+            assert owner is not None
             manager.session.add(obj)
         return obj
     

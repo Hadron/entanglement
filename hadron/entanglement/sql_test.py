@@ -64,6 +64,7 @@ class TestSql(unittest.TestCase):
                                    registries = [Base.registry],
                                    port = 9120)
         self.loop = self.server.loop
+        self.manager.session = Base.registry.sessionmaker(bind = self.e2)
         self.d1 = SqlSyncDestination(certhash_from_file("host1.pem"),
                                   "server", host = "127.0.0.1",
                                   server_hostname = "host1")
@@ -97,6 +98,7 @@ class TestSql(unittest.TestCase):
             self.session.commit()
         t2 = self.server.session.query(Table1).get(t.id)
         assert t2 is not None
+        assert t2.sync_owner.destination.cert_hash is not None
         self.assertEqual(t2.ch, t.ch)
 
     def testGetOrCreate(self):
@@ -119,7 +121,7 @@ class TestSql(unittest.TestCase):
         
 if __name__ == '__main__':
     import logging, unittest, unittest.main
-#    logging.basicConfig(level = 'ERROR')
+    logging.basicConfig(level = 'ERROR')
 #    logging.basicConfig(level = 10)
     unittest.main(module = "hadron.entanglement.sql_test")
     

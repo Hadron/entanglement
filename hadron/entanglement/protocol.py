@@ -11,6 +11,8 @@ from .util import CertHash
 from .interface import SyncError
 
 logger = logging.getLogger("hadron.entanglement")
+protocol_logger = logging.getLogger('hadron.entanglement.protocol')
+#protocol_logger.setLevel('DEBUG')
 
 _msg_header = ">I" # A 4-byte big-endien size
 _msg_header_size = struct.calcsize(_msg_header)
@@ -88,6 +90,9 @@ class SyncProtocol(asyncio.Protocol):
         sync_rep = obj.to_sync()
         sync_rep['_sync_type'] = obj.sync_type
         js = bytes(json.dumps(sync_rep), 'utf-8')
+        protocol_logger.debug("Sending `{js}' to {d}".format(
+            js = js, d = self.dest))
+                     
         assert len(js) <= 65536
         header = struct.pack(_msg_header, len(js))
         self.transport.write(header + js)
