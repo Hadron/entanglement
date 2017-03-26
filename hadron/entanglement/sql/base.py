@@ -8,6 +8,7 @@
 # LICENSE for details.
 
 import datetime, sqlalchemy
+from datetime import timezone
 
 from sqlalchemy import Column, Table, String, Integer, DateTime, ForeignKey, inspect
 import sqlalchemy.exc
@@ -135,10 +136,10 @@ class  SqlSyncDestination(_internal_base, network.SyncDestination):
 
     incoming_serial = Column(Integer, default = 0, nullable = False)
     #outgoing_serial is managed but is transient
-    incoming_epoch = Column(sqlalchemy.types.DateTime,
-                          default = datetime.datetime.utcnow(), nullable = False)
-    outgoing_epoch = Column(sqlalchemy.types.DateTime,
-                          default = datetime.datetime.utcnow(), nullable = False)
+    incoming_epoch = Column(sqlalchemy.types.DateTime(True),
+                          default = lambda: datetime.datetime.now(datetime.timezone.utc), nullable = False)
+    outgoing_epoch = Column(sqlalchemy.types.DateTime(True),
+                          default = lambda: datetime.datetime.now(datetime.timezone.utc), nullable = False)
 
     def __init__(self, *args, **kwargs):
         network.SyncDestination.__init__(self, *args, **kwargs)

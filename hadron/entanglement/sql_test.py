@@ -20,9 +20,15 @@ from .sql import SqlSynchronizable,  sync_session_maker, sql_sync_declarative_ba
 from . import sql
 
 @contextmanager
-def wait_for_call(loop, obj, method):
+def wait_for_call(loop, obj, method, calls = 1):
     fut = loop.create_future()
-    def cb(*args, **kwards): fut.set_result(True)
+    num_calls = 0
+    def cb(*args, **kwards):
+        nonlocal num_calls
+        if not fut.done():
+            num_calls +=1
+            if num_calls >= calls:
+                fut.set_result(True)
     try:
         with mock.patch.object(obj, method,
                                wraps = getattr(obj, method),
@@ -44,6 +50,7 @@ class Table1(Base, SqlSynchronizable):
 class TestSql(unittest.TestCase):
 
     def setUp(self):
+        sql.internal.you_have_timeout = 0 #Send YouHave serial number updates immediately for testing
         self.e1 = create_engine('sqlite:///:memory:', echo = False)
         self.e2 = create_engine('sqlite:///:memory:', echo = False)
         Session = sync_session_maker()
@@ -73,6 +80,8 @@ class TestSql(unittest.TestCase):
         self.server.add_destination(self.d2)
         self.manager.add_destination(self.d1)
         self.manager.run_until_complete(asyncio.wait(self.manager._connecting.values()))
+        self.manager.run_until_complete(asyncio.wait([x.sync_drain() for x in self.manager.connections + self.server.connections]))
+        
 
     def tearDown(self):
         self.manager.close()
@@ -117,8 +126,35 @@ class TestSql(unittest.TestCase):
         dest2 = get_or_create(session, sql.SqlSyncDestination,
                               {'cert_hash' : dest.cert_hash})
         self.assertEqual(dest.id, dest2.id)
+
+    def testYouHave(self):
+        "Test sending of you_have messages"
+        with wait_for_call(self.loop, sql.internal.sql_meta_messages, 'handle_you_have'):
+            self.testSendObject()
+        self.assertEqual(self.d2.incoming_serial, 1)
+
+    def testInitialSync(self):
+        #disconnect our session
+        self.session.manager = None
+        self.manager.remove_destination(self.d1)
+        self.manager.loop.call_soon(self.manager.loop.stop)
+        self.manager.loop.run_forever()
+        session = self.session
+        t1 = Table1(ch = self.d2.cert_hash)
+        session.add(t1)
+        session.commit()
+        self.d1.connect_at = 0
+        self.manager.run_until_complete(self.manager.add_destination(self.d1))
+        self.manager.loop.run_until_complete(asyncio.wait([x.sync_drain() for x in self.manager.connections + self.server.connections]))
+        with wait_for_call(self.loop, Base.registry, 'sync_receive'): pass
+        t2 = self.server.session.query(Table1).get(t1.id)
+        assert t2 is not None
+        assert t2.ch == t1.ch
         
-        
+                                    
+#import logging
+#logging.basicConfig(level = 'ERROR')
+
 if __name__ == '__main__':
     import logging, unittest, unittest.main
     logging.basicConfig(level = 'ERROR')

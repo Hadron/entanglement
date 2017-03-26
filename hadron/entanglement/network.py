@@ -9,7 +9,7 @@
 
 
 
-import asyncio, logging, ssl
+import asyncio, logging, ssl, time
 from . import protocol
 from .util import CertHash, certhash_from_file
 from .bandwidth import BwLimitProtocol
@@ -176,6 +176,7 @@ class SyncManager:
             del self._connections[protocol.dest.cert_hash]
             logger.exception("Connection to {} lost:".format(protocol.dest),
                              exc_info = exc)
+            if protocol.dest.host is None: return
             self._connecting[protocol.dest.cert_hash] = self.loop.create_task(self._create_connection(protocol.dest))
             
                     

@@ -7,7 +7,7 @@
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the file
 # LICENSE for details.
 
-import asyncio, iso8601
+import asyncio, datetime, iso8601
 
 from ..interface import Synchronizable, SyncRegistry, SyncError, sync_property
 from . import encoders
@@ -16,10 +16,11 @@ from .. import interface
 class _SqlMetaRegistry(SyncRegistry):
 
     def sync_receive(self, obj, sender, manager, **info):
-        if isinstance(obj,IHave):
-            manager.loop.create_task(self.handle_i_have(obj, sender, manager))
-        elif isinstance(obj,YouHave):
+        # remember to handle subclasses first
+        if isinstance(obj,YouHave):
             self.handle_you_have(obj, sender, manager)
+        elif isinstance(obj,IHave):
+            manager.loop.create_task(self.handle_i_have(obj, sender, manager))
         elif isinstance(obj, WrongEpoch):
             self.handle_wrong_epoch(obj, sender, manager)
         else: raise ValueError("Unexpected message")
@@ -27,13 +28,15 @@ class _SqlMetaRegistry(SyncRegistry):
     async def handle_i_have(self, obj, sender, manager):
         from .base import SqlSynchronizable
         if sender.cert_hash not in manager._connections: return
+        if sender.outgoing_epoch.tzinfo is None:
+            sender.outgoing_epoch = sender.outgoing_epoch.replace(tzinfo = datetime.timezone.utc)
         if sender.outgoing_epoch != obj.epoch:
             return sender.protocol.synchronize_object( WrongEpoch(sender.outgoing_epoch))
         session = manager.session
         max_serial = 0
         for reg in manager.registries:
             for c in reg.registry.values(): #enumerate all classes
-                if isinstance(c, SqlSynchronizable):
+                if issubclass(c, SqlSynchronizable):
                     to_sync = session.query(c).filter(c.sync_serial > obj.serial, c.sync_owner == None).all()
                     for o in to_sync:
                         max_serial = max(o.sync_serial, max_serial)
@@ -45,7 +48,7 @@ class _SqlMetaRegistry(SyncRegistry):
         sender.protocol.synchronize_object(you_have)
 
     def handle_you_have(self, obj, sender, manager):
-        sender.incoming_serial = obj.serial
+        sender.incoming_serial = max(sender.incoming_serial, obj.serial)
         sender.incoming_epoch = obj.epoch
         if not sender in manager.session: manager.session.add(sender)
         manager.session.commit()

@@ -7,6 +7,7 @@
 # LICENSE for details.
 
 import datetime, iso8601
+from datetime import timezone
 
 def datetime_encoder(propname):
     def encode(obj):
