@@ -74,7 +74,7 @@ def certhash_from_file(fn):
 
 if TypeDecorator:
     class SqlCertHash(TypeDecorator):
-        impl = String
+        impl = String(60)
 
         def process_bind_param(self, value, dialect):
             return str(CertHash(value))

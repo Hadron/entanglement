@@ -99,6 +99,7 @@ class SqlSyncRegistry(interface.SyncRegistry):
         self.sessionmaker = sessionmaker
         super().__init__(*args, **kwargs)
 
+    @classmethod
     def create_bookkeeping(self, bind):
         _internal_base.metadata.create_all(bind = bind)
     def ensure_session(self, manager):
@@ -140,7 +141,8 @@ class  SqlSyncDestination(_internal_base, network.SyncDestination):
                           default = lambda: datetime.datetime.now(datetime.timezone.utc), nullable = False)
     outgoing_epoch = Column(sqlalchemy.types.DateTime(True),
                           default = lambda: datetime.datetime.now(datetime.timezone.utc), nullable = False)
-
+    bw_per_sec = Column(Integer, default = 10000000,
+                        nullable = False)
     def __init__(self, *args, **kwargs):
         network.SyncDestination.__init__(self, *args, **kwargs)
         self.outgoing_serial = 0
@@ -196,7 +198,7 @@ class SqlSynchronizable(interface.Synchronizable):
 
     @sqlalchemy.ext.declarative.api.declared_attr
     def sync_owner_id(self):
-        return Column(Integer, ForeignKey(SyncOwner.id))
+        return Column(Integer, ForeignKey(SyncOwner.id), index = True)
 
     @sqlalchemy.ext.declarative.api.declared_attr
     def sync_owner(self):

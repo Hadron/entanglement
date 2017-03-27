@@ -1,0 +1,97 @@
+#!/usr/bin/python3
+# Copyright (C) 2017, Hadron Industries, Inc.
+# Entanglement is free software; you can redistribute it and/or modify
+# it under the terms of the GNU Lesser General Public License version 3
+# as published by the Free Software Foundation. It is distributed
+# WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the file
+# LICENSE for details.
+
+
+import argparse, asyncio, importlib, sys, os.path
+_hadron = os.path.join(os.path.dirname(__file__), '../hadron')
+if os.path.exists(_hadron):
+    sys.path.append(os.path.join(_hadron,'..'))
+
+from sqlalchemy import create_engine
+from hadron.entanglement  import SyncServer, SqlSyncDestination, sync_session_maker,  SqlSynchronizable
+from hadron.entanglement.sql.internal import sql_meta_messages
+from hadron.entanglement.util import certhash_from_file
+import hadron.entanglement.sql
+
+parser = argparse.ArgumentParser()
+parser.add_argument('--db', required=True,
+                    help = "Database URI")
+parser.add_argument('--base',
+                    nargs = '*',
+                    dest = 'bases',
+                    help = "sql_sync_declarative_bases to import and process")
+
+mode_group = parser.add_mutually_exclusive_group(required = True)
+mode_group.add_argument('--add-destination', dest="mode", const="add_destination", action="store_const",
+help = "Add a destination")
+mode_group.add_argument('--remove-destination', dest='mode',
+const = 'remove_destination', action = 'store_const',
+help = "Remove a destination by cert_hash")
+mode_group.add_argument('--server', const = 'server',
+dest ='mode', action='store_const',
+help = "Run a synchronization server")
+
+parser.add_argument('--ca')
+parser.add_argument('--cert',
+help = "Certificate file for server or to compute cert_hash for destination")
+
+parser.add_argument('--key',
+                    help = "Key file for certificate if not included in the certificate file")
+parser.add_argument('--cert-hash',
+                    help = "URL-safe Base 64 encoding of sha-256 hash of the DER encoded certificate")
+parser.add_argument('--host',
+                    help = "Host name for destination")
+parser.add_argument('--port', help = "port for server",
+                    default = 9120,
+                    type = int)
+parser.add_argument('--bw-per-sec')
+parser.add_argument('--sql-verbose',
+                    help = "Print generated SQL",
+                    action = "store_true",
+                    default = False)
+
+args = parser.parse_args()
+
+if args.cert and not args.cert_hash:
+    args.cert_hash = certhash_from_file(args.cert)
+
+    if args.mode != "server" and not args.cert_hash:
+        parser.error("Must specify cert_hash when manipulating destinations")
+        
+if args.mode == "server" and not args.cert:
+    parser.error("Certificate required when starting a server")
+registries = []
+engine = create_engine(args.db, echo = args.sql_verbose)
+hadron.entanglement.sql.SqlSyncRegistry.create_bookkeeping(engine)
+
+for b in args.bases:
+    module, obj = b.rsplit('.',1)
+    module = importlib.import_module(module)
+    obj = getattr(module, obj)
+    obj.metadata.create_all(bind = engine)
+    registries.append(obj.registry)
+    
+
+session = sync_session_maker(bind = engine)()
+if args.mode == "add_destination":
+    dest = SqlSyncDestination(cert_hash = args.cert_hash,
+                              name = args.host or "incoming",
+                              host = args.host)
+    session.add(dest)
+    session.commit()
+    
+
+if args.mode == "server":
+    if not args.ca:
+        parser.error("CA is required when running a server")
+    server = SyncServer(cert = args.cert,
+                        cafile = args.ca,
+                        key = args.key, port = args.port,
+                        registries = registries)
+    server.loop.run_forever()
