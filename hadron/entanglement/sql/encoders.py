@@ -11,7 +11,11 @@ from datetime import timezone
 
 def datetime_encoder(propname):
     def encode(obj):
-        return getattr(obj, propname).isoformat()
+        dt = getattr(obj,propname,None)
+        if dt is None: return
+        if dt.tzinfo:
+            dt = dt.astimezone(timezone.utc)
+        return dt.isoformat()
     return encode
 
 

@@ -143,10 +143,19 @@ class  SqlSyncDestination(_internal_base, network.SyncDestination):
                           default = lambda: datetime.datetime.now(datetime.timezone.utc), nullable = False)
     bw_per_sec = Column(Integer, default = 10000000,
                         nullable = False)
+
     def __init__(self, *args, **kwargs):
         network.SyncDestination.__init__(self, *args, **kwargs)
         self.outgoing_serial = 0
         self.you_have_task = None
+
+    @sqlalchemy.orm.reconstructor
+    def reconstruct(self):
+        self.protocol = None
+        self.outgoing_serial = 0
+        self.you_have_task = None
+        self.connect_at = 0
+        self.server_hostname = None
 
     def clear_all_objects(self, manager = None,
                           *, registries = None, session = None):
@@ -237,3 +246,16 @@ class SqlSynchronizable(interface.Synchronizable):
         
 def sql_sync_declarative_base(*args, **kwargs):
     return sqlalchemy.ext.declarative.declarative_base(cls = SqlSynchronizable, metaclass = SqlSyncMeta, *args, **kwargs)
+
+def sync_manager_destinations(manager, session = None):
+    '''Query for :class SqlSyncDestination objects in the :param session.  Add any not currently in the manager; remove any present in the manager but no longer in the database.
+'''
+    if session is None: session = manager.session #probably won't work initially
+    database_destinations = set(session.query(SqlSyncDestination).all())
+    manager_destinations = manager.destinations
+    for d in manager_destinations - database_destinations:
+        manager.remove_destination(d)
+    for d in database_destinations - manager_destinations:
+        session.expunge(d)
+        manager.add_destination(d)
+        

@@ -8,4 +8,4 @@
 
 from .network import SyncServer, SyncManager, SyncDestination
 from .interface import sync_property, Synchronizable
-from .sql import SqlSynchronizable, SqlSyncSession, sql_sync_declarative_base, sync_session_maker, SqlSyncDestination
+from .sql import SqlSynchronizable, SqlSyncSession, sql_sync_declarative_base, sync_session_maker, SqlSyncDestination, sync_manager_destinations

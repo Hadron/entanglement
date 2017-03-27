@@ -16,36 +16,44 @@ from .. import interface
 class _SqlMetaRegistry(SyncRegistry):
 
     def sync_receive(self, obj, sender, manager, **info):
-        # remember to handle subclasses first
-        if isinstance(obj,YouHave):
-            self.handle_you_have(obj, sender, manager)
-        elif isinstance(obj,IHave):
-            manager.loop.create_task(self.handle_i_have(obj, sender, manager))
-        elif isinstance(obj, WrongEpoch):
-            self.handle_wrong_epoch(obj, sender, manager)
-        else: raise ValueError("Unexpected message")
+        try:
+            # remember to handle subclasses first
+            if isinstance(obj,YouHave):
+                self.handle_you_have(obj, sender, manager)
+            elif isinstance(obj,IHave):
+                manager.loop.create_task(self.handle_i_have(obj, sender, manager))
+            elif isinstance(obj, WrongEpoch):
+                self.handle_wrong_epoch(obj, sender, manager)
+            else: raise ValueError("Unexpected message")
+        finally:
+            manager.session.rollback()
 
-    async def handle_i_have(self, obj, sender, manager):
+    @asyncio.coroutine
+    def handle_i_have(self, obj, sender, manager):
         from .base import SqlSynchronizable
         if sender.cert_hash not in manager._connections: return
         if sender.outgoing_epoch.tzinfo is None:
-            sender.outgoing_epoch = sender.outgoing_epoch.replace(tzinfo = datetime.timezone.utc)
-        if sender.outgoing_epoch != obj.epoch:
+            outgoing_epoch = sender.outgoing_epoch.replace(tzinfo = datetime.timezone.utc)
+        else: outgoing_epoch = sender.outgoing_epoch
+        if outgoing_epoch != obj.epoch:
             return sender.protocol.synchronize_object( WrongEpoch(sender.outgoing_epoch))
         session = manager.session
         max_serial = 0
         for reg in manager.registries:
             for c in reg.registry.values(): #enumerate all classes
                 if issubclass(c, SqlSynchronizable):
+                    yield
                     to_sync = session.query(c).filter(c.sync_serial > obj.serial, c.sync_owner == None).all()
                     for o in to_sync:
                         max_serial = max(o.sync_serial, max_serial)
                         sender.protocol.synchronize_object(o)
-        await  sender.protocol.sync_drain()
+        yield from sender.protocol.sync_drain()
+        if max_serial <= sender.outgoing_serial: return
         you_have = YouHave()
         you_have.serial =max_serial
         you_have.epoch = sender.outgoing_epoch
         sender.protocol.synchronize_object(you_have)
+        sender.outgoing_serial = max_serial
 
     def handle_you_have(self, obj, sender, manager):
         sender.incoming_serial = max(sender.incoming_serial, obj.serial)

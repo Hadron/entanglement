@@ -92,11 +92,11 @@ class SyncManager:
         #destinations we're connecting to.
         try:
             while True: # not connected
-                if dest.connect_at > loop.time():
+                if dest.connect_at > time.time():
                     logger.info("Waiting until {time} to connect to {dest}".format(
                     time = time.ctime(dest.connect_at),
                     dest = dest))
-                    delta = dest.connect_at-loop.time()
+                    delta = dest.connect_at-time.time()
                     await asyncio.sleep(delta)
                 delta = min(2*delta, 10*60)
                 try:
@@ -120,7 +120,7 @@ class SyncManager:
                     logger.info("Connected to {hash} at {host}".format(
                         hash = dest.cert_hash,
                         host = dest.host))
-                    dest.connect_at = loop.time()+delta
+                    dest.connect_at = time.time()+delta
                     return transport, protocol
                 except asyncio.futures.CancelledError:
                     logger.debug("Connection to {dest} canceled".format(dest = dest))
@@ -130,7 +130,7 @@ class SyncManager:
                     raise
                 except:
                     logger.exception("Error connecting to  {}".format(dest))
-                    dest.connect_at = loop.time() + delta
+                    dest.connect_at = time.time() + delta
         finally:
             if self._connecting.get(dest.cert_hash, None) == task:
                 del self._connecting[dest.cert_hash]
@@ -275,6 +275,11 @@ exc_info = e)
         "Return a list of all active protocol objects"
         return list(self._connections.values())
 
+    @property
+    def destinations(self):
+        "A set of destinations for this manager"
+        return set(self._destinations.values())
+    
 class SyncServer(SyncManager):
 
     "A SyncManager that accepts incoming connections"

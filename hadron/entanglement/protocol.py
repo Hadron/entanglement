@@ -13,6 +13,7 @@ from .interface import SyncError
 logger = logging.getLogger("hadron.entanglement")
 protocol_logger = logging.getLogger('hadron.entanglement.protocol')
 #protocol_logger.setLevel('DEBUG')
+protocol_logger.setLevel('ERROR')
 
 _msg_header = ">I" # A 4-byte big-endien size
 _msg_header_size = struct.calcsize(_msg_header)
@@ -103,6 +104,8 @@ class SyncProtocol(asyncio.Protocol):
             jslen = struct.unpack(_msg_header, header)[0]
             assert jslen <= 65536
             js = await self.reader.readexactly(jslen)
+            protocol_logger.debug("Receiving {js} from {d}".format(
+                js = js, d = self.dest))
             try:
                 sync_repr = json.loads(str(js, 'utf-8'))
                 self._manager._sync_receive(sync_repr, self)

@@ -8,17 +8,27 @@
 # LICENSE for details.
 
 
-import argparse, asyncio, importlib, sys, os.path
+import argparse, asyncio, importlib, logging, sys, os.path
 _hadron = os.path.join(os.path.dirname(__file__), '../hadron')
 if os.path.exists(_hadron):
     sys.path.append(os.path.join(_hadron,'..'))
 
 from sqlalchemy import create_engine
-from hadron.entanglement  import SyncServer, SqlSyncDestination, sync_session_maker,  SqlSynchronizable
-from hadron.entanglement.sql.internal import sql_meta_messages
-from hadron.entanglement.util import certhash_from_file
+from hadron.entanglement  import SyncServer, SqlSyncDestination, sync_session_maker,  SqlSynchronizable, sync_manager_destinations
+from hadron.entanglement.sql.internal import sql_meta_messages, IHave
+from hadron.entanglement.util import certhash_from_file, CertHash
 import hadron.entanglement.sql
 
+async def monitor_task():
+    while True:
+        await asyncio.sleep(3)
+        for d in server.destinations:
+            i_have = IHave()
+            i_have.epoch = sender.outgoing_epoch
+            i_have.serial = sender.outgoing_serial
+            server.loop.create_task(sql_meta_messages.handle_i_have(i_have, d, server))
+        sync_manager_destinations(server)
+    
 parser = argparse.ArgumentParser()
 parser.add_argument('--db', required=True,
                     help = "Database URI")
@@ -44,6 +54,7 @@ help = "Certificate file for server or to compute cert_hash for destination")
 parser.add_argument('--key',
                     help = "Key file for certificate if not included in the certificate file")
 parser.add_argument('--cert-hash',
+                    type = CertHash,
                     help = "URL-safe Base 64 encoding of sha-256 hash of the DER encoded certificate")
 parser.add_argument('--host',
                     help = "Host name for destination")
@@ -55,6 +66,16 @@ parser.add_argument('--sql-verbose',
                     help = "Print generated SQL",
                     action = "store_true",
                     default = False)
+parser.add_argument('--protocol-verbose',
+                    action = 'store_true',
+                    default = False,
+                    help = "Print protocol messages")
+
+
+parser.add_argument('--verbose',
+                    action = 'store_true',
+                    default = False,
+                    help = "Enable debugging from the entanglement code")
 
 args = parser.parse_args()
 
@@ -70,11 +91,18 @@ registries = []
 engine = create_engine(args.db, echo = args.sql_verbose)
 hadron.entanglement.sql.SqlSyncRegistry.create_bookkeeping(engine)
 
-for b in args.bases:
+logging.basicConfig(level = 'ERROR')
+
+if args.verbose:
+    logging.getLogger('hadron.entanglement').setLevel('DEBUG')
+if args.protocol_verbose:
+    logging.getLogger('hadron.entanglement.protocol').setLevel('DEBUG')
+for b in (args.bases or []):
     module, obj = b.rsplit('.',1)
     module = importlib.import_module(module)
     obj = getattr(module, obj)
     obj.metadata.create_all(bind = engine)
+    obj.registry.sessionmaker.configure(bind = engine)
     registries.append(obj.registry)
     
 
@@ -85,6 +113,12 @@ if args.mode == "add_destination":
                               host = args.host)
     session.add(dest)
     session.commit()
+
+if args.mode == "remove_destination":
+    dest = session.query(SqlSyncDestination).filter_by(cert_hash = args.cert_hash).first()
+    if dest is None: parser.error("Unable to find destination with cert_hash {}".format(args.cert_hash))
+    session.delete(dest)
+    session.commit()
     
 
 if args.mode == "server":
@@ -94,4 +128,8 @@ if args.mode == "server":
                         cafile = args.ca,
                         key = args.key, port = args.port,
                         registries = registries)
+    sync_manager_destinations(server, session)
+    if not hasattr(server, 'session'):
+        server.session = session
+    server.loop.create_task(monitor_task())
     server.loop.run_forever()
