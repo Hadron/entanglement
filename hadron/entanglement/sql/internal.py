@@ -114,3 +114,10 @@ async def gen_you_have_task(sender):
     you_have.epoch = sender.outgoing_epoch
     you_have.serial = sender.outgoing_serial
     sender.protocol.synchronize_object(you_have)
+
+def process_column(col, wraps = True):
+    d = {}
+    if wraps: d['wraps'] = col
+    if col.type.__class__ in encoders.type_map:
+        d.update(encoders.type_map[col.__class__])
+    return sync_property(**d)

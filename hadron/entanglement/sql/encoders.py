@@ -7,6 +7,8 @@
 # LICENSE for details.
 
 import datetime, iso8601
+from sqlalchemy import DateTime
+
 from datetime import timezone
 
 def datetime_encoder(propname):
@@ -23,3 +25,11 @@ def datetime_decoder(propname):
     def decode(obj, value):
         return iso8601.parse_date(value)
     return decode
+
+type_map = {}
+def register_type(typ, encoder, decoder):
+    type_map[type] = {'encoder': encoder,
+                      'decoder': decoder}
+
+
+register_type(DateTime, datetime_encoder, datetime_decoder)

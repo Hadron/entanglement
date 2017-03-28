@@ -73,7 +73,7 @@ class SqlSyncMeta(interface.SynchronizableMeta, sqlalchemy.ext.declarative.api.D
         if not 'sync_registry' in ns: ns['sync_registry'] = registry
         for k,v in ns.items():
             if isinstance(v, (Column, )):
-                ns[k] = interface.sync_property(wraps = v)
+                ns[k] = _internal.process_column(v)
         return interface.SynchronizableMeta.__new__(cls, name, bases, ns)
 
     def __init__(cls, name, bases, ns):
@@ -186,7 +186,7 @@ class  SqlSyncDestination(_internal_base, network.SyncDestination):
 class SyncOwner(_internal_base):
     __tablename__ = "sync_owners"
     id = Column(Integer, primary_key = True)
-    destination_id = Column(Integer, ForeignKey(SqlSyncDestination.id),
+    destination_id = Column(Integer, ForeignKey(SqlSyncDestination.id, ondelete = 'cascade'),
                             index = True, nullable = False)
     destination = sqlalchemy.orm.relationship(SqlSyncDestination)
 
@@ -203,14 +203,21 @@ class SyncOwner(_internal_base):
 
 class SqlSynchronizable(interface.Synchronizable):
 
-    sync_serial =interface.sync_property(wraps = Column(Integer, nullable=False, index = True))
+    @sqlalchemy.ext.declarative.api.declared_attr
+    def sync_serial(self):
+        if hasattr(self,'__table__'): return
+        return Column(Integer, nullable=False, index = True)
+
+    sync_serial = interface.sync_property(wraps = sync_serial)
 
     @sqlalchemy.ext.declarative.api.declared_attr
     def sync_owner_id(self):
-        return Column(Integer, ForeignKey(SyncOwner.id), index = True)
+        if hasattr(self, '__table__'): return
+        return Column(Integer, ForeignKey(SyncOwner.id, ondelete = 'cascade'), index = True)
 
     @sqlalchemy.ext.declarative.api.declared_attr
     def sync_owner(self):
+        if hasattr(self, '__table__') and not 'sync_owner_id' in self.__table__.columns: return
         return sqlalchemy.orm.relationship(SyncOwner)
 
         
