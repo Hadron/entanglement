@@ -218,7 +218,9 @@ class SqlSynchronizable(interface.Synchronizable):
     @sqlalchemy.ext.declarative.api.declared_attr
     def sync_owner(self):
         if hasattr(self, '__table__') and not 'sync_owner_id' in self.__table__.columns: return
-        return sqlalchemy.orm.relationship(SyncOwner)
+        if hasattr(self,'__table__'): return sqlalchemy.orm.relationship(SyncOwner, foreign_keys = [self.__table__.c.sync_owner_id],
+                                                                         primaryjoin = SyncOwner.id == self.__table__.c.sync_owner_id)
+        return sqlalchemy.orm.relationship(SyncOwner, foreign_keys = [self.sync_owner_id])
 
         
     @property

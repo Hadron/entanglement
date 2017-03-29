@@ -10,6 +10,14 @@
 import asyncio, types
 
 
+def default_encoder(propname):
+    "Default function used when encoding a sync_property; returns a function that retrieves the property from an object"
+    def encode(obj):
+        val = getattr(obj, propname, None)
+        if hasattr(val,'sync_encode_value'): val = val.sync_encode_value()
+        return val
+    return encode
+
 class SynchronizableMeta(type):
     '''A metaclass for capturing Synchronizable classes.  In python3.6, no metaclass will be needed; __init__subclass will be sufficient.'''
 
@@ -25,12 +33,6 @@ class SynchronizableMeta(type):
             ns['_sync_registry'] = ns['sync_registry']
             del ns['sync_registry']
         sync_meta = {}
-        def default_encoder(propname):
-            def encode(obj):
-                val = getattr(obj, propname, None)
-                if hasattr(val,'sync_encode_value'): val = val.sync_encode_value()
-                return val
-            return encode
         for k,v in list(ns.items()):
             if isinstance(v, sync_property):
                 sync_meta[k] = v
@@ -289,3 +291,4 @@ class SyncBadEncodingError(SyncError):
     def __init__(self, *args, msg = None, **kwargs):
         super().__init__(*args, **kwargs)
         self.msg = msg
+
