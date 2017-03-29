@@ -11,6 +11,7 @@ import datetime, sqlalchemy
 from datetime import timezone
 
 from sqlalchemy import Column, Table, String, Integer, DateTime, ForeignKey, inspect
+from sqlalchemy.orm import load_only
 import sqlalchemy.exc
 import sqlalchemy.orm, sqlalchemy.ext.declarative, sqlalchemy.ext.declarative.api
 from ..util import CertHash, SqlCertHash, get_or_create
@@ -164,11 +165,11 @@ class  SqlSyncDestination(_internal_base, network.SyncDestination):
             registries = manager.registries
         assert session and registries
         session.flush()
-        subquery = session.query(SyncOwner).filter(SyncOwner.destination == self)
+        subquery = session.query(SyncOwner.id).filter(SyncOwner.destination == self)
         for reg in registries:
             for c in reg.registry.values():
-                if isinstance(c, SqlSynchronizable):
-                    session.query(c).filter(c.sync_owner.in_(subquery)).delete(False)
+                if issubclass(c, SqlSynchronizable):
+                    session.query(c).filter(c.sync_owner_id.in_(subquery)).delete(False)
 
     async def connected(self, manager, *args, **kwargs):
         res = await super().connected(manager, *args, **kwargs)

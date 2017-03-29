@@ -6,10 +6,22 @@
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the file
 # LICENSE for details.
 
-import datetime, iso8601
-from sqlalchemy import DateTime
+import base64, datetime, iso8601
+from sqlalchemy import DateTime, DATETIME, BLOB, BINARY
 
 from datetime import timezone
+
+def binary_encoder(propname):
+    def encode(obj):
+        val = getattr(obj,propname, None)
+        if val is None: return
+        return str(base64.b64encode(val), 'utf-8')
+    return encode
+
+def  binary_decoder(propname):
+    def decode(obj, val):
+        return base64.b64decode(val)
+    return decode
 
 def datetime_encoder(propname):
     def encode(obj):
@@ -28,8 +40,11 @@ def datetime_decoder(propname):
 
 type_map = {}
 def register_type(typ, encoder, decoder):
-    type_map[type] = {'encoder': encoder,
+    type_map[typ] = {'encoder': encoder,
                       'decoder': decoder}
 
 
 register_type(DateTime, datetime_encoder, datetime_decoder)
+register_type(DATETIME, datetime_encoder, datetime_decoder)
+register_type(BLOB, binary_encoder, binary_decoder)
+register_type(BINARY, binary_encoder, binary_decoder)

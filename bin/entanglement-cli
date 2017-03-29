@@ -15,6 +15,7 @@ if os.path.exists(_hadron):
 
 from sqlalchemy import create_engine
 from hadron.entanglement  import SyncServer, SqlSyncDestination, sync_session_maker,  SqlSynchronizable, sync_manager_destinations
+from hadron.entanglement.sql import reflect
 from hadron.entanglement.sql.internal import sql_meta_messages, IHave
 from hadron.entanglement.util import certhash_from_file, CertHash
 import hadron.entanglement.sql
@@ -22,10 +23,14 @@ import hadron.entanglement.sql
 async def monitor_task():
     while True:
         await asyncio.sleep(3)
+        if list(server.connections):
+            await asyncio.wait([c.sync_drain() for c in server.connections])
         for d in server.destinations:
+            if d.protocol is None: continue
             i_have = IHave()
-            i_have.epoch = sender.outgoing_epoch
-            i_have.serial = sender.outgoing_serial
+            i_have.epoch = d.outgoing_epoch
+            i_have.serial = d.outgoing_serial
+            i_have = IHave.sync_receive(i_have.to_sync())
             server.loop.create_task(sql_meta_messages.handle_i_have(i_have, d, server))
         sync_manager_destinations(server)
     
@@ -36,6 +41,9 @@ parser.add_argument('--base',
                     nargs = '*',
                     dest = 'bases',
                     help = "sql_sync_declarative_bases to import and process")
+parser.add_argument('--reflect', action='store_true',
+                    help = "AUtomatically construct a sql_sync_declarative_base for the schema; modify existing tables to add synchronization instrumentation; add triggers to update serial numbers; and synchronize objects.",
+                    )
 
 mode_group = parser.add_mutually_exclusive_group(required = True)
 mode_group.add_argument('--add-destination', dest="mode", const="add_destination", action="store_const",
@@ -97,6 +105,10 @@ if args.verbose:
     logging.getLogger('hadron.entanglement').setLevel('DEBUG')
 if args.protocol_verbose:
     logging.getLogger('hadron.entanglement.protocol').setLevel('DEBUG')
+if args.reflect:
+    base = reflect.sync_map_base(bind = engine)
+    reflect.reflect_and_prepare(base, bind = engine)
+    registries.append(base.registry)
 for b in (args.bases or []):
     module, obj = b.rsplit('.',1)
     module = importlib.import_module(module)

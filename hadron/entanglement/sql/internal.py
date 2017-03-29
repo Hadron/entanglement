@@ -12,6 +12,7 @@ import asyncio, datetime, iso8601
 from ..interface import Synchronizable, SyncRegistry, SyncError, sync_property
 from . import encoders
 from .. import interface
+from ..network import logger
 
 class _SqlMetaRegistry(SyncRegistry):
 
@@ -43,7 +44,11 @@ class _SqlMetaRegistry(SyncRegistry):
             for c in reg.registry.values(): #enumerate all classes
                 if issubclass(c, SqlSynchronizable):
                     yield
-                    to_sync = session.query(c).filter(c.sync_serial > obj.serial, c.sync_owner == None).all()
+                    try:
+                        to_sync = session.query(c).filter(c.sync_serial > obj.serial, c.sync_owner == None).all()
+                    except:
+                        logger.exception("Failed finding objects to send {} from  {}".format(sender, c.__name__))
+                        raise
                     for o in to_sync:
                         max_serial = max(o.sync_serial, max_serial)
                         sender.protocol.synchronize_object(o)
@@ -119,5 +124,7 @@ def process_column(col, wraps = True):
     d = {}
     if wraps: d['wraps'] = col
     if col.type.__class__ in encoders.type_map:
-        d.update(encoders.type_map[col.__class__])
+        entry = encoders.type_map[col.type.__class__]
+        d.update(encoder = entry['encoder'](col.name),
+                 decoder = entry['decoder'](col.name))
     return sync_property(**d)
