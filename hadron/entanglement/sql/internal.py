@@ -59,6 +59,7 @@ class _SqlMetaRegistry(SyncRegistry):
         you_have.epoch = sender.outgoing_epoch
         sender.protocol.synchronize_object(you_have)
         sender.outgoing_serial = max_serial
+        manager.session.commit()
 
     def handle_you_have(self, obj, sender, manager):
         sender.incoming_serial = max(sender.incoming_serial, obj.serial)
