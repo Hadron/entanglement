@@ -21,7 +21,7 @@ def _instrument_table_sqlite3(engine, tab):
         add_sync_owner = DDL('alter table %(tab)s add sync_owner_id integer references sync_owners(id)', context = ctx)
         add_sync_serial = DDL('alter table %(tab)s add sync_serial integer not null default 1', context = ctx)
         trigger = '''
-            create trigger %(tab)s_%(op)s_serial %(op)s on %(tab)s when new.sync_owner_id is null begin
+            create trigger %(tab)s_%(op)s_serial after %(op)s on %(tab)s when new.sync_owner_id is null begin
             insert into sync_serial(timestamp) values(current_timestamp);
             update %(tab)s set sync_serial = (select max(serial) from sync_serial) where rowid = new.rowid;
             end;'''
