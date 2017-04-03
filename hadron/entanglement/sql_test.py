@@ -7,14 +7,14 @@
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the file
 # LICENSE for details.
 
-import asyncio, ssl, unittest
+import asyncio, ssl, unittest, uuid
 from contextlib import contextmanager
 from unittest import mock
 
 from .interface import Synchronizable, sync_property, SyncRegistry
 from .network import  SyncServer,  SyncManager
 from .util import certhash_from_file, CertHash, SqlCertHash, get_or_create
-from sqlalchemy import create_engine, Column, Integer, inspect
+from sqlalchemy import create_engine, Column, Integer, inspect, String, ForeignKey
 from sqlalchemy.orm import sessionmaker
 from .sql import SqlSynchronizable,  sync_session_maker, sql_sync_declarative_base, SqlSyncDestination
 from . import sql
@@ -46,7 +46,26 @@ class Table1(Base, SqlSynchronizable):
     __tablename__ = 'test_table'
     id = Column(Integer, primary_key = True)
     ch = Column(SqlCertHash)
-            
+
+
+class TableBase(Base):
+    __tablename__ = "base_table"
+
+    id = Column(String(128), primary_key = True,
+                default = lambda: str(uuid.uuid4()))
+    type = Column(String, nullable = False)
+    __mapper_args__ = {
+        'polymorphic_on': 'type',
+        'polymorphic_identity': 'base'}
+
+class TableInherits(TableBase):
+    __tablename__ = "inherits_table"
+    id = Column(String(128),
+                ForeignKey(TableBase.id, ondelete = "cascade"),
+                primary_key = True)
+    info = Column(String(30))
+    __mapper_args__ = {'polymorphic_identity': "inherits"}
+
 class TestSql(unittest.TestCase):
 
     def setUp(self):
@@ -81,13 +100,14 @@ class TestSql(unittest.TestCase):
         self.manager.add_destination(self.d1)
         self.manager.run_until_complete(asyncio.wait(self.manager._connecting.values()))
         self.manager.run_until_complete(asyncio.wait([x.sync_drain() for x in self.manager.connections + self.server.connections]))
-        
+        sql.internal.sql_meta_messages.yield_between_classes = False
+
 
     def tearDown(self):
         self.manager.close()
         self.server.close()
         self.session.close()
-        
+
     def testCertHash(self):
         t = Table1()
         t.ch = CertHash(b'o' *32)
@@ -150,8 +170,36 @@ class TestSql(unittest.TestCase):
         t2 = self.server.session.query(Table1).get(t1.id)
         assert t2 is not None
         assert t2.ch == t1.ch
-        
-                                    
+
+    def testJoinedTable(self):
+        "Test Joined Table Inheritance"
+        def to_sync_cb(self):
+            nonlocal calls
+            calls += 1
+            return orig_to_sync(self)
+        orig_to_sync = Base.to_sync
+        calls = 0
+        #disconnect our session
+        self.session.manager = None
+        self.manager.remove_destination(self.d1)
+        self.manager.loop.call_soon(self.manager.loop.stop)
+        self.manager.loop.run_forever()
+        session = self.session
+        with mock.patch.object(TableBase, 'to_sync', new = to_sync_cb):
+            t = TableInherits()
+            t.info = "1 2 3"
+            session.add(t)
+            session.commit()
+            self.d1.connect_at = 0
+            with wait_for_call(self.loop, TableInherits, 'sync_receive'):
+                self.manager.run_until_complete(self.manager.add_destination(self.d1))
+        t2 = self.server.session.query(TableInherits).get(t.id)
+        assert t2.__class__ is  t.__class__
+        assert t.info == t2.info
+        self.assertEqual(calls, 1)
+
+
+
 #import logging
 #logging.basicConfig(level = 'ERROR')
 
@@ -160,5 +208,3 @@ if __name__ == '__main__':
     logging.basicConfig(level = 'ERROR')
 #    logging.basicConfig(level = 10)
     unittest.main(module = "hadron.entanglement.sql_test")
-    
-    

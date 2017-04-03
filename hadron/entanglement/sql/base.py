@@ -169,7 +169,7 @@ class  SqlSyncDestination(_internal_base, network.SyncDestination):
         for reg in registries:
             for c in reg.registry.values():
                 if issubclass(c, SqlSynchronizable):
-                    session.query(c).filter(c.sync_owner_id.in_(subquery)).delete(False)
+                    for o in session.query(c).filter(c.sync_owner_id.in_(subquery)): session.delete(o)
 
     async def connected(self, manager, *args, **kwargs):
         res = await super().connected(manager, *args, **kwargs)

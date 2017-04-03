@@ -13,9 +13,12 @@ from ..interface import Synchronizable, SyncRegistry, SyncError, sync_property
 from . import encoders
 from .. import interface
 from ..network import logger
-
+from sqlalchemy import inspect
 class _SqlMetaRegistry(SyncRegistry):
 
+    # If true, then yield between each class while handling an IHave.  In general it is better to  let the event loop have an opportunity to run, but this makes testing much more complicated so it can be disabled.
+    yield_between_classes = True
+    
     def sync_receive(self, obj, sender, manager, **info):
         try:
             # remember to handle subclasses first
@@ -40,18 +43,16 @@ class _SqlMetaRegistry(SyncRegistry):
             return sender.protocol.synchronize_object( WrongEpoch(sender.outgoing_epoch))
         session = manager.session
         max_serial = 0
-        for reg in manager.registries:
-            for c in reg.registry.values(): #enumerate all classes
-                if issubclass(c, SqlSynchronizable):
-                    yield
-                    try:
-                        to_sync = session.query(c).filter(c.sync_serial > obj.serial, c.sync_owner == None).all()
-                    except:
-                        logger.exception("Failed finding objects to send {} from  {}".format(sender, c.__name__))
-                        raise
-                    for o in to_sync:
-                        max_serial = max(o.sync_serial, max_serial)
-                        sender.protocol.synchronize_object(o)
+        for c in classes_in_registries(manager.registries):
+            try:
+                if self.yield_between_classes: yield
+                to_sync = session.query(c).with_polymorphic('*').filter(c.sync_serial > obj.serial, c.sync_owner == None).all()
+            except:
+                logger.exception("Failed finding objects to send {} from  {}".format(sender, c.__name__))
+                raise
+            for o in to_sync:
+                max_serial = max(o.sync_serial, max_serial)
+                sender.protocol.synchronize_object(o)
         yield from sender.protocol.sync_drain()
         if max_serial <= sender.outgoing_serial: return
         you_have = YouHave()
@@ -129,3 +130,21 @@ def process_column(col, wraps = True):
         d.update(encoder = entry['encoder'](col.name),
                  decoder = entry['decoder'](col.name))
     return sync_property(**d)
+
+def classes_in_registries(registries):
+    "Return the set of SqlSynchronizables that cover a set of registries.  In particular, for joined (and single-table) inheritance, use the most base mapped class with with_polymorphic(*) rather than visiting objects multiple times."
+    from .base import SqlSynchronizable
+    def chase_down_inheritance(c):
+        while True:
+            m = inspect(c) # c's mapper
+            if m.concrete or (not m.inherits) :
+                return c
+            c = m.inherits.class_
+            
+    classes = set()
+    for reg in registries:
+        for c in reg.registry.values(): #enumerate all classes
+            if issubclass(c, SqlSynchronizable):
+                classes.add(chase_down_inheritance(c))
+    return classes
+
