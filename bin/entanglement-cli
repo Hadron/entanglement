@@ -24,14 +24,15 @@ async def monitor_task():
     while True:
         await asyncio.sleep(3)
         if list(server.connections):
-            await asyncio.wait([c.sync_drain() for c in server.connections])
+            outstanding_i_haves = [ c.dest.i_have_task for c in server.connections if c.dest.i_have_task]
+            if outstanding_i_haves: await outstanding_i_haves
         for d in server.destinations:
             if d.protocol is None: continue
             i_have = IHave()
             i_have.epoch = d.outgoing_epoch
             i_have.serial = d.outgoing_serial
             i_have = IHave.sync_receive(i_have.to_sync())
-            server.loop.create_task(sql_meta_messages.handle_i_have(i_have, d, server))
+            d.i_have_task = server.loop.create_task(sql_meta_messages.handle_i_have(i_have, d, server))
         sync_manager_destinations(server)
     
 parser = argparse.ArgumentParser()
@@ -113,7 +114,7 @@ for b in (args.bases or []):
     module, obj = b.rsplit('.',1)
     module = importlib.import_module(module)
     obj = getattr(module, obj)
-    if isinstance(obj, SqlSynchronizable):
+    if issubclass(obj, SqlSynchronizable):
         obj.metadata.create_all(bind = engine)
         obj.registry.sessionmaker.configure(bind = engine)
         registries.append(obj.registry)

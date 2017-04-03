@@ -57,7 +57,7 @@ def reflect_and_prepare(base, bind = None):
     base.registry.sessionmaker.configure(bind = bind)
     for c in base.classes:
         for col in c.__table__.columns:
-            prop = sql.internal.process_column(col, wraps = False)
+            prop = sql.internal.process_column(col.name,col, wraps = False)
             if not prop.encoderfn:
                 prop.encoderfn = interface.default_encoder(col.name)
             if not prop.decoderfn:

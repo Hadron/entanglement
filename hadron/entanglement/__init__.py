@@ -7,5 +7,7 @@
 # LICENSE for details.
 
 from .network import SyncServer, SyncManager, SyncDestination
-from .interface import sync_property, Synchronizable
+from .interface import sync_property, Synchronizable, SyncRegistry
 from .sql import SqlSynchronizable, SqlSyncSession, sql_sync_declarative_base, sync_session_maker, SqlSyncDestination, sync_manager_destinations
+from .util import CertHash, certhash_from_file
+

@@ -25,7 +25,7 @@ class _SqlMetaRegistry(SyncRegistry):
             if isinstance(obj,YouHave):
                 self.handle_you_have(obj, sender, manager)
             elif isinstance(obj,IHave):
-                manager.loop.create_task(self.handle_i_have(obj, sender, manager))
+                sender.i_have_task = manager.loop.create_task(self.handle_i_have(obj, sender, manager))
             elif isinstance(obj, WrongEpoch):
                 self.handle_wrong_epoch(obj, sender, manager)
             else: raise ValueError("Unexpected message")
@@ -35,32 +35,34 @@ class _SqlMetaRegistry(SyncRegistry):
     @asyncio.coroutine
     def handle_i_have(self, obj, sender, manager):
         from .base import SqlSynchronizable
-        if sender.cert_hash not in manager._connections: return
-        if sender.outgoing_epoch.tzinfo is None:
-            outgoing_epoch = sender.outgoing_epoch.replace(tzinfo = datetime.timezone.utc)
-        else: outgoing_epoch = sender.outgoing_epoch
-        if outgoing_epoch != obj.epoch:
-            return sender.protocol.synchronize_object( WrongEpoch(sender.outgoing_epoch))
-        session = manager.session
-        max_serial = 0
-        for c in classes_in_registries(manager.registries):
-            try:
-                if self.yield_between_classes: yield
-                to_sync = session.query(c).with_polymorphic('*').filter(c.sync_serial > obj.serial, c.sync_owner == None).all()
-            except:
-                logger.exception("Failed finding objects to send {} from  {}".format(sender, c.__name__))
-                raise
-            for o in to_sync:
-                max_serial = max(o.sync_serial, max_serial)
-                sender.protocol.synchronize_object(o)
-        yield from sender.protocol.sync_drain()
-        if max_serial <= sender.outgoing_serial: return
-        you_have = YouHave()
-        you_have.serial =max_serial
-        you_have.epoch = sender.outgoing_epoch
-        sender.protocol.synchronize_object(you_have)
-        sender.outgoing_serial = max_serial
-        manager.session.commit()
+        try:
+            if sender.cert_hash not in manager._connections: return
+            if sender.outgoing_epoch.tzinfo is None:
+                outgoing_epoch = sender.outgoing_epoch.replace(tzinfo = datetime.timezone.utc)
+            else: outgoing_epoch = sender.outgoing_epoch
+            if outgoing_epoch != obj.epoch:
+                return sender.protocol.synchronize_object( WrongEpoch(sender.outgoing_epoch))
+            session = manager.session
+            max_serial = obj.serial
+            for c in classes_in_registries(manager.registries):
+                try:
+                    if self.yield_between_classes: yield
+                    to_sync = session.query(c).with_polymorphic('*').filter(c.sync_serial > obj.serial, c.sync_owner == None).all()
+                except:
+                    logger.exception("Failed finding objects to send {} from  {}".format(sender, c.__name__))
+                    raise
+                for o in to_sync:
+                    max_serial = max(o.sync_serial, max_serial)
+                    sender.protocol.synchronize_object(o)
+            yield from sender.protocol.sync_drain()
+            if max_serial <= obj.serial: return
+            you_have = YouHave()
+            you_have.serial =max_serial
+            you_have.epoch = sender.outgoing_epoch
+            sender.protocol.synchronize_object(you_have)
+            sender.outgoing_serial = max_serial
+            manager.session.commit()
+        finally: sender.i_have_task = None
 
     def handle_you_have(self, obj, sender, manager):
         sender.incoming_serial = max(sender.incoming_serial, obj.serial)
@@ -122,13 +124,13 @@ async def gen_you_have_task(sender):
     you_have.serial = sender.outgoing_serial
     sender.protocol.synchronize_object(you_have)
 
-def process_column(col, wraps = True):
+def process_column(name, col, wraps = True):
     d = {}
     if wraps: d['wraps'] = col
     if col.type.__class__ in encoders.type_map:
         entry = encoders.type_map[col.type.__class__]
-        d.update(encoder = entry['encoder'](col.name),
-                 decoder = entry['decoder'](col.name))
+        d.update(encoder = entry['encoder'](name),
+                 decoder = entry['decoder'](name))
     return sync_property(**d)
 
 def classes_in_registries(registries):

@@ -74,7 +74,7 @@ class SqlSyncMeta(interface.SynchronizableMeta, sqlalchemy.ext.declarative.api.D
         if not 'sync_registry' in ns: ns['sync_registry'] = registry
         for k,v in ns.items():
             if isinstance(v, (Column, )):
-                ns[k] = _internal.process_column(v)
+                ns[k] = _internal.process_column(k, v)
         return interface.SynchronizableMeta.__new__(cls, name, bases, ns)
 
     def __init__(cls, name, bases, ns):
@@ -145,10 +145,18 @@ class  SqlSyncDestination(_internal_base, network.SyncDestination):
     bw_per_sec = Column(Integer, default = 10000000,
                         nullable = False)
 
+    def __hash__(self):
+        return hash(self.cert_hash)
+
+    def __eq__(self, other):
+        if isinstance(other,SqlSyncDestination):
+            return other.cert_hash == self.cert_hash
+        else: return super().__eq__(other)
     def __init__(self, *args, **kwargs):
         network.SyncDestination.__init__(self, *args, **kwargs)
         self.outgoing_serial = 0
         self.you_have_task = None
+        self.i_have_task = None
 
     @sqlalchemy.orm.reconstructor
     def reconstruct(self):
@@ -157,6 +165,7 @@ class  SqlSyncDestination(_internal_base, network.SyncDestination):
         self.you_have_task = None
         self.connect_at = 0
         self.server_hostname = None
+        self.i_have_task = None
 
     def clear_all_objects(self, manager = None,
                           *, registries = None, session = None):
