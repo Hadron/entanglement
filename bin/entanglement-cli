@@ -113,10 +113,12 @@ for b in (args.bases or []):
     module, obj = b.rsplit('.',1)
     module = importlib.import_module(module)
     obj = getattr(module, obj)
-    obj.metadata.create_all(bind = engine)
-    obj.registry.sessionmaker.configure(bind = engine)
-    registries.append(obj.registry)
-    
+    if isinstance(obj, SqlSynchronizable):
+        obj.metadata.create_all(bind = engine)
+        obj.registry.sessionmaker.configure(bind = engine)
+        registries.append(obj.registry)
+    else: registries.append(obj)
+        
 
 session = sync_session_maker(bind = engine)()
 if args.mode == "add_destination":
