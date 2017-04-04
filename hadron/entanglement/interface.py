@@ -83,10 +83,10 @@ class sync_property:
 
         manager =sync_property()
         @manager.encoder
-        def encoder(obj):
+        def manager(obj):
             return obj.manager_id
         @manager.decoder
-            def decoder(obj, value):
+            def manager(obj, value):
             return Manager.get_by_id(value)
 
     '''
@@ -107,10 +107,12 @@ class sync_property:
     def encoder(self, encoderfn):
         "If encoderfn(instance) returns non-None, then the value returned will be encoded for this property"
         self.encoderfn = encoderfn
+        return self
 
     def decoder(self, decoderfn):
         "If the property is specified, then decoderfn(obj, value_from_json) will be called.  If it returns non-None, then setattr(obj, prop_name, return_value) will be called. If constructor is not False, obj may be None"
         self.decoderfn = decoderfn
+        return self
 
 class Synchronizable( metaclass = SynchronizableMeta):
 
@@ -195,10 +197,15 @@ class Synchronizable( metaclass = SynchronizableMeta):
         if self.__class__ != other.__class__: return NotImplemented
         return all(map(lambda k: getattr(self,k).__eq__(getattr(other,k)), self.__class__.sync_primary_keys))
 
-    sync_primary_keys = property(doc = "tuple of attributes comprising  primary keys")
-    @sync_primary_keys.getter
-    def sync_primary_keys(self):
-        raise NotImplementedError
+    class _sync_primary_keys:
+        "A tuple of primary keys or the value hadron.entanglement.interface.Unique meaning that no instances of this class represent the same object"
+
+        def __get__(self, obj, owner):
+            raise NotImplementedError("sync_primary_keys must be set on Synchronizable classes")
+
+    sync_primary_keys = _sync_primary_keys()
+    del _sync_primary_keys
+    
 
     class _Sync_type:
         "The type of object being synchronized"
@@ -253,17 +260,17 @@ class SyncError(RuntimeError, Synchronizable):
     args = sync_property()
     context = sync_property()
     @context.encoder
-    def get_context(obj):
+    def context(obj):
         if obj.__context__: return str(obj.__context__)
     @context.decoder
-    def setcontext(obj, value): pass
+    def context(obj, value): pass
 
     cause = sync_property()
     @cause.encoder
-    def get_cause(obj):
+    def cause(obj):
         if obj.__cause__: return str(obj.__cause__)
     @cause.decoder
-    def ignore(obj, value): pass
+    def cause(obj, value): pass
 
     sync_registry = error_registry
     sync_primary_keys = Unique

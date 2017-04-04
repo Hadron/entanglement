@@ -81,10 +81,11 @@ class SqlSyncMeta(interface.SynchronizableMeta, sqlalchemy.ext.declarative.api.D
         super().__init__(name, bases, ns)
         if not hasattr(cls,'registry'):
             setattr(cls,'registry', SqlSyncRegistry())
-        if isinstance(cls.sync_primary_keys, property):
+        try: cls.sync_primary_keys
+        except NotImplementedError: 
             try:
                 cls.sync_primary_keys = tuple(map(
-                        lambda x: x.name, inspect(cls).primary_key))
+                    lambda x: x.name, inspect(cls).primary_key))
             except sqlalchemy.exc.NoInspectionAvailable: pass
 
 
