@@ -6,8 +6,9 @@
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the file
 # LICENSE for details.
 
-import ssl, asyncio, json, os, unittest
+import ssl, asyncio, asyncio.log, json, os, unittest, warnings
 from unittest import mock
+from asyncio.test_utils import disable_logger, TestLoop
 
 
 from . import bandwidth, protocol
@@ -25,7 +26,7 @@ class TestProto(asyncio.Protocol):
         self.fixture = fixture
 
     def data_received(self, data):
-        print(str(data, 'utf-8')+"\n")
+        pass
 
     def connection_lost(self, exc): pass
 
@@ -90,14 +91,15 @@ class LoopFixture:
                                              , port = 9999, host = '127.0.0.1', ssl=self.sslctx_client, server_hostname='host1')
 
     def close(self):
-        if self.loop:
-            for t in self.transports: t.close()
-            self.loop.set_debug(False)
-            self.server.close()
-            self.loop.call_soon(self.loop.stop)
-            self.loop.run_forever()
-            self.loop.close()
-            self.loop = None
+        with disable_logger():
+            if self.loop:
+                for t in self.transports: t.close()
+                self.loop.set_debug(False)
+                self.server.close()
+                self.loop.call_soon(self.loop.stop)
+                self.loop.run_forever()
+                self.loop.close()
+                self.loop = None
             del self.transports
             
 
@@ -106,6 +108,7 @@ class LoopFixture:
 class TestBandwidth(unittest.TestCase):
 
     def setUp(self):
+        warnings.filterwarnings('ignore', module = 'asyncio.selector_events')
         self.fixture = LoopFixture()
 
     def tearDown(self):

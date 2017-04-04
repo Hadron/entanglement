@@ -146,6 +146,7 @@ class SyncProtocol(asyncio.Protocol):
         self.bwprotocol = bwprotocol
         self.reader.set_transport(transport)
         self.reader_task = self.loop.create_task(self._read_task())
+        self.reader_task._log_destroy_pending = False
         self._manager._transports.append(weakref.ref(self.transport))
         if self._incoming:
             self.loop.create_task(self._manager._incoming_connection(self))
