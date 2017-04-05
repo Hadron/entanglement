@@ -7,13 +7,13 @@
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the file
 # LICENSE for details.
 
-import asyncio, ssl, unittest, uuid
+import asyncio, ssl, unittest, uuid, warnings
 from contextlib import contextmanager
 from unittest import mock
 
 from .interface import Synchronizable, sync_property, SyncRegistry
 from .network import  SyncServer,  SyncManager
-from .util import certhash_from_file, CertHash, SqlCertHash, get_or_create
+from .util import certhash_from_file, CertHash, SqlCertHash, get_or_create, entanglement_logs_disabled
 from sqlalchemy import create_engine, Column, Integer, inspect, String, ForeignKey
 from sqlalchemy.orm import sessionmaker
 from .sql import SqlSynchronizable,  sync_session_maker, sql_sync_declarative_base, SqlSyncDestination
@@ -70,6 +70,8 @@ class TestSql(unittest.TestCase):
 
     def setUp(self):
         sql.internal.you_have_timeout = 0 #Send YouHave serial number updates immediately for testing
+        warnings.filterwarnings('ignore', module = 'asyncio.sslproto')
+        warnings.filterwarnings('ignore', module = 'asyncio.selector_events')
         self.e1 = create_engine('sqlite:///:memory:', echo = False)
         self.e2 = create_engine('sqlite:///:memory:', echo = False)
         Session = sync_session_maker()
@@ -157,14 +159,15 @@ class TestSql(unittest.TestCase):
         #disconnect our session
         self.session.manager = None
         self.manager.remove_destination(self.d1)
-        self.manager.loop.call_soon(self.manager.loop.stop)
-        self.manager.loop.run_forever()
-        session = self.session
-        t1 = Table1(ch = self.d2.cert_hash)
-        session.add(t1)
-        session.commit()
-        self.d1.connect_at = 0
-        self.manager.run_until_complete(self.manager.add_destination(self.d1))
+        with entanglement_logs_disabled():
+            self.manager.loop.call_soon(self.manager.loop.stop)
+            self.manager.loop.run_forever()
+            session = self.session
+            t1 = Table1(ch = self.d2.cert_hash)
+            session.add(t1)
+            session.commit()
+            self.d1.connect_at = 0
+            self.manager.run_until_complete(self.manager.add_destination(self.d1))
         self.manager.loop.run_until_complete(asyncio.wait([x.sync_drain() for x in self.manager.connections + self.server.connections]))
         with wait_for_call(self.loop, Base.registry, 'sync_receive'): pass
         t2 = self.server.session.query(Table1).get(t1.id)
@@ -182,17 +185,18 @@ class TestSql(unittest.TestCase):
         #disconnect our session
         self.session.manager = None
         self.manager.remove_destination(self.d1)
-        self.manager.loop.call_soon(self.manager.loop.stop)
-        self.manager.loop.run_forever()
-        session = self.session
-        with mock.patch.object(TableBase, 'to_sync', new = to_sync_cb):
-            t = TableInherits()
-            t.info = "1 2 3"
-            session.add(t)
-            session.commit()
-            self.d1.connect_at = 0
-            with wait_for_call(self.loop, TableInherits, 'sync_receive'):
-                self.manager.run_until_complete(self.manager.add_destination(self.d1))
+        with entanglement_logs_disabled():
+            self.manager.loop.call_soon(self.manager.loop.stop)
+            self.manager.loop.run_forever()
+            session = self.session
+            with mock.patch.object(TableBase, 'to_sync', new = to_sync_cb):
+                t = TableInherits()
+                t.info = "1 2 3"
+                session.add(t)
+                session.commit()
+                self.d1.connect_at = 0
+                with wait_for_call(self.loop, TableInherits, 'sync_receive'):
+                    self.manager.run_until_complete(self.manager.add_destination(self.d1))
         t2 = self.server.session.query(TableInherits).get(t.id)
         assert t2.__class__ is  t.__class__
         assert t.info == t2.info

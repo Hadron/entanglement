@@ -8,7 +8,7 @@
 # LICENSE for details.
 
 
-import base64, hashlib, re
+import base64, contextlib, hashlib, logging, re
 try:
     from OpenSSL import crypto as _crypto
 except ImportError:
@@ -101,3 +101,12 @@ def get_or_create(session, model, filter_by, defaults = {}):
     inst = model(**d)
     session.add(inst)
     return inst
+
+@contextlib.contextmanager
+def entanglement_logs_disabled():
+    l = logging.getLogger('hadron.entanglement')
+    oldlevel = l.level
+    l.setLevel(logging.CRITICAL+1)
+    yield
+    l.setLevel(oldlevel)
+    

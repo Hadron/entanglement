@@ -8,13 +8,13 @@
 
 import ssl, asyncio, asyncio.log, json, os, unittest, warnings
 from unittest import mock
-from asyncio.test_utils import disable_logger, TestLoop
+from asyncio.test_utils import disable_logger, TestLoop, run_once
 
 
 from . import bandwidth, protocol
 from .interface import Synchronizable, sync_property, SyncRegistry
 from .network import  SyncServer, SyncDestination
-from .util import certhash_from_file, CertHash, SqlCertHash
+from .util import certhash_from_file, CertHash, SqlCertHash, entanglement_logs_disabled
 
 
 
@@ -105,6 +105,87 @@ class LoopFixture:
 
         
 
+class TestBwAlgorithm( unittest.TestCase):
+
+    "Test the timing algorithms for bandwidth"
+
+    def start(self, gen):
+        self.loop = TestLoop(gen)
+        self.protocol = bandwidth.BwLimitProtocol(loop = self.loop,
+                                        upper_protocol = mock.MagicMock(),
+                                        chars_per_sec = 10000,
+                                        bw_quantum = 0.1)
+
+    def tearDown(self):
+        self.loop.close()
+
+    def testOverUse(self):
+        "Confirm that if we use a lot, it gets refunded eventually"
+        def gen():
+            yield
+            yield 0.1
+            yield 0.1
+        self.start(gen)
+        self.protocol.bw_used(2000)
+        self.assertTrue(self.protocol._paused)
+        run_once(self.loop)
+        self.assertEqual(self.protocol.used, 2000)
+        run_once(self.loop)
+        self.assertEqual(self.protocol.used, 1000)
+        run_once(self.loop)
+        self.assertEqual(self.protocol.used, 0)
+        self.assertFalse(self.protocol._paused, False)
+
+    def testGradual(self):
+        def gen():
+            yield
+        self.start(gen)
+        self.protocol.bw_used(900)
+        run_once(self.loop)
+        self.assertEqual( self.protocol.used, 900)
+        self.assertFalse(self.protocol._paused, False)
+        self.loop.advance_time(2)
+        run_once(self.loop)
+        self.protocol.bw_used(1)
+        self.assertEqual( self.protocol.used, 1)
+
+    def testTransportPause(self):
+        "Test to confirm transport pause interacts with bandwidth pause"
+        def gen():
+            yield
+            yield 0.1
+            yield 0.1
+            yield 0.1
+        self.start(gen)
+        upper = self.protocol.protocol
+        protocol = self.protocol
+        protocol.bw_used(1200)
+        self.assertTrue( protocol._paused)
+        self.assertEqual( upper.pause_writing.call_count,1)
+        protocol.pause_writing()
+        self.assertEqual(upper.pause_writing.call_count, 1)
+        run_once(self.loop)
+        self.assertEqual( self.loop.time(), 0.1)
+        run_once(self.loop)
+        self.assertEqual( protocol.used, 200)
+        self.assertEqual( upper.resume_writing.call_count, 0)
+        # Even though we're paused, the client can still write.
+        #Write enough that one quantum isn't enough and confirm  that we do eventually resume once we're ready.
+        protocol.bw_used(2000)
+        protocol.resume_writing()
+        # still at t=0.1; collect the timer scheduled by resume_writing
+        run_once(self.loop)
+        self.assertEqual( self.loop.time(), 0.2)
+        self.assertEqual( upper.resume_writing.call_count, 0)
+        run_once(self.loop) # at t = 0.2
+        self.assertAlmostEqual(self.loop.time(), 0.3)
+        run_once(self.loop) # at t = 0.3
+        self.assertEqual( upper.resume_writing.call_count, 1)
+        
+        
+            
+    
+        
 class TestBandwidth(unittest.TestCase):
 
     def setUp(self):
@@ -155,6 +236,7 @@ class TestBandwidth(unittest.TestCase):
 class TestSynchronization(unittest.TestCase):
 
     def setUp(self):
+        warnings.filterwarnings('ignore', module = 'asyncio.sslproto')
         self.manager = SyncServer(cafile = 'ca.pem',
                                   cert = "host1.pem", key = "host1.key",
                                   port = 9120,
@@ -234,14 +316,15 @@ class TestSynchronization(unittest.TestCase):
                                'connected',
                                wraps = self.manager._destinations[self.cert_hash].connected,
                                side_effect = cb):
-            self.cprotocol.close()
-            self.manager._destinations[self.cert_hash].connect_at = 0
-            try:self.loop.run_until_complete(asyncio.wait_for(fut, 0.3))
-            except asyncio.futures.TimeoutError:
-                raise AssertionError("Connection failed to be made") from None
+            with entanglement_logs_disabled():
+                self.cprotocol.close()
+                self.manager._destinations[self.cert_hash].connect_at = 0
+                try:self.loop.run_until_complete(asyncio.wait_for(fut, 0.3))
+                except asyncio.futures.TimeoutError:
+                    raise AssertionError("Connection failed to be made") from None
 
 
-    def testReception(self):
+    def testReceptiossssn(self):
         "Confirm that we can receive an update"
         fut = self.loop.create_future()
         def cb(*args, **kwargs): fut.set_result(True)
