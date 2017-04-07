@@ -84,11 +84,11 @@ class LoopFixture:
         self.sslctx_client = ssl.create_default_context()
         self.sslctx_client.load_cert_chain('host1.pem','host1.key')
         self.sslctx_client.load_verify_locations(cafile='ca.pem')
-        self.server= self.loop.run_until_complete(self.loop.create_server(lambda : TestProto(self), port = 9999, reuse_address = True, reuse_port = True, ssl=self.sslctx_server))
+        self.server= self.loop.run_until_complete(self.loop.create_server(lambda : TestProto(self), port = 19284, reuse_address = True, reuse_port = True, ssl=self.sslctx_server))
         self.client = self.loop.create_connection(lambda : bandwidth.BwLimitProtocol(
             chars_per_sec = 200, bw_quantum = 0.1,
             upper_protocol = TestProto(self), loop = self.loop)
-                                             , port = 9999, host = '127.0.0.1', ssl=self.sslctx_client, server_hostname='host1')
+                                             , port = 19284, host = '127.0.0.1', ssl=self.sslctx_client, server_hostname='host1')
 
     def close(self):
         with disable_logger():
