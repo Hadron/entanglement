@@ -19,6 +19,8 @@ setup(
     namespace_packages = ["hadron"],
     packages = ["hadron.entanglement", "hadron.entanglement.sql"],
     install_requires = ['SQLAlchemy', 'pyOpenSSL', 'iso8601'],
+    scripts = ['bin/entanglement-cli'],
     test_suite = "tests",
-    )
+    version = 0.1,
+)
 
