@@ -11,13 +11,13 @@ import asyncio, ssl, unittest, uuid, warnings
 from contextlib import contextmanager
 from unittest import mock
 
-from .interface import Synchronizable, sync_property, SyncRegistry
-from .network import  SyncServer,  SyncManager
-from .util import certhash_from_file, CertHash, SqlCertHash, get_or_create, entanglement_logs_disabled
+from hadron.entanglement.interface import Synchronizable, sync_property, SyncRegistry
+from hadron.entanglement.network import  SyncServer,  SyncManager
+from hadron.entanglement.util import certhash_from_file, CertHash, SqlCertHash, get_or_create, entanglement_logs_disabled
 from sqlalchemy import create_engine, Column, Integer, inspect, String, ForeignKey
 from sqlalchemy.orm import sessionmaker
-from .sql import SqlSynchronizable,  sync_session_maker, sql_sync_declarative_base, SqlSyncDestination
-from . import sql
+from hadron.entanglement.sql import SqlSynchronizable,  sync_session_maker, sql_sync_declarative_base, SqlSyncDestination
+import hadron.entanglement.sql as sql
 
 @contextmanager
 def wait_for_call(loop, obj, method, calls = 1):

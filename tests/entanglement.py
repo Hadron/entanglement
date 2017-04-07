@@ -11,10 +11,10 @@ from unittest import mock
 from asyncio.test_utils import disable_logger, TestLoop, run_once
 
 
-from . import bandwidth, protocol
-from .interface import Synchronizable, sync_property, SyncRegistry
-from .network import  SyncServer, SyncDestination
-from .util import certhash_from_file, CertHash, SqlCertHash, entanglement_logs_disabled
+from hadron.entanglement import bandwidth, protocol
+from hadron.entanglement.interface import Synchronizable, sync_property, SyncRegistry
+from hadron.entanglement.network import  SyncServer, SyncDestination
+from hadron.entanglement.util import certhash_from_file, CertHash, SqlCertHash, entanglement_logs_disabled
 
 
 
@@ -327,6 +327,7 @@ class TestSynchronization(unittest.TestCase):
     def testReceptiossssn(self):
         "Confirm that we can receive an update"
         fut = self.loop.create_future()
+        TestSyncable2.objects = {}
         def cb(*args, **kwargs): fut.set_result(True)
         obj_send = TestSyncable2(1,90)
         obj_receive = TestSyncable2.get(obj_send.id)
