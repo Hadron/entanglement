@@ -16,11 +16,10 @@ setup(
     maintainer = "Sam Hartman",
     maintainer_email = "sam.hartman@hadronindustries.com",
     url = "http://www.hadronindustries.com/",
-    namespace_packages = ["hadron"],
     packages = ["hadron.entanglement", "hadron.entanglement.sql"],
     install_requires = ['SQLAlchemy', 'pyOpenSSL', 'iso8601'],
     scripts = ['bin/entanglement-cli'],
     test_suite = "tests",
-    version = 0.1,
+    version = 0.2,
 )
 
