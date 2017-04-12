@@ -10,13 +10,12 @@
 import asyncio, types
 
 
-def default_encoder(propname):
-    "Default function used when encoding a sync_property; returns a function that retrieves the property from an object"
-    def encode(obj):
-        val = getattr(obj, propname, None)
-        if hasattr(val,'sync_encode_value'): val = val.sync_encode_value()
-        return val
-    return encode
+def default_encoder(obj, propname):
+    "Default function used when encoding a sync_property; retrieves the property from an object"
+    val = getattr(obj, propname, None)
+    if hasattr(val,'sync_encode_value'): val = val.sync_encode_value()
+    return val
+
 
 class SynchronizableMeta(type):
     '''A metaclass for capturing Synchronizable classes.  In python3.6, no metaclass will be needed; __init__subclass will be sufficient.'''
@@ -41,8 +40,8 @@ class SynchronizableMeta(type):
                     ns[k] = v.wraps
                 else: del ns[k]
                 del v.wraps
-                if not v.encoderfn: v.encoderfn = default_encoder(k)
-                if not v.decoderfn: v.decoderfn = lambda obj, val: val
+                if not v.encoderfn: v.encoderfn = default_encoder
+                if not v.decoderfn: v.decoderfn = lambda obj, propname, val: val
         ns['_sync_meta'] = sync_meta
         return type.__new__(cls, name, bases, ns)
 
@@ -83,10 +82,10 @@ class sync_property:
 
         manager =sync_property()
         @manager.encoder
-        def manager(obj):
+        def manager(obj, propname):
             return obj.manager_id
         @manager.decoder
-            def manager(obj, value):
+            def manager(obj, propname, value):
             return Manager.get_by_id(value)
 
     '''
@@ -105,12 +104,12 @@ class sync_property:
                 self.__doc__ = wraps.__doc__
 
     def encoder(self, encoderfn):
-        "If encoderfn(instance) returns non-None, then the value returned will be encoded for this property"
+        "If encoderfn(instance, propname) returns non-None, then the value returned will be encoded for this property"
         self.encoderfn = encoderfn
         return self
 
     def decoder(self, decoderfn):
-        "If the property is specified, then decoderfn(obj, value_from_json) will be called.  If it returns non-None, then setattr(obj, prop_name, return_value) will be called. If constructor is not False, obj may be None"
+        "If the property is specified, then decoderfn(obj, propname, value_from_json) will be called.  If it returns non-None, then setattr(obj, prop_name, return_value) will be called. If constructor is not False, obj may be None"
         self.decoderfn = decoderfn
         return self
 
@@ -120,7 +119,7 @@ class Synchronizable( metaclass = SynchronizableMeta):
         '''Return a dictionary containing the attributes of self that should be synchronized.'''
         d = {}
         for k,v in self.__class__._sync_properties.items():
-            try: val = v.encoderfn(self)
+            try: val = v.encoderfn(self, k)
             except BaseException as e:
                 raise ValueError("Failed encoding {} using encoder from class {}".format(k, v.declaring_class)) from e
             if val is not None: d[k] = val
@@ -134,7 +133,7 @@ class Synchronizable( metaclass = SynchronizableMeta):
         if not set(cls.sync_primary_keys).issubset(msg.keys()):
             raise SyncBadEncodingError("Encoding must contain primary keys: {}".format(cls.sync_primary_keys))
         for k in cls.sync_primary_keys:
-            d[k] = cls._sync_properties[k].decoderfn(None, msg[k])
+            d[k] = cls._sync_properties[k].decoderfn(None, k, msg[k])
         return d
 
     @classmethod
@@ -155,8 +154,8 @@ class Synchronizable( metaclass = SynchronizableMeta):
             if k in msg:
                 try:
                     if v.constructor is not True: #it's an int
-                        args[v.constructor-1] = v.decoderfn(None, msg[k])
-                    else: kwargs[k] = v.decoderfn(None, msg[k])
+                        args[v.constructor-1] = v.decoderfn(None, k, msg[k])
+                    else: kwargs[k] = v.decoderfn(None, k, msg[k])
                     del msg[k]
                 except Exception as e:
                     raise SyncBadEncodingError("Error decoding {}".format(k), msg = msg) from e
@@ -171,7 +170,7 @@ class Synchronizable( metaclass = SynchronizableMeta):
                 if k.startswith('_'): continue
                 raise SyncBadEncodingError('{} unknown property in sync encoding'.format(k), msg = msg)
             try:
-                setattr(obj, k, cls._sync_properties[k].decoderfn(obj, v))
+                setattr(obj, k, cls._sync_properties[k].decoderfn(obj, k, v))
             except Exception as e:
                 raise SyncBadEncodingError("Failed to decode {}".format(k),
                                            msg = msg) from e
@@ -260,17 +259,17 @@ class SyncError(RuntimeError, Synchronizable):
     args = sync_property()
     context = sync_property()
     @context.encoder
-    def context(obj):
+    def context(obj, propname):
         if obj.__context__: return str(obj.__context__)
     @context.decoder
-    def context(obj, value): pass
+    def context(obj, propname, value): pass
 
     cause = sync_property()
     @cause.encoder
-    def cause(obj):
+    def cause(obj, propname):
         if obj.__cause__: return str(obj.__cause__)
     @cause.decoder
-    def cause(obj, value): pass
+    def cause(obj, propname, value): pass
 
     sync_registry = error_registry
     sync_primary_keys = Unique

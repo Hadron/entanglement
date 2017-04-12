@@ -89,8 +89,8 @@ class IHave(Synchronizable):
     sync_primary_keys = ('serial','epoch')
     sync_registry = sql_meta_messages
     serial = sync_property()
-    epoch = sync_property(encoder = encoders.datetime_encoder('epoch'),
-                          decoder = encoders.datetime_decoder('epoch'))
+    epoch = sync_property(encoder = encoders.datetime_encoder,
+                          decoder = encoders.datetime_decoder)
 
 class YouHave(IHave):
     "Same structure as IHave message; sent to update someone's idea of their serial number"
@@ -101,8 +101,8 @@ class YouHave(IHave):
 class WrongEpoch(SyncError):
     sync_registry = sql_meta_messages
     new_epoch = sync_property(constructor = 1,
-                              encoder = encoders.datetime_encoder('new_epoch'),
-                              decoder = encoders.datetime_decoder('new_epoch'))
+                              encoder = encoders.datetime_encoder,
+                              decoder = encoders.datetime_decoder)
 
     def __init__(self, newepoch, **args):
         self.new_epoch = newepoch
@@ -129,8 +129,8 @@ def process_column(name, col, wraps = True):
     if wraps: d['wraps'] = col
     if col.type.__class__ in encoders.type_map:
         entry = encoders.type_map[col.type.__class__]
-        d.update(encoder = entry['encoder'](name),
-                 decoder = entry['decoder'](name))
+        d.update(encoder = entry['encoder'],
+                 decoder = entry['decoder'])
     return sync_property(**d)
 
 def classes_in_registries(registries):

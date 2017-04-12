@@ -11,32 +11,28 @@ from sqlalchemy import DateTime, DATETIME, BLOB, BINARY
 
 from datetime import timezone
 
-def binary_encoder(propname):
-    def encode(obj):
-        val = getattr(obj,propname, None)
-        if val is None: return
-        return str(base64.b64encode(val), 'utf-8')
-    return encode
-
-def  binary_decoder(propname):
-    def decode(obj, val):
-        return base64.b64decode(val)
-    return decode
-
-def datetime_encoder(propname):
-    def encode(obj):
-        dt = getattr(obj,propname,None)
-        if dt is None: return
-        if dt.tzinfo:
-            dt = dt.astimezone(timezone.utc)
-        return dt.isoformat()
-    return encode
+def binary_encoder(obj, propname):
+    val = getattr(obj,propname, None)
+    if val is None: return
+    return str(base64.b64encode(val), 'utf-8')
 
 
-def datetime_decoder(propname):
-    def decode(obj, value):
-        return iso8601.parse_date(value)
-    return decode
+def  binary_decoder(obj, propname, val):
+    return base64.b64decode(val)
+
+
+def datetime_encoder(obj, propname):
+    dt = getattr(obj,propname,None)
+    if dt is None: return
+    if dt.tzinfo:
+        dt = dt.astimezone(timezone.utc)
+    return dt.isoformat()
+
+
+
+def datetime_decoder(obj, propname, value):
+    return iso8601.parse_date(value)
+
 
 type_map = {}
 def register_type(typ, encoder, decoder):
