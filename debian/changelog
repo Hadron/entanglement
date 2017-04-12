@@ -1,3 +1,10 @@
+hadron-entanglement (0.2) unstable; urgency=medium
+
+* API change regarding how encoders work
+  * Support for alternate registries and registry classes associated with sql_sync_declarative_base
+
+ -- Sam Hartman <hartmans@debian.org>  Wed, 12 Apr 2017 13:28:11 -0400
+
 hadron-entanglement (0.1) unstable; urgency=medium
 
   * Initial Release
