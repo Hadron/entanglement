@@ -16,7 +16,7 @@ from hadron.entanglement.network import  SyncServer,  SyncManager
 from hadron.entanglement.util import certhash_from_file, CertHash, SqlCertHash, get_or_create, entanglement_logs_disabled
 from sqlalchemy import create_engine, Column, Integer, inspect, String, ForeignKey
 from sqlalchemy.orm import sessionmaker
-from hadron.entanglement.sql import SqlSynchronizable,  sync_session_maker, sql_sync_declarative_base, SqlSyncDestination
+from hadron.entanglement.sql import SqlSynchronizable,  sync_session_maker, sql_sync_declarative_base, SqlSyncDestination, SqlSyncRegistry
 import hadron.entanglement.sql as sql
 
 @contextmanager
@@ -203,6 +203,15 @@ class TestSql(unittest.TestCase):
         self.assertEqual(calls, 1)
 
 
+    def testAlternateRegistries(self):
+        class NewRegistry(SqlSyncRegistry): pass
+        base = sql_sync_declarative_base(registry_class = NewRegistry)
+        class obj(base):
+            __tablename__ = "foo"
+            id = Column(Integer, primary_key = True)
+
+        assert isinstance(base.registry, NewRegistry)
+        
 
 #import logging
 #logging.basicConfig(level = 'ERROR')

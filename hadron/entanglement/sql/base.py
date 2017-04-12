@@ -79,8 +79,9 @@ class SqlSyncMeta(interface.SynchronizableMeta, sqlalchemy.ext.declarative.api.D
 
     def __init__(cls, name, bases, ns):
         super().__init__(name, bases, ns)
-        if not hasattr(cls,'registry'):
-            setattr(cls,'registry', SqlSyncRegistry())
+        # If _sync_primary_keys is not set, it raises
+        # NotImplementedError; catch that and construct primary
+        # keys if we can
         try: cls.sync_primary_keys
         except NotImplementedError: 
             try:
@@ -264,8 +265,12 @@ class SqlSynchronizable(interface.Synchronizable):
         return obj
     
         
-def sql_sync_declarative_base(*args, **kwargs):
-    return sqlalchemy.ext.declarative.declarative_base(cls = SqlSynchronizable, metaclass = SqlSyncMeta, *args, **kwargs)
+def sql_sync_declarative_base(*args, registry = None, 
+                              registry_class = SqlSyncRegistry,
+                              **kwargs):
+    base =  sqlalchemy.ext.declarative.declarative_base(cls = SqlSynchronizable, metaclass = SqlSyncMeta, *args, **kwargs)
+    base.registry = registry or registry_class()
+    return base
 
 def sync_manager_destinations(manager, session = None):
     '''Query for :class SqlSyncDestination objects in the :param session.  Add any not currently in the manager; remove any present in the manager but no longer in the database.
