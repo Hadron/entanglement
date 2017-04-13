@@ -275,8 +275,9 @@ def sql_sync_declarative_base(*args, registry = None,
     return base
 
 def sync_manager_destinations(manager, session = None,
-                              cls = SqlSyncDestination):
-    '''Query for :class SqlSyncDestination objects in the :param session.  Add any not currently in the manager; remove any present in the manager but no longer in the database.
+                              cls = SqlSyncDestination,
+                              force_resync = False):
+    '''Query for :class SqlSyncDestination objects in the :param session.  Add any not currently in the manager; remove any present in the manager but no longer in the database.  If force_resync is True, then for any added destination, a resynchronization will be forced in both directions.
 '''
     if session is None: session = manager.session #probably won't work initially
     if not session.is_active: session.rollback()
@@ -286,6 +287,10 @@ def sync_manager_destinations(manager, session = None,
         manager.remove_destination(d)
     for d in database_destinations - manager_destinations:
         session.expunge(d)
+        if force_resync:
+            d.incoming_epoch = datetime.datetime.now(datetime.timezone.utc)
+            d.outgoing_epoch = d.incoming_epoch
+            manager.session.add(d)
         manager.add_destination(d)
     if hasattr(manager, 'session'):
         manager.session.commit()

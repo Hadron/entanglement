@@ -7,7 +7,7 @@
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the file
 # LICENSE for details.
 
-import asyncio, gc, ssl, unittest, uuid, warnings
+import asyncio, datetime, gc, ssl, unittest, uuid, warnings
 from contextlib import contextmanager
 from unittest import mock
 
@@ -239,6 +239,7 @@ class TestSql(unittest.TestCase):
     def testSyncManagerDestinations(self):
         "Test the sync_manager_destinations function"
         self.server.remove_destination(self.d2)
+        current_epoch = self.d1.incoming_epoch
         self.d1.id = 30
         self.d2.id = 35
         self.server.session.merge(self.d1)
@@ -254,6 +255,19 @@ class TestSql(unittest.TestCase):
         sync_manager_destinations( manager = self.server)
         self.assertNotIn( self.d2, self.server.destinations)
         self.assertEqual(len(self.server.destinations), 1)
+        # Confirm it is not trying to resync
+        new_epoch = self.server.destinations.pop().incoming_epoch
+        new_epoch = new_epoch.replace(tzinfo = datetime.timezone.utc)
+        self.assertEqual(current_epoch, new_epoch)
+
+    def testForceResync(self):
+        "Confirm that we can force resync using sync_manager_destinations"
+        self.server.remove_destination(self.d2)
+        self.d1.connect_at = 0
+        self.server.session.add(self.d2)
+        with entanglement_logs_disabled(), \
+             wait_for_call(self.loop, sql.internal.sql_meta_messages, "handle_wrong_epoch"):
+            sync_manager_destinations(self.server, force_resync = True)
         
         
 
@@ -264,4 +278,4 @@ if __name__ == '__main__':
     import logging, unittest, unittest.main
     logging.basicConfig(level = 'ERROR')
 #    logging.basicConfig(level = 10)
-    unittest.main(module = "hadron.entanglement.sql_test")
+    unittest.main(module = "tests.sql")
