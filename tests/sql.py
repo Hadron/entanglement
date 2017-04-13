@@ -7,7 +7,7 @@
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the file
 # LICENSE for details.
 
-import asyncio, ssl, unittest, uuid, warnings
+import asyncio, gc, ssl, unittest, uuid, warnings
 from contextlib import contextmanager
 from unittest import mock
 
@@ -109,6 +109,12 @@ class TestSql(unittest.TestCase):
         self.manager.close()
         self.server.close()
         self.session.close()
+        del self.session
+        del self.server
+        del self.manager
+        del self.d1
+        del self.d2
+        gc.collect()
 
     def testCertHash(self):
         t = Table1()
