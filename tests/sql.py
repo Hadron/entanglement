@@ -16,7 +16,7 @@ from hadron.entanglement.network import  SyncServer,  SyncManager
 from hadron.entanglement.util import certhash_from_file, CertHash, SqlCertHash, get_or_create, entanglement_logs_disabled
 from sqlalchemy import create_engine, Column, Integer, inspect, String, ForeignKey
 from sqlalchemy.orm import sessionmaker
-from hadron.entanglement.sql import SqlSynchronizable,  sync_session_maker, sql_sync_declarative_base, SqlSyncDestination, SqlSyncRegistry
+from hadron.entanglement.sql import SqlSynchronizable,  sync_session_maker, sql_sync_declarative_base, SqlSyncDestination, SqlSyncRegistry, sync_manager_destinations
 import hadron.entanglement.sql as sql
 
 @contextmanager
@@ -66,6 +66,12 @@ class TableInherits(TableBase):
     info = Column(String(30))
     __mapper_args__ = {'polymorphic_identity': "inherits"}
 
+class AlternateSyncDestination(SqlSyncDestination):
+
+
+    def new_method(self): pass
+    
+    
 class TestSql(unittest.TestCase):
 
     def setUp(self):
@@ -217,6 +223,38 @@ class TestSql(unittest.TestCase):
             id = Column(Integer, primary_key = True)
 
         assert isinstance(base.registry, NewRegistry)
+
+    def testAlternativeSyncDestination(self):
+        "Confirm that sync_manager_destinations supports the cls parameter"
+        self.server.remove_destination(self.d2)
+        self.server.session.add(self.d2)
+        self.server.session.commit()
+        self.server.session.refresh(self.d2)
+        self.server.session.expunge_all()
+        sync_manager_destinations(manager = self.server, cls = AlternateSyncDestination)
+        for c in self.server.destinations:
+            self.assertIsInstance(c, AlternateSyncDestination)
+        self.assertIn( self.d2, self.server.destinations)
+
+    def testSyncManagerDestinations(self):
+        "Test the sync_manager_destinations function"
+        self.server.remove_destination(self.d2)
+        self.d1.id = 30
+        self.d2.id = 35
+        self.server.session.merge(self.d1)
+        self.server.session.add(self.d2)
+        self.server.session.commit()
+        assert self.d2.protocol is None
+        self.server.add_destination(self.d2)
+        sync_manager_destinations( manager = self.server)
+        self.assertIn( self.d1, self.server.destinations)
+        self.assertIn( self.d2, self.server.destinations)
+        self.assertEqual(len(self.server.destinations), 2)
+        self.server.session.delete(self.d2)
+        sync_manager_destinations( manager = self.server)
+        self.assertNotIn( self.d2, self.server.destinations)
+        self.assertEqual(len(self.server.destinations), 1)
+        
         
 
 #import logging

@@ -274,15 +274,18 @@ def sql_sync_declarative_base(*args, registry = None,
     base.registry = registry or registry_class()
     return base
 
-def sync_manager_destinations(manager, session = None):
+def sync_manager_destinations(manager, session = None,
+                              cls = SqlSyncDestination):
     '''Query for :class SqlSyncDestination objects in the :param session.  Add any not currently in the manager; remove any present in the manager but no longer in the database.
 '''
     if session is None: session = manager.session #probably won't work initially
-    database_destinations = set(session.query(SqlSyncDestination).all())
-    manager_destinations = manager.destinations
+    if not session.is_active: session.rollback()
+    database_destinations = set(session.query(cls).all())
+    manager_destinations = set(filter(lambda x: isinstance(x, cls), manager.destinations))
     for d in manager_destinations - database_destinations:
         manager.remove_destination(d)
     for d in database_destinations - manager_destinations:
         session.expunge(d)
         manager.add_destination(d)
-        
+    if hasattr(manager, 'session'):
+        manager.session.commit()
