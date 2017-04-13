@@ -41,12 +41,15 @@ class _SqlMetaRegistry(SyncRegistry):
                 outgoing_epoch = sender.outgoing_epoch.replace(tzinfo = datetime.timezone.utc)
             else: outgoing_epoch = sender.outgoing_epoch
             if outgoing_epoch != obj.epoch:
+                logger.info("{} had wrong epoch; asking to delete all objects and perform full synchronization".format( sender))
                 return sender.protocol.synchronize_object( WrongEpoch(sender.outgoing_epoch))
             session = manager.session
             max_serial = obj.serial
+            logger.info("{} has serial {}; synchronizing changes since then".format( sender, max_serial))
             for c in classes_in_registries(manager.registries):
                 try:
                     if self.yield_between_classes: yield
+                    if not session.is_active: session.rollback()
                     to_sync = session.query(c).with_polymorphic('*').filter(c.sync_serial > obj.serial, c.sync_owner == None).all()
                 except:
                     logger.exception("Failed finding objects to send {} from  {}".format(sender, c.__name__))
@@ -61,16 +64,25 @@ class _SqlMetaRegistry(SyncRegistry):
             you_have.epoch = sender.outgoing_epoch
             sender.protocol.synchronize_object(you_have)
             sender.outgoing_serial = max_serial
-            manager.session.commit()
         finally: sender.i_have_task = None
 
     def handle_you_have(self, obj, sender, manager):
+        if sender.incoming_serial > obj.serial:
+            logger.error("{d} claims we have serial {obj} but we already have {ours}".format(
+                ours = sender.incoming_serial,
+                d = sender,
+                obj = obj.serial))
         sender.incoming_serial = max(sender.incoming_serial, obj.serial)
         sender.incoming_epoch = obj.epoch
+        logger.debug("We have serial {s} from {d}".format(
+            s = obj.serial,
+            d = sender))
+        if not manager.session.is_active: manager.session.rollback()
         if not sender in manager.session: manager.session.add(sender)
         manager.session.commit()
 
     def handle_wrong_epoch(self, obj,  sender, manager):
+        if not manager.session.is_active: manager.session.rollback()
         if sender not in manager.session: manager.session.add(sender)
         sender.clear_all_objects(manager)
         sender.incoming_epoch = obj.new_epoch

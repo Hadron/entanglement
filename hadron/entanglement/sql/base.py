@@ -16,7 +16,7 @@ import sqlalchemy.exc
 import sqlalchemy.orm, sqlalchemy.ext.declarative, sqlalchemy.ext.declarative.api
 from ..util import CertHash, SqlCertHash, get_or_create
 from .. import interface, network
-
+from ..protocol import logger
 from . import internal as _internal
 
 class SqlSyncSession(sqlalchemy.orm.Session):
@@ -175,12 +175,12 @@ class  SqlSyncDestination(_internal_base, network.SyncDestination):
             session = manager.session
             registries = manager.registries
         assert session and registries
-        session.flush()
+        logger.info("Deleting all objects from {}".format(self))
+        session.rollback()
         subquery = session.query(SyncOwner.id).filter(SyncOwner.destination == self)
-        for reg in registries:
-            for c in reg.registry.values():
-                if issubclass(c, SqlSynchronizable):
-                    for o in session.query(c).filter(c.sync_owner_id.in_(subquery)): session.delete(o)
+        for c in _internal.classes_in_registries(registries):
+            for o in session.query(c).filter(c.sync_owner_id.in_(subquery)): session.delete(o)
+        session.flush()
 
     async def connected(self, manager, *args, **kwargs):
         res = await super().connected(manager, *args, **kwargs)
@@ -249,6 +249,8 @@ class SqlSynchronizable(interface.Synchronizable):
             try: primary_key_values = tuple(map(lambda k: msg[k], primary_keys))
             except KeyError as e:
                 raise interface.SyncBadEncodingError("All primary keys must be present in the encoding", msg = msg) from e
+            sender = info['sender']
+            if sender not in manager.session: manager.session.add(sender)
             obj = manager.session.query(cls).get(primary_key_values)
             owner = SyncOwner.find_or_create(manager.session, info['sender'], msg)
         if obj is not None and obj.sync_owner_id != owner.id:

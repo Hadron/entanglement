@@ -18,6 +18,8 @@ from . import interface
 
 logger = protocol.logger
 
+no_traceback_connection_failures = (OSError, EOFError)
+
 
 class SyncManager:
 
@@ -122,14 +124,18 @@ class SyncManager:
                         host = dest.host))
                     dest.connect_at = time.time()+delta
                     return transport, protocol
-                except asyncio.futures.CancelledError:
+                except (asyncio.futures.CancelledError, GeneratorExit):
                     logger.debug("Connection to {dest} canceled".format(dest = dest))
                     raise
                 except (SyntaxError, TypeError, LookupError, ValueError, WrongSyncDestination) as e:
                     logger.exception("Connection to {} failed".format(dest.cert_hash))
                     raise
-                except:
-                    logger.exception("Error connecting to  {}".format(dest))
+                except Exception as e:
+                    if isinstance(e, no_traceback_connection_failures):
+                        logger.error("Error connecting to {}: {}".format(
+                            dest, str(e)))
+                    else:
+                        logger.exception("Error connecting to  {}".format(dest))
                     dest.connect_at = time.time() + delta
         finally:
             if self._connecting.get(dest.cert_hash, None) == task:
@@ -255,6 +261,8 @@ exc_info = e)
         for c in self._connections.values():
             c.close()
         self._connections = {}
+        for c in self._connecting.values(): c.cancel()
+        self._connecting = {}
         for t in self._transports:
             if t(): t().close()
         if self.loop_allocated:
