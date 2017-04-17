@@ -355,7 +355,7 @@ class TestSynchronization(unittest.TestCase):
         obj_send2.to_sync = mock.MagicMock(wraps = obj_send2.to_sync)
         self.assertFalse(obj_send.to_sync.called)
         self.cprotocol.synchronize_object(obj_send2)
-        fut.add_done_callback( lambda : self.assertFalse(obj_send2.to_sync.called))
+        fut.add_done_callback( lambda x: self.assertFalse(obj_send2.to_sync.called))
         self.loop.run_until_complete(fut)
         self.assertEqual(obj_send.to_sync.call_count, 1)
         
