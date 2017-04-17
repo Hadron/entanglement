@@ -324,7 +324,7 @@ class TestSynchronization(unittest.TestCase):
                     raise AssertionError("Connection failed to be made") from None
 
 
-    def testReceptiossssn(self):
+    def testReception(self):
         "Confirm that we can receive an update"
         fut = self.loop.create_future()
         TestSyncable2.objects = {}
@@ -341,7 +341,24 @@ class TestSynchronization(unittest.TestCase):
         self.assertEqual(obj_send.id, obj_receive.id)
         self.assertEqual(obj_send.pos, obj_receive.pos)
         
-            
+
+    def testSyncDrain(self):
+        "Confirm that by the time sync_drain is called objects synchronized before have been drained"
+        TestSyncable2.objects = {}
+        obj_send = TestSyncable2(1,90)
+        obj_receive = TestSyncable2.get(obj_send.id)
+        assert obj_send is not obj_receive # We cheat so this is true
+        obj_send.to_sync = mock.MagicMock( wraps = obj_send.to_sync)
+        self.cprotocol.synchronize_object(obj_send)
+        fut = self.cprotocol.sync_drain()
+        obj_send2 = TestSyncable2(2, 20)
+        obj_send2.to_sync = mock.MagicMock(wraps = obj_send2.to_sync)
+        self.assertFalse(obj_send.to_sync.called)
+        self.cprotocol.synchronize_object(obj_send2)
+        fut.add_done_callback( lambda : self.assertFalse(obj_send2.to_sync.called))
+        self.loop.run_until_complete(fut)
+        self.assertEqual(obj_send.to_sync.call_count, 1)
+        
 
 
        
@@ -352,6 +369,6 @@ if __name__ == '__main__':
     import logging, unittest, unittest.main
     logging.basicConfig(level = 'ERROR')
 #    logging.basicConfig(level = 10)
-    unittest.main(module = "hadron.entanglement.test")
+    unittest.main(module = "tests.entanglement")
     
     

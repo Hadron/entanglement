@@ -19,6 +19,34 @@ _msg_header = ">I" # A 4-byte big-endien size
 _msg_header_size = struct.calcsize(_msg_header)
 assert _msg_header_size == 4
 
+class DirtyMember:
+
+    __slots__ = ('obj', 'operation')
+    
+    def __eq__(self, other):
+        return self.obj.sync_compatible(other.obj)
+
+    def __hash__(self):
+        return self.obj.sync_hash()
+
+    def __repr__(self):
+        keydict = {}
+        try:
+            keys = self.obj.sync_primary_keys
+            for k in keys:
+                keydict[k] = getattr(self.obj, k, None)
+        except Exception: pass
+        return "DirtyElement <keys : {k}, obj: {o}>".format(
+            k = keydict,
+            o = repr(self.obj))
+    
+    def update(self, obj):
+        assert self.obj.sync_compatible(obj)
+        self.obj = obj
+    def __init__(self, obj, operation = 'sync'):
+        self.obj = obj
+        self.operation = operation
+        
 class SyncProtocol(asyncio.Protocol):
 
     def __init__(self, manager, incoming = False,
@@ -31,7 +59,7 @@ class SyncProtocol(asyncio.Protocol):
         # self.current_dirty is where we send from, which may be self.dirty
         #In a drain, we'll stop adding objects to self.current_dirty (switching the pointers) and wait for the sync to complete
         #Note though that objects equal to something in current_dirty are added there
-        self.dirty = set()
+        self.dirty = dict()
         self.current_dirty = self.dirty
         self.drain_future = None
         self.waiter = None
@@ -43,12 +71,11 @@ class SyncProtocol(asyncio.Protocol):
 
     def synchronize_object(self,obj):
         """Send obj out to be synchronized"""
-        if obj in self.current_dirty:
-            self.current_dirty.remove(obj)
-            self.current_dirty.add(obj)
+        elt = DirtyMember(obj)
+        if elt in self.current_dirty:
+            self.current_dirty[elt].update(obj)
         else:
-            self.dirty.discard(obj)
-            self.dirty.add(obj)
+            self.dirty.setdefault(elt, elt).update(obj)
         if self.task is None:
             self.task = self.loop.create_task(self._run_sync())
 
@@ -56,13 +83,12 @@ class SyncProtocol(asyncio.Protocol):
         "Returns a future; when this future is done, all objects synchronized before sync_drain is called have been sent.  Note that some objects synchronized after sync_drain is called may have been sent."
         if self.drain_future:
             for elt in self.dirty:
-                self.current_dirty.discard(elt)
-                self.current_dirty.add(elt)
+                self.current_dirty[elt] = elt
             self.dirty.clear()
         else:
             if self.task: 
                 self.drain_future = self.loop.create_future()
-                self.dirty = set()
+                self.dirty = dict()
                 return self.drain_future
             else: #We're not currently synchronizing
                 fut = self.loop.create_future()
@@ -73,12 +99,12 @@ class SyncProtocol(asyncio.Protocol):
         if self.waiter: await self.waiter
         try:
             while True:
-                elt = self.current_dirty.pop()
+                elt = self.current_dirty.pop(next(iter(self.current_dirty.keys())))
                 try:self._send_sync_message(elt)
                 except:
-                    logger.exception("Error sending {}".format(repr(elt)))
+                    logger.exception("Error sending {}".format(repr(elt.obj)))
                 if self.waiter: await self.waiter
-        except KeyError: #empty set
+        except StopIteration: #empty set
             self.task = None
             if self.drain_future:
                 self.drain_future.set_result(True)
@@ -87,7 +113,8 @@ class SyncProtocol(asyncio.Protocol):
                 if len(self.dirty) > 0:
                     self.task = self.loop.create_task(self._run_sync())
 
-    def _send_sync_message(self, obj):
+    def _send_sync_message(self, elt):
+        obj = elt.obj
         sync_rep = obj.to_sync()
         sync_rep['_sync_type'] = obj.sync_type
         js = bytes(json.dumps(sync_rep), 'utf-8')

@@ -183,14 +183,14 @@ class Synchronizable( metaclass = SynchronizableMeta):
 
 
 
-    def __hash__(self):
+    def sync_hash(self):
         '''Hash all the primary keys.'''
         if self.__class__.sync_primary_keys is Unique:
             return id(self)
         return sum(map(lambda x: getattr(self, x).__hash__(), self.__class__.sync_primary_keys))
 
-    def __eq__(self, other):
-        '''Return true if the primary keys of self match the primary keys of other'''
+    def sync_compatible(self, other):
+        '''Return true if the primary keys of self match the primary keys of other; true if these two objects can be combined in synchronization'''
         if self.__class__.sync_primary_keys is Unique:
             return self is other
         if self.__class__ != other.__class__: return NotImplemented
