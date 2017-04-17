@@ -22,7 +22,7 @@ assert _msg_header_size == 4
 class DirtyMember:
 
     __slots__ = ('obj', 'operation')
-    
+
     def __eq__(self, other):
         return self.obj.sync_compatible(other.obj)
 
@@ -39,14 +39,16 @@ class DirtyMember:
         return "DirtyElement <keys : {k}, obj: {o}>".format(
             k = keydict,
             o = repr(self.obj))
-    
-    def update(self, obj):
+
+    def update(self, obj, operation):
         assert self.obj.sync_compatible(obj)
         self.obj = obj
-    def __init__(self, obj, operation = 'sync'):
+        self.operation = operation
+
+    def __init__(self, obj, operation):
         self.obj = obj
         self.operation = operation
-        
+
 class SyncProtocol(asyncio.Protocol):
 
     def __init__(self, manager, incoming = False,
@@ -69,13 +71,14 @@ class SyncProtocol(asyncio.Protocol):
         self.dest = dest
         self._incoming = incoming
 
-    def synchronize_object(self,obj):
-        """Send obj out to be synchronized"""
-        elt = DirtyMember(obj)
+    def _synchronize_object(self,obj,
+                            operation, attributes):
+        """Send obj out to be synchronized; this is an internal interface that should only be called by SyncManager.synchronize"""
+        elt = DirtyMember(obj, operation)
         if elt in self.current_dirty:
-            self.current_dirty[elt].update(obj)
+            self.current_dirty[elt].update(obj, operation)
         else:
-            self.dirty.setdefault(elt, elt).update(obj)
+            self.dirty.setdefault(elt, elt).update(obj, operation)
         if self.task is None:
             self.task = self.loop.create_task(self._run_sync())
 
@@ -86,7 +89,7 @@ class SyncProtocol(asyncio.Protocol):
                 self.current_dirty[elt] = elt
             self.dirty.clear()
         else:
-            if self.task: 
+            if self.task:
                 self.drain_future = self.loop.create_future()
                 self.dirty = dict()
                 return self.drain_future
@@ -94,7 +97,7 @@ class SyncProtocol(asyncio.Protocol):
                 fut = self.loop.create_future()
                 fut.set_result(True)
                 return fut
-                
+
     async def _run_sync(self):
         if self.waiter: await self.waiter
         try:
@@ -117,10 +120,12 @@ class SyncProtocol(asyncio.Protocol):
         obj = elt.obj
         sync_rep = obj.to_sync()
         sync_rep['_sync_type'] = obj.sync_type
+        if elt.operation != 'sync':
+            sync_rep['_sync_operation'] = elt.operation
         js = bytes(json.dumps(sync_rep), 'utf-8')
         protocol_logger.debug("Sending `{js}' to {d}".format(
             js = js, d = self.dest))
-                     
+
         assert len(js) <= 65536
         header = struct.pack(_msg_header, len(js))
         self.transport.write(header + js)
@@ -139,8 +144,9 @@ class SyncProtocol(asyncio.Protocol):
             except Exception as e:
                 logger.exception("Error receiving {}".format(sync_repr))
                 if isinstance(e,SyncError) and not '_sync_is_error' in sync_repr:
-                    self.synchronize_object(e)
-                    
+                    self._manager.synchronize(e,
+                                              destinations = [self.dest])
+
 
     def data_received(self, data):
         self.reader.feed_data(data)
@@ -167,7 +173,7 @@ class SyncProtocol(asyncio.Protocol):
 
     def __del__(self):
         self.close()
-        
+
     def connection_made(self, transport, bwprotocol):
         self.transport = transport
         self.bwprotocol = bwprotocol
@@ -186,7 +192,7 @@ class SyncProtocol(asyncio.Protocol):
         assert self.waiter is not None
         self.waiter.set_result(None)
         self.waiter = None
-        
+
 
     @property
     def cert_hash(self):
@@ -194,5 +200,5 @@ class SyncProtocol(asyncio.Protocol):
         return CertHash.from_der_cert(self.transport.get_extra_info('ssl_object').getpeercert(True))
 
 
-sync_magic_attributes = ('_sync_type', '_sync_is_error')
-
+sync_magic_attributes = ('_sync_type', '_sync_is_error',
+                         '_sync_operation')

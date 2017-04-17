@@ -51,12 +51,13 @@ class SqlSyncSession(sqlalchemy.orm.Session):
         #This is called in the event loop and thus in the thread of the manager
         objects = list(map(lambda x: self.manager.session.merge(x), objects))
         serial = max(map( lambda x: x.sync_serial, objects))
-        self.manager.synchronize(objects)
+        for o in objects:
+            self.manager.synchronize(o)
         for c in self.manager.connections:
             dest = c.dest
             dest.outgoing_serial = max(dest.outgoing_serial, serial)
             if not dest.you_have_task:
-                dest.you_have_task = self.manager.loop.create_task(_internal.gen_you_have_task(dest))
+                dest.you_have_task = self.manager.loop.create_task(_internal.gen_you_have_task(dest, self.manager))
                 dest.you_have_task._log_destroy_pending = False
                 
                 
@@ -201,7 +202,8 @@ class  SqlSyncDestination(_internal_base, network.SyncDestination):
         i_have = _internal.IHave()
         i_have.serial = self.incoming_serial
         i_have.epoch = self.incoming_epoch
-        self.protocol.synchronize_object(i_have)
+        manager.synchronize(i_have,
+                            destinations = [self])
         return res
 
 

@@ -42,7 +42,8 @@ class _SqlMetaRegistry(SyncRegistry):
             else: outgoing_epoch = sender.outgoing_epoch
             if outgoing_epoch != obj.epoch:
                 logger.info("{} had wrong epoch; asking to delete all objects and perform full synchronization".format( sender))
-                return sender.protocol.synchronize_object( WrongEpoch(sender.outgoing_epoch))
+                return manager.synchronize( WrongEpoch(sender.outgoing_epoch),
+                                            destinations = [sender])
             session = manager.session
             max_serial = obj.serial
             logger.info("{} has serial {}; synchronizing changes since then".format( sender, max_serial))
@@ -56,13 +57,15 @@ class _SqlMetaRegistry(SyncRegistry):
                     raise
                 for o in to_sync:
                     max_serial = max(o.sync_serial, max_serial)
-                    sender.protocol.synchronize_object(o)
+                    manager.synchronize(o,
+                                        destinations = [sender])
             yield from sender.protocol.sync_drain()
             if max_serial <= obj.serial: return
             you_have = YouHave()
             you_have.serial =max_serial
             you_have.epoch = sender.outgoing_epoch
-            sender.protocol.synchronize_object(you_have)
+            manager.synchronize(you_have,
+                                destinations = [sender])
             sender.outgoing_serial = max_serial
         finally: sender.i_have_task = None
 
@@ -91,7 +94,8 @@ class _SqlMetaRegistry(SyncRegistry):
         i_have = IHave()
         i_have.serial = 0
         i_have.epoch = sender.incoming_epoch
-        sender.protocol.synchronize_object(i_have)
+        manager.synchronize( i_have,
+                             destinations = [sender])
         
 
 sql_meta_messages = _SqlMetaRegistry()
@@ -123,7 +127,7 @@ class WrongEpoch(SyncError):
 
 you_have_timeout = 0.5
 
-async def gen_you_have_task(sender):
+async def gen_you_have_task(sender, manager):
     await asyncio.sleep(you_have_timeout)
     try:
         if not sender.protocol and not sender.protocol.loop: return
@@ -134,7 +138,8 @@ async def gen_you_have_task(sender):
     you_have = YouHave()
     you_have.epoch = sender.outgoing_epoch
     you_have.serial = sender.outgoing_serial
-    sender.protocol.synchronize_object(you_have)
+    manager.synchronize(you_have,
+                        destinations = [sender])
 
 def process_column(name, col, wraps = True):
     d = {}

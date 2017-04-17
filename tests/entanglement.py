@@ -257,7 +257,7 @@ class TestSynchronization(unittest.TestCase):
     def testOneSync(self):
         obj = TestSyncable(1,39)
         assert self.cprotocol.task is None
-        self.cprotocol.synchronize_object(obj)
+        self.manager.synchronize(obj)
         assert self.cprotocol.task is not None
         task = self.cprotocol.task
         self.loop.run_until_complete(task)
@@ -271,7 +271,7 @@ class TestSynchronization(unittest.TestCase):
         self.cprotocol.pause_writing()
         obj = TestSyncable(1,39)
         assert self.cprotocol.task is None
-        self.cprotocol.synchronize_object(obj)
+        self.manager.synchronize(obj)
         assert self.cprotocol.task is not None
 
     # This has to be an asyncio.coroutine because you cannot yield
@@ -282,7 +282,7 @@ class TestSynchronization(unittest.TestCase):
         while True:
             self.obj1.pos += 10
             self.obj1.serial += 1
-            self.cprotocol.synchronize_object(self.obj1)
+            self.manager.synchronize(self.obj1)
             yield
 
     def testBwLimit(self):
@@ -333,7 +333,7 @@ class TestSynchronization(unittest.TestCase):
         obj_receive = TestSyncable2.get(obj_send.id)
         assert obj_send is not obj_receive # We cheat so this is true
         assert obj_send.pos != obj_receive.pos
-        self.cprotocol.synchronize_object(obj_send)
+        self.manager.synchronize(obj_send)
         with mock.patch.object(reg, 'sync_receive',
                         wraps = cb):
             self.manager.run_until_complete(self.cprotocol.task)
@@ -349,12 +349,12 @@ class TestSynchronization(unittest.TestCase):
         obj_receive = TestSyncable2.get(obj_send.id)
         assert obj_send is not obj_receive # We cheat so this is true
         obj_send.to_sync = mock.MagicMock( wraps = obj_send.to_sync)
-        self.cprotocol.synchronize_object(obj_send)
+        self.manager.synchronize(obj_send)
         fut = self.cprotocol.sync_drain()
         obj_send2 = TestSyncable2(2, 20)
         obj_send2.to_sync = mock.MagicMock(wraps = obj_send2.to_sync)
         self.assertFalse(obj_send.to_sync.called)
-        self.cprotocol.synchronize_object(obj_send2)
+        self.manager.synchronize(obj_send2)
         fut.add_done_callback( lambda x: self.assertFalse(obj_send2.to_sync.called))
         self.loop.run_until_complete(fut)
         self.assertEqual(obj_send.to_sync.call_count, 1)

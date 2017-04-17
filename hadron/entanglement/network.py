@@ -13,7 +13,7 @@ import asyncio, logging, ssl, time
 from . import protocol
 from .util import CertHash, certhash_from_file
 from .bandwidth import BwLimitProtocol
-from .interface import WrongSyncDestination, UnregisteredSyncClass
+from .interface import WrongSyncDestination, UnregisteredSyncClass, SyncNotConnected
 from . import interface
 
 logger = protocol.logger
@@ -75,13 +75,34 @@ class SyncManager:
             bw_quantum = 0.1,
             loop = self.loop,
             upper_protocol = protocol.SyncProtocol(manager = self, incoming = True))
-    
 
-    def synchronize(self, objects):
-        for o in objects:
-            for c in self._connections.values():
-                c.synchronize_object(o)
-                
+
+    def synchronize(self, obj, *,
+                    destinations = None, operation = 'sync',
+                    attributes_to_sync = None):
+        if destinations is None:
+            destinations = filter(lambda  x: x.cert_hash in self._connections,
+                                  self.destinations)
+        valid_cert_hashes = set(self._connections.keys()).union( set(self._connecting.keys()))
+        should_send_destinations = set()
+        info = {}
+        info['manager'] = self
+        info['sync_type'] = obj.__class__
+        cls, registry = self._find_registered_class( obj.sync_type)
+        info['registry'] = registry
+        info['operation'] = operation
+        for d in destinations:
+            if d.cert_hash not in valid_cert_hashes:
+                raise SyncNotConnected(dest = d)
+            if self.should_send( obj, destination = d, **info):
+                should_send_destinations.add( d)
+        for d in should_send_destinations:
+            con = d.protocol
+            con._synchronize_object(obj,
+            attributes = attributes_to_sync,
+            operation = operation)
+
+
     async     def _create_connection(self, dest):
         "Create a connection on the loop.  This is effectively a coroutine."
         if not hasattr(self, 'loop'): return
@@ -115,7 +136,7 @@ class SyncManager:
                     protocol = bwprotocol.protocol
                     if protocol.cert_hash != dest.cert_hash:
                         raise WrongSyncDestination(dest = dest, got_hash = protocol.cert_hash)
-                
+
                     await dest.connected(self, protocol, bwprotocol = bwprotocol)
                     self._connections[dest.cert_hash] = protocol
                     close_transport = None
@@ -142,8 +163,8 @@ class SyncManager:
                 del self._connecting[dest.cert_hash]
             if close_transport: close_transport.close()
 
-    
-                
+
+
 
     async def _incoming_connection(self, protocol):
         old = None
@@ -184,9 +205,9 @@ class SyncManager:
                              exc_info = exc)
             if protocol.dest.host is None: return
             self._connecting[protocol.dest.cert_hash] = self.loop.create_task(self._create_connection(protocol.dest))
-            
-                    
-                
+
+
+
     def add_destination(self, dest):
         if dest.cert_hash is None or dest.name is None:
             raise ValueError("cert_hash and name are required in SyncDestination before adding")
@@ -219,6 +240,7 @@ class SyncManager:
                 'manager': self}
         if protocol.dest: info['sender'] = protocol.dest
         self._validate_message(msg)
+        info['operation'] = msg['_sync_operation']
         cls, registry = self._find_registered_class(msg['_sync_type'])
         if self.should_listen(msg, cls, registry,
                               sender = info.get('sender', None)) is not True:
@@ -242,11 +264,24 @@ exc_info = e)
 
     def _validate_message(self, msg):
         if not isinstance(msg, dict):
-            raise protocol.MessageError('Message is a {} not a dict'.format(msg.__class__.__name__))
+            raise interface.SyncBadEncodingError('Message is a {} not a dict'.format(msg.__class__.__name__))
+        msg.setdefault('_sync_operation', 'sync')
         for k in msg:
             if k.startswith('_') and k not in protocol.sync_magic_attributes:
                 raise interface.SyncBadEncodingError('{} is not a valid attribute in a sync message'.format(k), msg = msg)
 
+    def should_send(self, obj, destination, registry, sync_type, **info):
+        info['registry'] = registry
+        info['sync_type'] = sync_type
+        info['destination'] = destination
+        if not destination.should_send( obj, **info):
+            return False
+        if not registry.should_send( obj, **info):
+            return False
+        if not obj.sync_should_send(**info):
+            return False
+        return True
+    
     def should_listen(self, msg, cls, registry, sender):
         msg['_sync_authorized'] = self #To confirm we've been called.
         if sender.should_listen(msg, cls, registry = registry, manager = self) is not True:
@@ -256,12 +291,14 @@ exc_info = e)
         if cls.sync_should_listen(msg, registry = registry, sender = sender) is not True:
             raise SyntaxError('sync_should_listen must return True or raise')
         return True
+
     
+
     def _find_registered_class(self, name):
         for reg in self.registries:
             if name in reg.registry: return reg.registry[name], reg
         raise UnregisteredSyncClass('{} is not registered for this manager'.format(name))
-    
+
     def close(self):
         if not hasattr(self,'_transports'): return
         for c in self._connections.values():
@@ -293,7 +330,7 @@ exc_info = e)
     def destinations(self):
         "A set of destinations for this manager"
         return set(self._destinations.values())
-    
+
 class SyncServer(SyncManager):
 
     "A SyncManager that accepts incoming connections"
@@ -321,7 +358,7 @@ class SyncServer(SyncManager):
             self._server = None
         super().close()
 
-        
+
 
 class SyncDestination:
 
@@ -338,7 +375,7 @@ class SyncDestination:
         self.bw_per_sec = bw_per_sec
         self.protocol = None
         self.connect_at = 0
-        
+
     def __repr__(self):
         return "<SyncDestination {{name: '{name}', hash: {hash}}}".format(
             name = self.name,
@@ -351,7 +388,7 @@ class SyncDestination:
         '''Must return True or raise'''
         return True
 
-    
+
 
     async def connected(self, manager, protocol, bwprotocol):
         '''Interface point; called by manager when an outgoing or incoming
@@ -368,4 +405,3 @@ class SyncDestination:
         self.bwprotocol = bwprotocol
         bwprotocol.bw_per_quantum = self.bw_per_sec*bwprotocol.bw_quantum
         return
-    

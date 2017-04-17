@@ -181,6 +181,9 @@ class Synchronizable( metaclass = SynchronizableMeta):
         '''Return True or raise SynchronizationUnauthorized'''
         return True
 
+    def sync_should_send(self, destination, **info):
+        "Returns True if this object should be ynchronized to the given destination"
+        return True
 
 
     def sync_hash(self):
@@ -224,10 +227,18 @@ class SyncRegistry:
     '''A registry of Syncable classes.  A connection may accept
     synchronization from one or more registries.  A Syncable typically
     belongs to one registry.  A registry can be thought of as a schema of
-    related objects implementing some related synchronizable interface.'''
+    related objects implementing some related synchronizable interface.
+
+    A registry supports one or more operations on its Synchronizables.
+    Most registries support the 'sync' operation, which requests the
+    full attributes of an object to be flooded to the destinations.
+
+    '''
 
     def __init__(self):
         self.registry = {}
+        self.operations = {}
+        self.register_operation( 'sync', lambda obj, **kw: True)
 
     def associate_with_manager(self, manager):
         "Called by a manager when the registry is in the manager's list of registries.  Should not hold a non weak reference to the manager"
@@ -238,13 +249,24 @@ class SyncRegistry:
             raise ValueError("`{} is already registered in this registry.".format(type_name))
         self.registry[type_name] = cls
 
+    def register_operation(self, operation, handle_incoming):
+        "Add the <operation> operation to the set of operations this class accepts on input.  When an object is synchronized using that operation, call <handle_incoming> passing the same arguments as sync_receive.  Note that self is not explicitly passed; pass in a bound method or use functools.partial if needed."
+        self.operations[operation] = handle_incoming
+        
     def should_listen(self, msg, cls, **info):
         "Authorization check as well as a check on whether we want to ignore the class for some reason"
         return True
 
-    def sync_receive(self, object, **kwargs):
+    def should_send(self, obj, destination, **info):
+        return True
+    
+    def sync_receive(self, object, operation, **kwargs):
         "Called after the object is constructed. May do nothing, may arrange to merge into a database, etc."
-        pass
+        if operation not in self.operations:
+            raise SyncInvalidOperation("{} is not a valid operation for {}"
+                                       .format(operation, self))
+        return self.operations[operation](object, operation = operation, **kwargs)
+    
 
 
     @contextlib.contextmanager
@@ -302,3 +324,16 @@ class SyncBadEncodingError(SyncError):
     def __init__(self, *args, msg = None, **kwargs):
         super().__init__(*args, **kwargs)
         self.msg = msg
+
+class SyncInvalidOperation(SyncError): pass
+
+class SyncNotConnected(SyncError):
+
+    dest = sync_property( constructor = True)
+    
+    def __init__(self, msg = None, dest = None):
+        if dest and not msg:
+            msg = "Not currently connected to {}".format(dest)
+            super().__init__( msg, dest)
+
+            
