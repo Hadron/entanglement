@@ -7,7 +7,7 @@
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the file
 # LICENSE for details.
 
-import datetime, sqlalchemy
+import contextlib, datetime, sqlalchemy
 from datetime import timezone
 
 from sqlalchemy import Column, Table, String, Integer, DateTime, ForeignKey, inspect
@@ -112,13 +112,25 @@ class SqlSyncRegistry(interface.SyncRegistry):
 
     def associate_with_manager(self, manager):
         self.ensure_session(manager)
-        
 
-    def sync_receive(self, object, manager, **info):
+    @contextlib.contextmanager
+    def sync_context(self, **info):
+        session = self.sessionmaker()
+        class Context: pass
+        ctx = Context()
+        ctx.session = session
+        try: yield ctx
+        finally:
+            session.rollback()
+            session.close()
+            
+
+    def sync_receive(self, object, manager, context, **info):
         # By this point the owner check has already been done
+        session = context.session
         assert object.sync_owner is not None
-        assert object in manager.session
-        manager.session.commit()
+        assert object in session
+        session.commit()
         
 
     
@@ -240,19 +252,24 @@ class SqlSynchronizable(interface.Synchronizable):
         return self.sync_owner is None
 
     @classmethod
-    def _sync_construct(cls, msg, manager = None, registry = None, **info):
+    def _sync_construct(cls, msg, context, manager = None, registry = None, 
+                        **info):
         if manager and registry: registry.ensure_session(manager)
+        session = None
         obj = None
         owner = None
-        if hasattr(manager,'session'):
+        if hasattr(context,'session'):
             primary_keys = map(lambda x:x.name, inspect(cls).primary_key)
             try: primary_key_values = tuple(map(lambda k: msg[k], primary_keys))
             except KeyError as e:
                 raise interface.SyncBadEncodingError("All primary keys must be present in the encoding", msg = msg) from e
             sender = info['sender']
-            if sender not in manager.session: manager.session.add(sender)
-            obj = manager.session.query(cls).get(primary_key_values)
-            owner = SyncOwner.find_or_create(manager.session, info['sender'], msg)
+            session = context.session
+            sender_inspect = inspect(sender)
+            load_required = (not sender_inspect.persistent) or  sender_inspect.modified
+            sender = session.merge(sender, load = load_required)
+            obj = session.query(cls).get(primary_key_values)
+            owner = SyncOwner.find_or_create(session, sender, msg)
         if obj is not None and obj.sync_owner_id != owner.id:
             raise interface.SyncBadOwnerError("Object owned by {}, but sent by {}".format(
                 obj.sync_owner.destination, owner.destination))
@@ -261,9 +278,9 @@ class SqlSynchronizable(interface.Synchronizable):
             return obj
         obj =  super()._sync_construct(msg,**info)
         obj.sync_owner = owner
-        if hasattr(manager, 'session'):
+        if session:
             assert owner is not None
-            manager.session.add(obj)
+            session.add(obj)
         return obj
     
         
