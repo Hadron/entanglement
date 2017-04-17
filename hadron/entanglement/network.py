@@ -220,7 +220,8 @@ class SyncManager:
         if protocol.dest: info['sender'] = protocol.dest
         self._validate_message(msg)
         cls, registry = self._find_registered_class(msg['_sync_type'])
-        if self.should_listen(msg, cls, registry) is not True:
+        if self.should_listen(msg, cls, registry,
+                              sender = info.get('sender', None)) is not True:
             # Failure should raise because ignoring an exception takes
             # active work, leading to a small probability of errors.
             # However, active authorization should be an explicit true
@@ -230,11 +231,14 @@ class SyncManager:
             raise SyntaxError("When SyncManager.should_listen is overwridden, you must call super().should_listen")
         del msg['_sync_authorized']
         try:
-            registry.sync_receive(cls.sync_receive(msg, **info), **info)
+            with registry.sync_context(sync_type = cls, **info) as ctx:
+                info['context'] = ctx
+                registry.sync_receive(cls.sync_receive(msg, **info), **info)
         except Exception as e:
-            registry.exception_receiving(e, sync_type = cls, **info)
             logger.exception("Error receiving a {}".format(cls.__name__),
 exc_info = e)
+        finally:
+            if 'context' in info: del info['context']
 
     def _validate_message(self, msg):
         if not isinstance(msg, dict):
@@ -243,11 +247,13 @@ exc_info = e)
             if k.startswith('_') and k not in protocol.sync_magic_attributes:
                 raise interface.SyncBadEncodingError('{} is not a valid attribute in a sync message'.format(k), msg = msg)
 
-    def should_listen(self, msg, cls, registry):
+    def should_listen(self, msg, cls, registry, sender):
         msg['_sync_authorized'] = self #To confirm we've been called.
-        if registry.should_listen(msg, cls)is not True:
+        if sender.should_listen(msg, cls, registry = registry, manager = self) is not True:
+                        raise SyntaxError('should_listen must return True or raise')
+        if registry.should_listen(msg, cls, sender = sender)is not True:
             raise SyntaxError('should_listen must return True or raise')
-        if cls.sync_should_listen(msg) is not True:
+        if cls.sync_should_listen(msg, registry = registry, sender = sender) is not True:
             raise SyntaxError('sync_should_listen must return True or raise')
         return True
     
@@ -341,7 +347,7 @@ class SyncDestination:
     def should_send(self, obj, manager , **kwargs):
         return True
 
-    def should_listen(self, msg, manager, cls, **kwargs):
+    def should_listen(self, msg, cls, **kwargs):
         '''Must return True or raise'''
         return True
 

@@ -7,7 +7,7 @@
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the file
 # LICENSE for details.
 
-import asyncio, types
+import asyncio, contextlib, types
 
 
 def default_encoder(obj, propname):
@@ -177,7 +177,7 @@ class Synchronizable( metaclass = SynchronizableMeta):
         return obj
 
     @classmethod
-    def sync_should_listen(self, msg):
+    def sync_should_listen(self, msg, **info):
         '''Return True or raise SynchronizationUnauthorized'''
         return True
 
@@ -238,7 +238,7 @@ class SyncRegistry:
             raise ValueError("`{} is already registered in this registry.".format(type_name))
         self.registry[type_name] = cls
 
-    def should_listen(self, msg, cls):
+    def should_listen(self, msg, cls, **info):
         "Authorization check as well as a check on whether we want to ignore the class for some reason"
         return True
 
@@ -246,10 +246,15 @@ class SyncRegistry:
         "Called after the object is constructed. May do nothing, may arrange to merge into a database, etc."
         pass
 
-    def exception_receiving(self, exc, **kwargs):
-        "Called when an exception happens constructing an object. or in registry.sync_receive.  The manager will make sure the exception is logged."
-        pass
 
+    @contextlib.contextmanager
+    def sync_context(self, **info):
+        '''Create a context in which the sync_receive call can be run.
+        Permits exceptions to be trapped and isolation of objects like
+        SQL sessions.  At least for now, no need to call the
+        superclass method when overriding.
+        '''
+        yield
 
 
 error_registry = SyncRegistry()
@@ -297,4 +302,3 @@ class SyncBadEncodingError(SyncError):
     def __init__(self, *args, msg = None, **kwargs):
         super().__init__(*args, **kwargs)
         self.msg = msg
-
