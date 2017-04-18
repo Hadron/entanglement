@@ -7,10 +7,10 @@
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the file
 # LICENSE for details.
 
-import contextlib, datetime, sqlalchemy
+import contextlib, datetime, json, sqlalchemy
 from datetime import timezone
 
-from sqlalchemy import Column, Table, String, Integer, DateTime, ForeignKey, inspect
+from sqlalchemy import Column, Table, String, Integer, DateTime, ForeignKey, inspect, TEXT
 from sqlalchemy.orm import load_only
 import sqlalchemy.exc
 import sqlalchemy.orm, sqlalchemy.ext.declarative, sqlalchemy.ext.declarative.api
@@ -25,6 +25,7 @@ class SqlSyncSession(sqlalchemy.orm.Session):
         super().__init__(*args, **kwargs)
         self.manager = manager
         self.sync_dirty = set()
+        self.sync_deleted = set()
         @sqlalchemy.events.event.listens_for(self, "before_flush")
         def before_flush(session, internal, instances):
             serial_insert = Serial.__table__.insert().values(timestamp = datetime.datetime.now())
@@ -37,22 +38,42 @@ class SqlSyncSession(sqlalchemy.orm.Session):
                         serial_flushed = True
                     if inst.sync_owner_id is None and inst.sync_owner is None:
                         inst.sync_serial = new_serial
+            for inst in session.deleted:
+                if isinstance( inst, SqlSynchronizable):
+                    if not serial_flushed:
+                        new_serial = session.execute(serial_insert).lastrowid
+                        serial_flushed = True
+                    if inst.sync_owner_id is None and inst.sync_owner is None:
+                        self.sync_deleted.add(inst)
+                        inst.sync_serial = new_serial
+                        deleted = SyncDeleted()
+                        deleted.sync_serial = new_serial
+                        deleted.sync_type = inst.sync_type
+                        deleted.primary_key = json.dumps(inst.to_sync())
+                        session.add(deleted)
+
         @sqlalchemy.events.event.listens_for(self, "after_commit")
         def receive_after_commit(session):
             if self.manager:
                 for x in self.sync_dirty: assert not self.is_modified(x)
-                self.manager.loop.call_soon_threadsafe(self._do_sync, list(self.sync_dirty))
+                self.manager.loop.call_soon_threadsafe(self._do_sync, list(self.sync_dirty), list(self.sync_deleted))
             self.sync_dirty.clear()
+            self.sync_deleted.clear()
+
         @sqlalchemy.events.event.listens_for(self, 'after_rollback')
         def after_rollback(session):
             session.sync_dirty.clear()
+            session.sync_deleted.clear()
 
-    def _do_sync(self, objects):
+    def _do_sync(self, dirty_objects, deleted_objects):
         #This is called in the event loop and thus in the thread of the manager
-        objects = list(map(lambda x: self.manager.session.merge(x), objects))
-        serial = max(map( lambda x: x.sync_serial, objects))
+        objects = list(map(lambda x: self.manager.session.merge(x), dirty_objects))
+        serial = max(map( lambda x: x.sync_serial, objects + deleted_objects))
         for o in objects:
             self.manager.synchronize(o)
+        for o in deleted_objects:
+            self.manager.synchronize(o, operation = 'delete',
+                                     attributes_to_sync  = o.sync_primary_keys)
         for c in self.manager.connections:
             dest = c.dest
             dest.outgoing_serial = max(dest.outgoing_serial, serial)
@@ -96,12 +117,16 @@ class SqlSyncRegistry(interface.SyncRegistry):
     inherited_registries = [_internal.sql_meta_messages]
 
     def __init__(self, *args,
-                 sessionmaker = sync_session_maker(),
+                 sessionmaker = None,
                  bind = None,
                  **kwargs):
+        super().__init__(*args, **kwargs)
+        self.register_operation('sync', self.incoming_sync)
+        self.register_operation( 'delete', self.incoming_delete)
+        if sessionmaker is None:
+            sessionmaker = sync_session_maker()
         if bind is not None: sessionmaker.configure(bind = bind)
         self.sessionmaker = sessionmaker
-        super().__init__(*args, **kwargs)
 
     @classmethod
     def create_bookkeeping(self, bind):
@@ -124,9 +149,15 @@ class SqlSyncRegistry(interface.SyncRegistry):
         finally:
             session.rollback()
             session.close()
-            
 
-    def sync_receive(self, object, manager, context, **info):
+    def incoming_delete( self, obj, context, **info):
+        session = context.session
+        assert obj.sync_owner is not None
+        assert obj in session
+        session.delete(obj)
+        session.commit()
+
+    def incoming_sync(self, object, manager, context, **info):
         # By this point the owner check has already been done
         session = context.session
         assert object.sync_owner is not None
@@ -224,6 +255,12 @@ class SyncOwner(_internal_base):
                                             {'cert_hash': dest.cert_hash},
                                             {'name': dest.name,
                                              'host': dest.host})})
+
+class SyncDeleted( _internal_base):
+    __tablename__ = 'sync_deleted'
+    id = Column( Integer, primary_key = True)
+    sync_type = Column( String(128), nullable = False)
+    primary_key = Column( TEXT, nullable = False)
     
 
 

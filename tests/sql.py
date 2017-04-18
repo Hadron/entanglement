@@ -269,7 +269,30 @@ class TestSql(unittest.TestCase):
         with entanglement_logs_disabled(), \
              wait_for_call(self.loop, sql.internal.sql_meta_messages, "handle_wrong_epoch"):
             sync_manager_destinations(self.server, force_resync = True)
-        
+
+    def testDelete(self):
+        "Test Object Deletion"
+        s = self.manager.session
+        s.manager = self.manager
+        t = Table1()
+        t.ch = self.d1.cert_hash
+        s.add(t)
+        with wait_for_call(self.loop, sql.internal.sql_meta_messages, 'handle_you_have'):
+            s.commit()
+        s.delete(t)
+        t2 = self.server.session.query( Table1).filter_by(
+                id = t.id).one()
+        assert t.ch == t2.ch
+        m = mock.MagicMock( wraps= Base.registry.incoming_delete)
+        with mock.patch.dict( Base.registry.operations, 
+                              delete = m
+        ): 
+            with wait_for_call(self.loop, sql.internal.sql_meta_messages, 'handle_you_have'):
+                s.commit()
+        self.assertEqual( m.call_count, 1)
+        t2 = self.server.session.query( Table1).filter_by(
+            id = t.id).all()
+        assert t2 == []
         
 
 #import logging
