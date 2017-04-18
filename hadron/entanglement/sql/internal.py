@@ -70,6 +70,8 @@ class _SqlMetaRegistry(SyncRegistry):
         finally: sender.i_have_task = None
 
     def handle_you_have(self, obj, sender, manager):
+        manager.session.rollback()
+        if not sender in manager.session: manager.session.add(sender)
         if sender.incoming_serial > obj.serial:
             logger.error("{d} claims we have serial {obj} but we already have {ours}".format(
                 ours = sender.incoming_serial,
@@ -80,8 +82,6 @@ class _SqlMetaRegistry(SyncRegistry):
         logger.debug("We have serial {s} from {d}".format(
             s = obj.serial,
             d = sender))
-        if not manager.session.is_active: manager.session.rollback()
-        if not sender in manager.session: manager.session.add(sender)
         manager.session.commit()
 
     def handle_wrong_epoch(self, obj,  sender, manager):

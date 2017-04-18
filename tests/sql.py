@@ -257,7 +257,8 @@ class TestSql(unittest.TestCase):
         self.assertEqual(len(self.server.destinations), 1)
         # Confirm it is not trying to resync
         new_epoch = self.server.destinations.pop().incoming_epoch
-        new_epoch = new_epoch.replace(tzinfo = datetime.timezone.utc)
+        if current_epoch.tzinfo:
+            new_epoch = new_epoch.replace(tzinfo = datetime.timezone.utc)
         self.assertEqual(current_epoch, new_epoch)
 
     def testForceResync(self):

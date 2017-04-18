@@ -198,7 +198,7 @@ class  SqlSyncDestination(_internal_base, network.SyncDestination):
     async def connected(self, manager, *args, **kwargs):
         res = await super().connected(manager, *args, **kwargs)
         if not self in manager.session: manager.session.add(self)
-        manager.session.flush()
+        manager.session.commit()
         i_have = _internal.IHave()
         i_have.serial = self.incoming_serial
         i_have.epoch = self.incoming_epoch
