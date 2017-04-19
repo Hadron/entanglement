@@ -315,9 +315,10 @@ class SqlSynchronizable(interface.Synchronizable):
 
     '''
 
-    @sqlalchemy.ext.declarative.api.declared_attr def
-    sync_serial(self): if hasattr(self,'__table__'): return return
-    Column(Integer, nullable=False, index = True)
+    @sqlalchemy.ext.declarative.api.declared_attr
+    def    sync_serial(self):
+        if hasattr(self,'__table__'): return
+        return    Column(Integer, nullable=False, index = True)
 
     sync_serial = interface.sync_property(wraps = sync_serial)
 
