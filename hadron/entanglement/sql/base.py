@@ -56,7 +56,7 @@ class SqlSyncSession(sqlalchemy.orm.Session):
         def receive_after_commit(session):
             if self.manager:
                 for x in self.sync_dirty: assert not self.is_modified(x)
-                if self.sync_dirty or  self.sync_deleted: 
+                if self.sync_dirty or  self.sync_deleted:
                     self.manager.loop.call_soon_threadsafe(self._do_sync, list(self.sync_dirty), list(self.sync_deleted))
             self.sync_dirty.clear()
             self.sync_deleted.clear()
@@ -81,8 +81,8 @@ class SqlSyncSession(sqlalchemy.orm.Session):
             if not dest.you_have_task:
                 dest.you_have_task = self.manager.loop.create_task(_internal.gen_you_have_task(dest, self.manager))
                 dest.you_have_task._log_destroy_pending = False
-                
-                
+
+
 
 def sync_session_maker(*args, **kwargs):
     return sqlalchemy.orm.sessionmaker(class_ = SqlSyncSession, *args, **kwargs)
@@ -106,7 +106,7 @@ class SqlSyncMeta(interface.SynchronizableMeta, sqlalchemy.ext.declarative.api.D
         # NotImplementedError; catch that and construct primary
         # keys if we can
         try: cls.sync_primary_keys
-        except NotImplementedError: 
+        except NotImplementedError:
             try:
                 cls.sync_primary_keys = tuple(map(
                     lambda x: x.name, inspect(cls).primary_key))
@@ -164,9 +164,9 @@ class SqlSyncRegistry(interface.SyncRegistry):
         assert object.sync_owner is not None
         assert object in session
         session.commit()
-        
 
-    
+
+
 _internal_base = sqlalchemy.ext.declarative.declarative_base()
 
 class Serial(_internal_base):
@@ -239,7 +239,7 @@ class  SqlSyncDestination(_internal_base, network.SyncDestination):
         return res
 
 
-    
+
 
 class SyncOwner(_internal_base):
     __tablename__ = "sync_owners"
@@ -298,11 +298,12 @@ class SyncDeleted( _internal_base):
         locals()[meth] = proxyfn(meth)
     del proxyfn
 
-    
+
 
 class SqlSynchronizable(interface.Synchronizable):
 
-    '''A SQLAlchemy mapped class that can be synchronized.  By default
+    '''
+    A SQLAlchemy mapped class that can be synchronized.  By default
     every column becomes e sync_property.  You can explicitly set
     sync_property around a Column if you need to override the encoder
     or decoder, although see hadron.entanglement.sql.encoder for a
@@ -311,7 +312,9 @@ class SqlSynchronizable(interface.Synchronizable):
     must be able to make a decision about whether to send a deleted
     object when presented with an object containing only the primary
     keys and no relationships.
+
     '''
+
     @sqlalchemy.ext.declarative.api.declared_attr def
     sync_serial(self): if hasattr(self,'__table__'): return return
     Column(Integer, nullable=False, index = True)
@@ -330,13 +333,13 @@ class SqlSynchronizable(interface.Synchronizable):
                                                                          primaryjoin = SyncOwner.id == self.__table__.c.sync_owner_id)
         return sqlalchemy.orm.relationship(SyncOwner, foreign_keys = [self.sync_owner_id])
 
-        
+
     @property
     def sync_is_local(self):
         return self.sync_owner is None
 
     @classmethod
-    def _sync_construct(cls, msg, context, manager = None, registry = None, 
+    def _sync_construct(cls, msg, context, manager = None, registry = None,
                         **info):
         if manager and registry: registry.ensure_session(manager)
         session = None
@@ -366,9 +369,9 @@ class SqlSynchronizable(interface.Synchronizable):
             assert owner is not None
             session.add(obj)
         return obj
-    
-        
-def sql_sync_declarative_base(*args, registry = None, 
+
+
+def sql_sync_declarative_base(*args, registry = None,
                               registry_class = SqlSyncRegistry,
                               **kwargs):
     base =  sqlalchemy.ext.declarative.declarative_base(cls = SqlSynchronizable, metaclass = SqlSyncMeta, *args, **kwargs)
