@@ -106,8 +106,11 @@ class TestSql(unittest.TestCase):
                                   "client")
         self.server.add_destination(self.d2)
         self.manager.add_destination(self.d1)
-        self.manager.run_until_complete(asyncio.wait(self.manager._connecting.values()))
-        self.manager.run_until_complete(asyncio.wait([x.sync_drain() for x in self.manager.connections + self.server.connections]))
+        with wait_for_call(self.loop,
+                           sql.internal.sql_meta_messages,
+                           'handle_i_have', 4):
+            self.manager.run_until_complete(asyncio.wait(self.manager._connecting.values()))
+
         sql.internal.sql_meta_messages.yield_between_classes = False
 
 
