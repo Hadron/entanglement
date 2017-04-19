@@ -7,7 +7,7 @@
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the file
 # LICENSE for details.
 
-import asyncio, datetime, gc, ssl, unittest, uuid, warnings
+import asyncio, datetime, gc, json, ssl, unittest, uuid, warnings
 from contextlib import contextmanager
 from unittest import mock
 
@@ -296,6 +296,42 @@ class TestSql(unittest.TestCase):
         t2 = self.server.session.query( Table1).filter_by(
             id = t.id).all()
         assert t2 == []
+        self.assertEqual( self.d2.incoming_serial, t.sync_serial)
+        deleted = s.query( sql.base.SyncDeleted).first()
+        self.assertEqual( deleted.sync_serial, t.sync_serial)
+        self.assertEqual( t.to_sync(), json.loads(deleted.primary_key))
+
+    def testDeleteIHave(self):
+        "Test that at connection start up, IHave handling will delete objects"
+        t = Table1(ch = self.d2.cert_hash)
+        s = self.manager.session
+        s.manager = self.manager
+        s.add(t)
+        with wait_for_call(self.loop,
+                           sql.internal.sql_meta_messages, 'handle_you_have'):
+            s.commit()
+        with entanglement_logs_disabled():
+            self.manager.remove_destination(self.d1)
+            self.loop.call_soon(self.loop.stop)
+            self.loop.run_forever()
+            self.loop.run_until_complete(asyncio.sleep(0.1))
+        s.delete(t)
+        s.commit()
+        self.assertEqual(self.manager.connections, [])
+        self.assertEqual(self.server.connections, [])
+        self.d1.connect_at = 0
+        self.manager.add_destination(self.d1)
+        self.assertEqual(
+            self.server.session.query(Table1).filter_by(id = t.id).count(),
+                1)
+        self.assertEqual(s.query(sql.base.SyncDeleted).count(), 1)
+        with wait_for_call(self.loop, sql.internal.sql_meta_messages,
+                               'handle_you_have'):
+            pass
+        self.assertEqual(
+            self.server.session.query(Table1).filter_by(id = t.id).count(),
+            0)
+            
         
 
 #import logging

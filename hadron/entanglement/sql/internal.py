@@ -34,7 +34,7 @@ class _SqlMetaRegistry(SyncRegistry):
 
     @asyncio.coroutine
     def handle_i_have(self, obj, sender, manager):
-        from .base import SqlSynchronizable
+        from .base import SqlSynchronizable, SyncDeleted
         try:
             if sender.cert_hash not in manager._connections: return
             if sender.outgoing_epoch.tzinfo is None:
@@ -47,6 +47,21 @@ class _SqlMetaRegistry(SyncRegistry):
             session = manager.session
             max_serial = obj.serial
             logger.info("{} has serial {}; synchronizing changes since then".format( sender, max_serial))
+            if obj.serial > 0:
+                for d in session.query(SyncDeleted).filter(SyncDeleted.sync_serial > max_serial):
+                    try: cls, registry  = manager._find_registered_class(d.sync_type)
+                    except UnregisteredSyncClass:
+                        logger.error("{} is not a registered sync class for this manager, but deletes are recorded for it; forcing full resync of {}".format(
+                            d.sync_type, sender))
+                        sender.outgoing_epoch = datetime.datetime.now(datetime.timezone.utc)
+                        session.commit()
+                        yield from self.handle_i_have(self, obj, sender, manager)
+                    d.registry = registry
+                    manager.synchronize(d, operation = 'delete',
+                                        destinations = [sender],
+                                        attributes_to_sync = d.sync_primary_keys)
+                    max_serial = max(max_serial, d.sync_serial)
+
             for c in classes_in_registries(manager.registries):
                 try:
                     if self.yield_between_classes: yield

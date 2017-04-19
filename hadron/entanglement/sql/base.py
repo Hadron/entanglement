@@ -56,7 +56,8 @@ class SqlSyncSession(sqlalchemy.orm.Session):
         def receive_after_commit(session):
             if self.manager:
                 for x in self.sync_dirty: assert not self.is_modified(x)
-                self.manager.loop.call_soon_threadsafe(self._do_sync, list(self.sync_dirty), list(self.sync_deleted))
+                if self.sync_dirty or  self.sync_deleted: 
+                    self.manager.loop.call_soon_threadsafe(self._do_sync, list(self.sync_dirty), list(self.sync_deleted))
             self.sync_dirty.clear()
             self.sync_deleted.clear()
 
@@ -246,6 +247,9 @@ class SyncOwner(_internal_base):
     destination_id = Column(Integer, ForeignKey(SqlSyncDestination.id, ondelete = 'cascade'),
                             index = True, nullable = False)
     destination = sqlalchemy.orm.relationship(SqlSyncDestination)
+    # Note that ihave and youhave probably need to be owner level
+    # messages rather than destination level messages, but we don't
+    # even pretend to deal with that complexity yet.
 
     @classmethod
     def find_or_create(self, session, dest, msg):
@@ -261,15 +265,56 @@ class SyncDeleted( _internal_base):
     id = Column( Integer, primary_key = True)
     sync_type = Column( String(128), nullable = False)
     primary_key = Column( TEXT, nullable = False)
-    
+    sync_serial = Column(Integer, nullable = False, index = True)
 
+    @property
+    def _obj(self):
+        if hasattr(self, "_constructed_obj"): return self._constructed_obj
+        if not self.registry: return None
+        cls = self.registry.registry[self.sync_type]
+        msg = json.loads(self.primary_key)
+        msg['_sync_type'] =  self.sync_type
+        msg['_sync_operation'] = 'delete'
+        self._constructed_obj = cls.sync_receive(msg, context = self)
+        return self._constructed_obj
+
+    def proxyfn(method):
+        def fn(self, *args, **kwargs):
+            return getattr(self._obj, method)(*args, **kwargs)
+        return fn
+    # This class is not Synchronizable because we don't want the
+    # metaclass, but this class can be passed to manager.synchronize
+    # (although cannot be the target of a receive).  That's intended
+    # for the special case of the IHave handler synthesizing delete
+    # operations for objects deleted since the serial number the other
+    # side has.  To do this, we construct an object by "receiving"
+    # only its primary keys and then proxying methods like to_sync to
+    # that object.  Since we proxy sync_compatible and sync_hash, a
+    # resurrection of the object will coalesce with us in an outgoing
+    # sync queue.  Since IHave processes deletes before other objects,
+    # the resurrection will take priority.
+    for meth in ('to_sync', 'sync_should_send', 'sync_primary_keys',
+                 'sync_hash', 'sync_compatible'):
+        locals()[meth] = proxyfn(meth)
+    del proxyfn
+
+    
 
 class SqlSynchronizable(interface.Synchronizable):
 
-    @sqlalchemy.ext.declarative.api.declared_attr
-    def sync_serial(self):
-        if hasattr(self,'__table__'): return
-        return Column(Integer, nullable=False, index = True)
+    '''A SQLAlchemy mapped class that can be synchronized.  By default
+    every column becomes e sync_property.  You can explicitly set
+    sync_property around a Column if you need to override the encoder
+    or decoder, although see hadron.entanglement.sql.encoder for a
+    type map that can be used in most cases.  The sync_should_send
+    method on this class and should_send on any containing registries
+    must be able to make a decision about whether to send a deleted
+    object when presented with an object containing only the primary
+    keys and no relationships.
+    '''
+    @sqlalchemy.ext.declarative.api.declared_attr def
+    sync_serial(self): if hasattr(self,'__table__'): return return
+    Column(Integer, nullable=False, index = True)
 
     sync_serial = interface.sync_property(wraps = sync_serial)
 
