@@ -32,18 +32,18 @@ class SqlSyncSession(sqlalchemy.orm.Session):
             serial_flushed = False
             for inst in session.new | session.dirty:
                 if isinstance(inst, SqlSynchronizable):
-                    self.sync_dirty.add(inst)
-                    if not serial_flushed:
-                        new_serial = session.execute(serial_insert).lastrowid
-                        serial_flushed = True
-                    if inst.sync_owner_id is None and inst.sync_owner is None:
+                    if session.is_modified(inst) and inst.sync_owner_id is None and inst.sync_owner is None:
+                        self.sync_dirty.add(inst)
+                        if not serial_flushed:
+                            new_serial = session.execute(serial_insert).lastrowid
+                            serial_flushed = True
                         inst.sync_serial = new_serial
             for inst in session.deleted:
                 if isinstance( inst, SqlSynchronizable):
-                    if not serial_flushed:
-                        new_serial = session.execute(serial_insert).lastrowid
-                        serial_flushed = True
                     if inst.sync_owner_id is None and inst.sync_owner is None:
+                        if not serial_flushed:
+                            new_serial = session.execute(serial_insert).lastrowid
+                            serial_flushed = True
                         self.sync_deleted.add(inst)
                         inst.sync_serial = new_serial
                         deleted = SyncDeleted()
