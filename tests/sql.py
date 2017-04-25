@@ -142,9 +142,12 @@ class TestSql(unittest.TestCase):
         with wait_for_call(self.loop, Base.registry, 'sync_receive'):
             self.session.add(t)
             self.session.commit()
+            #While we're add it make sure that post-commit changes are not sent
+            t.ch = CertHash(b'o' *32)
         t2 = self.server.session.query(Table1).get(t.id)
         assert t2 is not None
         assert t2.sync_owner.destination.cert_hash is not None
+        self.session.refresh(t)
         self.assertEqual(t2.ch, t.ch)
 
     def testGetOrCreate(self):

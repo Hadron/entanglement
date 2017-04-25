@@ -57,7 +57,14 @@ class SqlSyncSession(sqlalchemy.orm.Session):
             if self.manager:
                 for x in self.sync_dirty: assert not self.is_modified(x)
                 if self.sync_dirty or  self.sync_deleted:
-                    self.manager.loop.call_soon_threadsafe(self._do_sync, list(self.sync_dirty), list(self.sync_deleted))
+                    s_new = sqlalchemy.orm.Session(bind = self.bind)
+                    objects = []
+                    for o in self.sync_dirty:
+                        o = s_new.merge(o)
+                        sqlalchemy.orm.session.make_transient(o)
+                        sqlalchemy.orm.session.make_transient_to_detached(o)
+                        objects.append(o)
+                    self.manager.loop.call_soon_threadsafe(self._do_sync, objects, list(self.sync_deleted))
             self.sync_dirty.clear()
             self.sync_deleted.clear()
 
@@ -68,9 +75,8 @@ class SqlSyncSession(sqlalchemy.orm.Session):
 
     def _do_sync(self, dirty_objects, deleted_objects):
         #This is called in the event loop and thus in the thread of the manager
-        objects = list(map(lambda x: self.manager.session.merge(x), dirty_objects))
-        serial = max(map( lambda x: x.sync_serial, objects + deleted_objects))
-        for o in objects:
+        serial = max(map( lambda x: x.sync_serial, dirty_objects + deleted_objects))
+        for o in dirty_objects:
             self.manager.synchronize(o)
         for o in deleted_objects:
             self.manager.synchronize(o, operation = 'delete',
