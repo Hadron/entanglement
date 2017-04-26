@@ -321,6 +321,10 @@ exc_info = e)
     def __del__(self):
         self.close()
 
+    def dest_by_cert_hash(self, cert_hash):
+        cert_hash = CertHash(cert_hash)
+        return self._destinations.get(cert_hash, None)
+    
     @property
     def connections(self):
         "Return a list of all active protocol objects"

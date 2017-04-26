@@ -21,7 +21,7 @@ assert _msg_header_size == 4
 
 class DirtyMember:
 
-    __slots__ = ('obj', 'operation')
+    __slots__ = ('obj', 'operation', 'attrs')
 
     def __eq__(self, other):
         return self.obj.sync_compatible(other.obj)
@@ -40,14 +40,20 @@ class DirtyMember:
             k = keydict,
             o = repr(self.obj))
 
-    def update(self, obj, operation):
+    def update(self, obj, operation, attrs):
         assert self.obj.sync_compatible(obj)
+        if (attrs or self.attrs) and (self.attrs - set(attrs)): #Removing attributes
+            raise NotImplementedError("Would need merge to handle removing outgoing attributes")
         self.obj = obj
         self.operation = operation
+        self.attrs = frozenset(attrs) if attrs else None
 
-    def __init__(self, obj, operation):
+    def __init__(self, obj, operation, attrs):
         self.obj = obj
         self.operation = operation
+        if attrs:
+            self.attrs = frozenset(attrs)
+        else: self.attrs = None
 
 class SyncProtocol(asyncio.Protocol):
 
@@ -74,11 +80,11 @@ class SyncProtocol(asyncio.Protocol):
     def _synchronize_object(self,obj,
                             operation, attributes):
         """Send obj out to be synchronized; this is an internal interface that should only be called by SyncManager.synchronize"""
-        elt = DirtyMember(obj, operation)
+        elt = DirtyMember(obj, operation, attributes)
         if elt in self.current_dirty:
-            self.current_dirty[elt].update(obj, operation)
+            self.current_dirty[elt].update(obj, operation, attributes)
         else:
-            self.dirty.setdefault(elt, elt).update(obj, operation)
+            self.dirty.setdefault(elt, elt).update(obj, operation, attributes)
         if self.task is None:
             self.task = self.loop.create_task(self._run_sync())
 

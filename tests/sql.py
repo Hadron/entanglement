@@ -64,12 +64,16 @@ class TableInherits(TableBase):
                 ForeignKey(TableBase.id, ondelete = "cascade"),
                 primary_key = True)
     info = Column(String(30))
+    info2 = Column(String(30))
     __mapper_args__ = {'polymorphic_identity': "inherits"}
 
 class AlternateSyncDestination(SqlSyncDestination):
 
 
     def new_method(self): pass
+
+manager_registry = SqlSyncRegistry()
+manager_registry.registry = Base.registry.registry
     
     
 class TestSql(unittest.TestCase):
@@ -83,6 +87,7 @@ class TestSql(unittest.TestCase):
         Session = sync_session_maker()
         self.session = Session(bind = self.e2)
         Base.registry.sessionmaker.configure(bind = self.e1)
+        manager_registry.sessionmaker.configure( bind = self.e2)
         Base.metadata.create_all(bind = self.e1)
         Base.metadata.create_all(bind = self.e2)
         Base.registry.create_bookkeeping(self.e1)
@@ -95,10 +100,9 @@ class TestSql(unittest.TestCase):
                                    cert = "host2.pem",
                                    key = "host2.key",
                                    loop = self.server.loop,
-                                   registries = [Base.registry],
+                                   registries = [manager_registry],
                                    port = 9120)
         self.loop = self.server.loop
-        self.manager.session = Base.registry.sessionmaker(bind = self.e2)
         self.d1 = SqlSyncDestination(certhash_from_file("host1.pem"),
                                   "server", host = "127.0.0.1",
                                   server_hostname = "host1")
@@ -334,8 +338,57 @@ class TestSql(unittest.TestCase):
         self.assertEqual(
             self.server.session.query(Table1).filter_by(id = t.id).count(),
             0)
-            
-        
+
+    def testRemoteUpdate(self):
+        "Test that we can update an object from the remote side"
+        t = TableInherits(info = "blah")
+        self.session.add(t)
+        self.session.manager = self.manager
+        with wait_for_call(self.loop, sql.internal.sql_meta_messages, 'handle_you_have'):
+            self.session.commit()
+        t2 = self.server.session.query(TableInherits).filter_by(
+            id = t.id).one()
+        t2.info = "bazfutz"
+        self.server.session.manager = self.server
+        with wait_for_call(self.loop, sql.internal.sql_meta_messages, 'handle_you_have'):
+            self.server.session.commit()
+            # refetches because of expire after commit
+        self.assertEqual(t.id, t2.id)
+
+    def testRemoteDelete(self):
+        "Test we can delete an object not from its owner"
+        t = TableInherits(info = "blah")
+        self.session.add(t)
+        self.session.manager = self.manager
+        with wait_for_call(self.loop, sql.internal.sql_meta_messages, 'handle_you_have'):
+            self.session.commit()
+        t2 = self.server.session.query(TableInherits).filter_by(
+            id = t.id).one()
+        self.server.session.delete(t2)
+        self.server.session.manager = self.server
+        with wait_for_call(self.loop, sql.internal.sql_meta_messages, 'handle_you_have'):
+            self.server.session.commit()
+        res =  self.session.query(TableInherits).all()
+        self.assertEqual(res, [])
+
+    def testRemoteCombinedUpdates(self):
+        "Confirm updates with non-overlapping attributes coalesce"
+        t = TableInherits(info = "blah")
+        self.session.add(t)
+        self.session.manager = self.manager
+        with wait_for_call(self.loop, sql.internal.sql_meta_messages, 'handle_you_have'):
+            self.session.commit()
+        t2 = self.server.session.query(TableInherits).filter_by(
+            id = t.id).one()
+        t2.info = "bazfutz"
+        self.server.session.manager = self.server
+        with wait_for_call(self.loop, sql.internal.sql_meta_messages, 'handle_you_have'):
+            self.server.session.commit()
+            t2.info2 = "quux"
+            self.server.session.commit()
+            # refetches because of expire after commit
+        self.assertEqual(t.id, t2.id)
+
 
 #import logging
 #logging.basicConfig(level = 'ERROR')
