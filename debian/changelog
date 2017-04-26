@@ -1,3 +1,9 @@
+hadron-entanglement (0.5) unstable; urgency=medium
+
+  *  New version supporting  forward to owner and delete to owner.
+
+ -- Sam Hartman <hartmans@debian.org>  Wed, 26 Apr 2017 11:45:44 -0400
+
 hadron-entanglement (0.4) unstable; urgency=medium
 
   * New version supporting deleting objects
