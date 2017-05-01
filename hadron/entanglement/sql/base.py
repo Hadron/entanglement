@@ -328,7 +328,7 @@ class SyncDeleted( _internal_base):
         msg = json.loads(self.primary_key)
         msg['_sync_type'] =  self.sync_type
         msg['_sync_operation'] = 'delete'
-        self._constructed_obj = cls.sync_receive(msg, context = self)
+        self._constructed_obj = cls.sync_receive(msg, context = self, operation = 'delete', sender = None)
         return self._constructed_obj
 
     def proxyfn(method):
