@@ -1,0 +1,23 @@
+#!/usr/bin/python3
+# Copyright (C) 2017, Hadron Industries, Inc.
+# Entanglement is free software; you can redistribute it and/or modify
+# it under the terms of the GNU Lesser General Public License version 3
+# as published by the Free Software Foundation. It is distributed
+# WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the file
+# LICENSE for details.
+
+import argparse, os, os.path, sys
+_hadron = os.path.join(os.path.dirname(__file__), '../hadron')
+if os.path.exists(_hadron):
+    sys.path.append(os.path.join(_hadron,'..'))
+
+
+from hadron.entanglement.pki import host_cert
+
+parser = argparse.ArgumentParser()
+parser.add_argument('--pki-dir', '-d', default = '/etc/photon/pki')
+parser.add_argument('hosts', nargs = '+')
+args = parser.parse_args()
+for h in args.hosts:
+    host_cert(args.pki_dir, h)
