@@ -1,3 +1,9 @@
+hadron-entanglement (0.6) unstable; urgency=medium
+
+  * Add entanglement-pki
+
+ -- Sam Hartman <hartmans@debian.org>  Tue, 16 May 2017 15:33:33 -0400
+
 hadron-entanglement (0.5) unstable; urgency=medium
 
   *  New version supporting  forward to owner and delete to owner.
