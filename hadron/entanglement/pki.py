@@ -11,24 +11,24 @@ import sh, os, os.path
 from os.path import exists
 
 def gen_site_ca(pki_dir):
-    ca_key = os.path.join(pki_dir, 'ca_key')
-    ca_pem = os.path.join(pki_dir, 'ca_pem')
+    ca_key = os.path.join(pki_dir, 'ca.key')
+    ca_pem = os.path.join(pki_dir, 'ca.pem')
     os.makedirs(pki_dir, exist_ok = True)
-    if not exists('ca_key'):
-        sh.openssl('genrsa', '-out', 'ca_key', '2048',
+    if not exists(ca_key):
+        sh.openssl('genrsa', '-out', ca_key, '2048',
     )
 
     
-    if not exists('ca_pem'):
-        sh.openssl.req('-x509', '-key', 'ca_key',
+    if not exists(ca_pem):
+        sh.openssl.req('-x509', '-key', ca_key,
                    '-subj','/CN=Root CA',
                    '-days', '400',
                    '-extensions', 'v3_ca',
-                   '-out', 'ca_pem')
+                   '-out', ca_pem)
 
 def host_cert(pki_dir, hostname):
-    ca_key = os.path.join(pki_dir, 'ca_key')
-    ca_pem = os.path.join(pki_dir, 'ca_pem')
+    ca_key = os.path.join(pki_dir, 'ca.key')
+    ca_pem = os.path.join(pki_dir, 'ca.pem')
     gen_site_ca(pki_dir)
     hostfile = os.path.join(pki_dir, hostname)
     
@@ -40,8 +40,8 @@ def host_cert(pki_dir, hostname):
                         '-new', '-subj', '/CN={}'.format(hostname),
                         '-key', '{}.key'.format(hostfile),
             ),
-            '-CAkey', 'ca_key',
-            '-CA', 'ca_pem',
+            '-CAkey', ca_key,
+            '-CA', ca_pem,
             '-CAcreateserial',
             '-out', '{}.pem'.format(hostfile),
             '-days', '400',
