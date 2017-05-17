@@ -39,6 +39,15 @@ def register_type(typ, encoder, decoder):
     type_map[typ] = {'encoder': encoder,
                       'decoder': decoder}
 
+    
+
+def uuid_encoder(obj, propname):
+    val = getattr(obj, propname, None)
+    if val: return str(val)
+
+def uuid_decoder(obj, propname, val):
+    return uuid.UUID(val)
+
 
 register_type(DateTime, datetime_encoder, datetime_decoder)
 register_type(DATETIME, datetime_encoder, datetime_decoder)
