@@ -198,10 +198,10 @@ class TestSql(unittest.TestCase):
 
     def testJoinedTable(self):
         "Test Joined Table Inheritance"
-        def to_sync_cb(self):
+        def to_sync_cb(self, attributes):
             nonlocal calls
             calls += 1
-            return orig_to_sync(self)
+            return orig_to_sync(self, attributes)
         orig_to_sync = Base.to_sync
         calls = 0
         #disconnect our session
@@ -371,6 +371,7 @@ class TestSql(unittest.TestCase):
         res =  self.session.query(TableInherits).all()
         self.assertEqual(res, [])
 
+    @unittest.expectedFailure
     def testRemoteCombinedUpdates(self):
         "Confirm updates with non-overlapping attributes coalesce"
         t = TableInherits(info = "blah")
@@ -386,8 +387,10 @@ class TestSql(unittest.TestCase):
             self.server.session.commit()
             t2.info2 = "quux"
             self.server.session.commit()
-            # refetches because of expire after commit
+            self.session.expire(t)
         self.assertEqual(t.id, t2.id)
+        self.assertEqual(t.info2, t2.info2)
+        self.assertEqual(t.info, t2.info)
 
 
 #import logging

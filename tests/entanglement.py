@@ -287,7 +287,7 @@ class TestSynchronization(unittest.TestCase):
 
     def testBwLimit(self):
         "Confirm that bandwidth limits apply"
-        def record_call(*args):
+        def record_call(*args, **kwargs):
             nonlocal send_count
             send_count += 1
         send_count = 0

@@ -115,10 +115,11 @@ class sync_property:
 
 class Synchronizable( metaclass = SynchronizableMeta):
 
-    def to_sync(self):
-        '''Return a dictionary containing the attributes of self that should be synchronized.'''
+    def to_sync(self, attributes = None):
+        '''Return a dictionary containing the attributes of self that should be synchronized.  Attributes can be passed in; if so, then the list of attributes will be limited to tohse passed in.'''
         d = {}
         for k,v in self.__class__._sync_properties.items():
+            if attributes and k not in attributes: continue
             try: val = v.encoderfn(self, k)
             except BaseException as e:
                 raise ValueError("Failed encoding {} using encoder from class {}".format(k, v.declaring_class)) from e
@@ -301,8 +302,8 @@ class SyncError(RuntimeError, Synchronizable):
     sync_registry = error_registry
     sync_primary_keys = Unique
 
-    def to_sync(selff):
-        d = super().to_sync()
+    def to_sync(selff, **kwargs):
+        d = super().to_sync(**kwargs)
         d['_sync_is_error'] = True
         return d
 
