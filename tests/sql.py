@@ -392,6 +392,27 @@ class TestSql(unittest.TestCase):
         self.assertEqual(t.info2, t2.info2)
         self.assertEqual(t.info, t2.info)
 
+    def testSyncDrainCancel(self):
+        "Test that one party canceling a coroutine in sync_drain does not affect other parties"
+        async def test_drain():
+            await list(self.manager.connections)[0].sync_drain()
+            
+            return True
+        self.session.manager = self.manager
+        t = Table1(ch = self.manager.cert_hash)
+        self.session.add(t)
+        self.session.commit()
+        t1 = self.loop.create_task(test_drain())
+        t2 = self.loop.create_task(test_drain())
+        # We cheat by running the loop for one step. so the routines get far enough to allocate futures
+        self.loop.call_soon(self.loop.stop)
+        self.loop.run_forever()
+        t1.cancel()
+        res = self.loop.run_until_complete(t2)
+        self.assertEqual(res, True)
+        
+            
+        
 
 #import logging
 #logging.basicConfig(level = 'ERROR')
