@@ -69,7 +69,7 @@ class SyncProtocol(asyncio.Protocol):
         #Note though that objects equal to something in current_dirty are added there
         self.dirty = dict()
         self.current_dirty = self.dirty
-        self.drain_waiters = []
+        self.drain_future = None
         self.waiter = None
         self.task = None
         self.transport = None
@@ -90,19 +90,20 @@ class SyncProtocol(asyncio.Protocol):
 
     def sync_drain(self):
         "Returns a future; when this future is done, all objects synchronized before sync_drain is called have been sent.  Note that some objects synchronized after sync_drain is called may have been sent."
-        fut = self.loop.create_future()
-        if len(self.drain_waiters) > 0:
+        if self.drain_future:
             for elt in self.dirty:
                 self.current_dirty[elt] = elt
             self.dirty.clear()
-            self.drain_waiters.append(fut)
+            return asyncio.shield(self.drain_future)
         else:
             if self.task:
+                self.drain_future = self.loop.create_future()
                 self.dirty = dict()
-                self.drain_waiters.append(fut)
+                return asyncio.shield(self.drain_future)
             else: #We're not currently synchronizing
+                fut = self.loop.create_future()
                 fut.set_result(True)
-        return fut
+                return fut
 
     async def _run_sync(self):
         if self.waiter: await self.waiter
@@ -115,10 +116,9 @@ class SyncProtocol(asyncio.Protocol):
                 if self.waiter: await self.waiter
         except StopIteration: #empty set
             self.task = None
-            if len(self.drain_waiters) > 0:
-                for fut in self.drain_waiters:
-                    if not fut.done(): fut.set_result(True)
-                self.drain_waiters.clear()
+            if self.drain_future:
+                self.drain_future.set_result(True)
+                self.drain_future = None
                 self.current_dirty = self.dirty
                 if len(self.dirty) > 0:
                     self.task = self.loop.create_task(self._run_sync())
