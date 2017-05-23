@@ -90,12 +90,15 @@ class _SqlMetaRegistry(SyncRegistry):
                     max_serial = max(max_serial, d.sync_serial)
 
             for c in classes_in_registries(manager.registries):
+                owner_condition = base.SyncOwner.id == owner.id
+                if owner.id == sender.first_local_owner:
+                    owner_condition = owner_condition | (base.SyncOwner.id == None)
                 try:
                     if c is base.SyncOwner or issubclass(c, base.SyncOwner): continue
                     if self.yield_between_classes: yield
                     if not session.is_active: session.rollback()
                     to_sync = session.query(c).with_polymorphic('*') \
-                                              .join(base.SyncOwner).filter(c.sync_serial > obj.serial, base.SyncOwner.id == owner.id).all()
+                                              .outerjoin(base.SyncOwner).filter(c.sync_serial > obj.serial, owner_condition).all()
                 except:
                     logger.exception("Failed finding objects to send {} from  {}".format(sender, c.__name__))
                     raise
@@ -294,6 +297,7 @@ async def handle_connected(destination, manager, session):
         manager.synchronize(o, destinations = [destination])
     my_owner = MyOwners()
     my_owner.owners = [o.id for o in my_owners]
+    destination.first_local_owner = my_owner.owners[0]
     # Drain the SyncOwners before sending MyOwners, because if the
     # owner is not received by MyOwner reception it will be ignored
     # for IHave handling.
