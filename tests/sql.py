@@ -175,7 +175,7 @@ class TestSql(unittest.TestCase):
         "Test sending of you_have messages"
         with wait_for_call(self.loop, sql.internal.sql_meta_messages, 'handle_you_have'):
             self.testSendObject()
-        self.assertEqual(self.d2.incoming_serial, 1)
+
 
     def testInitialSync(self):
         #disconnect our session

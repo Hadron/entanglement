@@ -12,8 +12,8 @@ from .interface import SyncError
 
 logger = logging.getLogger("hadron.entanglement")
 protocol_logger = logging.getLogger('hadron.entanglement.protocol')
-protocol_logger.setLevel('DEBUG')
-#protocol_logger.setLevel('ERROR')
+#protocol_logger.setLevel('DEBUG')
+protocol_logger.setLevel('ERROR')
 
 _msg_header = ">I" # A 4-byte big-endien size
 _msg_header_size = struct.calcsize(_msg_header)
@@ -208,4 +208,5 @@ class SyncProtocol(asyncio.Protocol):
 
 
 sync_magic_attributes = ('_sync_type', '_sync_is_error',
-                         '_sync_operation')
+                         '_sync_operation',
+                         '_sync_owner')

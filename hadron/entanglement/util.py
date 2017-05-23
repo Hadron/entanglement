@@ -8,7 +8,7 @@
 # LICENSE for details.
 
 
-import base64, contextlib, hashlib, logging, re
+import base64, contextlib, hashlib, logging, re, uuid
 try:
     from OpenSSL import crypto as _crypto
 except ImportError:
@@ -84,7 +84,28 @@ if TypeDecorator:
 
         def __init__(self, *args, **kwargs):
             super().__init__(50, *args, **kwargs)
-            
+
+class GUID(TypeDecorator):
+    # Also see:
+    # http://docs.sqlalchemy.org/en/latest/core/custom_types.html#backend-agnostic-guid-type
+    
+    impl = String
+
+    def process_bind_param(self, value, dialect):
+        if value is None:
+            return value
+        else:
+            if not isinstance(value, uuid.UUID):
+                return uuid.UUID(value).hex
+            else:
+                return value.hex
+
+    def process_result_value(self, value, dialect):
+        if value is None:
+            return value
+        else:
+            return uuid.UUID(value)
+
 
 def get_or_create(session, model, filter_by, defaults = {}):
     primary_key = tuple(map(lambda x:x.name, inspect(model).primary_key)

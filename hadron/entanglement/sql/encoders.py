@@ -6,10 +6,12 @@
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the file
 # LICENSE for details.
 
-import base64, datetime, iso8601
+import base64, datetime, iso8601, uuid
 from sqlalchemy import DateTime, DATETIME, BLOB, BINARY
 
 from datetime import timezone
+from ..util import GUID
+
 
 def binary_encoder(obj, propname):
     val = getattr(obj,propname, None)
@@ -43,7 +45,7 @@ def register_type(typ, encoder, decoder):
 
 def uuid_encoder(obj, propname):
     val = getattr(obj, propname, None)
-    if val: return str(val)
+    if val is not None: return str(val)
 
 def uuid_decoder(obj, propname, val):
     return uuid.UUID(val)
@@ -53,3 +55,4 @@ register_type(DateTime, datetime_encoder, datetime_decoder)
 register_type(DATETIME, datetime_encoder, datetime_decoder)
 register_type(BLOB, binary_encoder, binary_decoder)
 register_type(BINARY, binary_encoder, binary_decoder)
+register_type(GUID, uuid_encoder, uuid_decoder)

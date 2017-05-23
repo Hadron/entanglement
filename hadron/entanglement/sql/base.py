@@ -7,14 +7,14 @@
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the file
 # LICENSE for details.
 
-import contextlib, datetime, json, sqlalchemy
+import contextlib, datetime, json, sqlalchemy, uuid
 from datetime import timezone
 
 from sqlalchemy import Column, Table, String, Integer, DateTime, ForeignKey, inspect, TEXT
 from sqlalchemy.orm import load_only
 import sqlalchemy.exc
 import sqlalchemy.orm, sqlalchemy.ext.declarative, sqlalchemy.ext.declarative.api
-from ..util import CertHash, SqlCertHash, get_or_create
+from ..util import CertHash, SqlCertHash, get_or_create, GUID
 from .. import interface, network
 from ..protocol import logger
 from . import internal as _internal
@@ -35,7 +35,7 @@ class SqlSyncSession(sqlalchemy.orm.Session):
                     inspect_inst = inspect(inst)
                     modified_attrs = frozenset(inst.__class__._sync_properties.keys()) - frozenset(inspect_inst.unmodified)
                     self.sync_dirty.add((inst, modified_attrs))
-                    if inst.sync_owner_id is None and inst.sync_owner is None:
+                    if (inst.sync_owner_id is None and inst.sync_owner is None) or inst.sync_is_local:
                         if not serial_flushed:
                             new_serial = session.execute(serial_insert).lastrowid
                             serial_flushed = True
@@ -114,11 +114,17 @@ class SqlSyncSession(sqlalchemy.orm.Session):
                 self.manager.synchronize(o, operation = 'delete',
                                      attributes_to_sync  = o.sync_primary_keys)
             for c in self.manager.connections:
-                dest = c.dest
-                dest.outgoing_serial = max(dest.outgoing_serial, serial)
-                if not dest.you_have_task:
-                    dest.you_have_task = self.manager.loop.create_task(_internal.gen_you_have_task(dest, self.manager))
-                    dest.you_have_task._log_destroy_pending = False
+                for o in self.manager.session.query(SyncOwner).filter((SyncOwner.destination != c.dest)|(SyncOwner.destination == None)):
+                    if o.sync_is_local:
+                        outgoing_serial = max(o.outgoing_serial, serial)
+                    else:
+                        outgoing_serial = max(o.incoming_serial, o.outgoing_serial)
+                    if outgoing_serial > o.outgoing_serial:
+                        o.outgoing_serial = outgoing_serial
+                        c.dest.send_you_have.append(o)
+                if not c.dest.you_have_task:
+                    c.dest.you_have_task = self.manager.loop.create_task(_internal.gen_you_have_task(c.dest, self.manager))
+                    c.dest.you_have_task._log_destroy_pending = False
 
         for o, dest, attrs in forward_objects:
             self.manager.synchronize(o, operation = 'forward',
@@ -197,7 +203,8 @@ class SqlSyncRegistry(interface.SyncRegistry):
     def incoming_delete( self, obj, context, manager, sender, **info):
         session = context.session
         ins = inspect(obj)
-        if not ins.persistent: return #flood back on forward delete to owner
+        if not ins.persistent: return
+        #flood back on forward delete to owner
         if  (obj.sync_owner is None or sender != obj.sync_owner.destination ):
             session.manager = manager #flood it
         assert obj in session
@@ -205,7 +212,7 @@ class SqlSyncRegistry(interface.SyncRegistry):
         session.commit()
 
     def incoming_forward(self, obj, context, sender, manager, **info):
-        if obj.sync_owner is not None:
+        if not obj.sync_is_local:
             raise interface.SyncBadOwnerError("Currently you can only forward to the object's direct owner")
         assert obj in context.session
         context.session.manager = manager #Flood out the new update
@@ -214,7 +221,7 @@ class SqlSyncRegistry(interface.SyncRegistry):
     def incoming_sync(self, object, manager, context, **info):
         # By this point the owner check has already been done
         session = context.session
-        assert object.sync_owner is not None
+        assert not object.sync_is_local
         assert object in session
         session.commit()
 
@@ -236,12 +243,6 @@ class  SqlSyncDestination(_internal_base, network.SyncDestination):
     name = Column(String(64), nullable = False)
     host = Column(String(128))
 
-    incoming_serial = Column(Integer, default = 0, nullable = False)
-    #outgoing_serial is managed but is transient
-    incoming_epoch = Column(sqlalchemy.types.DateTime(True),
-                          default = lambda: datetime.datetime.now(datetime.timezone.utc), nullable = False)
-    outgoing_epoch = Column(sqlalchemy.types.DateTime(True),
-                          default = lambda: datetime.datetime.now(datetime.timezone.utc), nullable = False)
     bw_per_sec = Column(Integer, default = 10000000,
                         nullable = False)
 
@@ -254,64 +255,31 @@ class  SqlSyncDestination(_internal_base, network.SyncDestination):
         else: return super().__eq__(other)
     def __init__(self, *args, **kwargs):
         network.SyncDestination.__init__(self, *args, **kwargs)
-        self.outgoing_serial = 0
         self.you_have_task = None
         self.i_have_task = None
+        self.send_you_have = [] 
 
     @sqlalchemy.orm.reconstructor
     def reconstruct(self):
         self.protocol = None
-        self.outgoing_serial = 0
         self.you_have_task = None
         self.connect_at = 0
         self.server_hostname = None
         self.i_have_task = None
+        self.send_you_have = []
 
-    def clear_all_objects(self, manager = None,
-                          *, registries = None, session = None):
-        if manager:
-            session = manager.session
-            registries = manager.registries
-        assert session and registries
-        logger.info("Deleting all objects from {}".format(self))
-        session.rollback()
-        subquery = session.query(SyncOwner.id).filter(SyncOwner.destination == self)
-        for c in _internal.classes_in_registries(registries):
-            for o in session.query(c).filter(c.sync_owner_id.in_(subquery)): session.delete(o)
-        session.flush()
 
     async def connected(self, manager, *args, **kwargs):
         res = await super().connected(manager, *args, **kwargs)
-        if not self in manager.session: manager.session.add(self)
-        manager.session.commit()
-        i_have = _internal.IHave()
-        i_have.serial = self.incoming_serial
-        i_have.epoch = self.incoming_epoch
-        manager.synchronize(i_have,
-                            destinations = [self])
+        if hasattr(manager, 'session'): 
+            if not self in manager.session: manager.session.add(self)
+            manager.session.commit()
+            await _internal.handle_connected(self, manager, manager.session)
         return res
 
 
 
 
-class SyncOwner(_internal_base):
-    __tablename__ = "sync_owners"
-    id = Column(Integer, primary_key = True)
-    destination_id = Column(Integer, ForeignKey(SqlSyncDestination.id, ondelete = 'cascade'),
-                            index = True, nullable = False)
-    destination = sqlalchemy.orm.relationship(SqlSyncDestination, lazy = 'joined')
-    # Note that ihave and youhave probably need to be owner level
-    # messages rather than destination level messages, but we don't
-    # even pretend to deal with that complexity yet.
-
-    @classmethod
-    def find_or_create(self, session, dest, msg):
-        return get_or_create(session, SyncOwner,
-                             {'destination':
-                              get_or_create(session, SqlSyncDestination,
-                                            {'cert_hash': dest.cert_hash},
-                                            {'name': dest.name,
-                                             'host': dest.host})})
 
 class SyncDeleted( _internal_base):
     __tablename__ = 'sync_deleted'
@@ -379,19 +347,19 @@ class SqlSynchronizable(interface.Synchronizable):
     @sqlalchemy.ext.declarative.api.declared_attr
     def sync_owner_id(self):
         if hasattr(self, '__table__'): return
-        return Column(Integer, ForeignKey(SyncOwner.id, ondelete = 'cascade'), index = True)
+        return Column(GUID, ForeignKey(SyncOwner.id, ondelete = 'cascade'), index = True)
 
     @sqlalchemy.ext.declarative.api.declared_attr
     def sync_owner(self):
         if hasattr(self, '__table__') and not 'sync_owner_id' in self.__table__.columns: return
         if hasattr(self,'__table__'): return sqlalchemy.orm.relationship(SyncOwner, foreign_keys = [self.__table__.c.sync_owner_id],
-                                                                         primaryjoin = SyncOwner.id == self.__table__.c.sync_owner_id)
-        return sqlalchemy.orm.relationship(SyncOwner, foreign_keys = [self.sync_owner_id])
+                                                                         primaryjoin = SyncOwner.id == self.__table__.c.sync_owner_id, lazy = 'joined')
+        return sqlalchemy.orm.relationship(SyncOwner, foreign_keys = [self.sync_owner_id], lazy = 'joined')
 
 
     @property
     def sync_is_local(self):
-        return self.sync_owner is None
+        return self.sync_owner is None or self.sync_owner.destination is None
 
     @classmethod
     def _sync_construct(cls, msg, context, operation = None, manager = None, registry = None,
@@ -417,7 +385,7 @@ class SqlSynchronizable(interface.Synchronizable):
             obj = session.query(cls).get(primary_key_values)
             owner = SyncOwner.find_or_create(session, sender, msg)
             if obj is not None:
-                if obj.sync_owner_id is None and operation == 'sync':
+                if obj.sync_is_local  and operation == 'sync':
                     raise interface.SyncBadOwnerError("{} tried to synchronize our object to us".format(
                         sender))
                 elif (obj.sync_owner_id is not None) and (obj.sync_owner_id != owner.id):
@@ -433,6 +401,69 @@ class SqlSynchronizable(interface.Synchronizable):
             session.add(obj)
         return obj
 
+class SyncOwner(_internal_base, SqlSynchronizable, metaclass = SqlSyncMeta):
+    sync_registry = _internal.sql_meta_messages
+    __tablename__ = "sync_owners"
+    id = Column(GUID, primary_key = True,
+                default = uuid.uuid4)
+    destination_id = Column(Integer, ForeignKey(SqlSyncDestination.id, ondelete = 'cascade'),
+                            index = True, nullable = True)
+    destination = sqlalchemy.orm.relationship(SqlSyncDestination, lazy = 'subquery')
+    incoming_serial = Column(Integer, default = 0, nullable = False)
+    #outgoing_serial is managed but is transient
+    incoming_epoch = Column(sqlalchemy.types.DateTime(True),
+                          default = lambda: datetime.datetime.now(datetime.timezone.utc), nullable = False)
+    outgoing_epoch = Column(sqlalchemy.types.DateTime(True),
+                          default = lambda: datetime.datetime.now(datetime.timezone.utc), nullable = False)
+    outgoing_serial = 0
+
+    # All SyncOwners own themselves
+    sync_owner_id = sqlalchemy.orm.synonym('id')
+    @property
+    def sync_owner(self): return self
+    
+    @classmethod
+    def _sync_construct(cls, msg, context, sender, **info):
+        obj = None
+        if hasattr(context, 'session'):
+            obj = context.session.query(SyncOwner).get(msg['id'])
+            if obj and (obj.destination != sender):
+                raise SyncBadOwner("{} sent by {} but belongs to {}".format(
+                    obj, sender, obj.destination))
+            try: del msg['sync_owner_id']
+            except KeyError: pass
+        if not obj:
+            obj = cls()
+            try: context.session.add(obj)
+            except AttributeError: pass
+            obj.destination = sender
+        return obj
+    
+            
+    
+    @classmethod
+    def find_or_create(self, session, dest, msg):
+        return get_or_create(session, SyncOwner,
+                             {'destination':
+                              get_or_create(session, SqlSyncDestination,
+                                            {'cert_hash': dest.cert_hash},
+                                            {'name': dest.name,
+                                             'host': dest.host})})
+
+    def clear_all_objects(self, manager = None,
+                              *, registries = None, session = None):
+        if manager:
+            session = manager.session
+            registries = manager.registries
+            assert session and registries
+            logger.info("Deleting all objects from {}".format(self))
+            session.rollback()
+        for c in _internal.classes_in_registries(registries):
+            if c is SyncOwner or issubclass(c, SyncOwner): continue
+            for o in session.query(c).filter(c.sync_owner_id == self.id):
+                o.sync_owner_id = None
+                session.delete(o)
+            session.flush()
 
 def sql_sync_declarative_base(*args, registry = None,
                               registry_class = SqlSyncRegistry,
