@@ -408,13 +408,15 @@ class SyncOwner(_internal_base, SqlSynchronizable, metaclass = SqlSyncMeta):
                 default = uuid.uuid4)
     destination_id = Column(Integer, ForeignKey(SqlSyncDestination.id, ondelete = 'cascade'),
                             index = True, nullable = True)
-    destination = sqlalchemy.orm.relationship(SqlSyncDestination, lazy = 'subquery')
-    incoming_serial = Column(Integer, default = 0, nullable = False)
+    destination = sqlalchemy.orm.relationship(SqlSyncDestination, lazy = 'subquery',
+                                              backref = sqlalchemy.orm.backref('owners'),
+    )
+    incoming_serial = interface.no_sync_property(Column(Integer, default = 0, nullable = False))
     #outgoing_serial is managed but is transient
-    incoming_epoch = Column(sqlalchemy.types.DateTime(True),
-                          default = lambda: datetime.datetime.now(datetime.timezone.utc), nullable = False)
-    outgoing_epoch = Column(sqlalchemy.types.DateTime(True),
-                          default = lambda: datetime.datetime.now(datetime.timezone.utc), nullable = False)
+    incoming_epoch = interface.no_sync_property(Column(sqlalchemy.types.DateTime(True),
+                          default = lambda: datetime.datetime.now(datetime.timezone.utc), nullable = False))
+    outgoing_epoch = interface.no_sync_property(Column(sqlalchemy.types.DateTime(True),
+                          default = lambda: datetime.datetime.now(datetime.timezone.utc), nullable = False))
     outgoing_serial = 0
 
     # All SyncOwners own themselves
@@ -485,10 +487,12 @@ def sync_manager_destinations(manager, session = None,
         manager.remove_destination(d)
     for d in database_destinations - manager_destinations:
         session.expunge(d)
-        if force_resync:
-            d.incoming_epoch = datetime.datetime.now(datetime.timezone.utc)
-            d.outgoing_epoch = d.incoming_epoch
-            manager.session.add(d)
+        try: manager.session.add(d)
+        except AttributeError: pass
         manager.add_destination(d)
+        if force_resync:
+            for o in session.query(SyncOwner).join(cls).filter(cls.cert_hash == d.cert_hash):
+                o.incoming_epoch = datetime.datetime.now(datetime.timezone.utc)
     if hasattr(manager, 'session'):
         manager.session.commit()
+    session.commit() #Might be diffgerent than manager.session; commit for force_resync

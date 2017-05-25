@@ -249,7 +249,6 @@ class TestSql(unittest.TestCase):
     def testSyncManagerDestinations(self):
         "Test the sync_manager_destinations function"
         self.server.remove_destination(self.d2)
-        current_epoch = self.d1.incoming_epoch
         self.d1.id = 30
         self.d2.id = 35
         self.server.session.merge(self.d1)
@@ -265,11 +264,6 @@ class TestSql(unittest.TestCase):
         sync_manager_destinations( manager = self.server)
         self.assertNotIn( self.d2, self.server.destinations)
         self.assertEqual(len(self.server.destinations), 1)
-        # Confirm it is not trying to resync
-        new_epoch = self.server.destinations.pop().incoming_epoch
-        if current_epoch.tzinfo:
-            new_epoch = new_epoch.replace(tzinfo = datetime.timezone.utc)
-        self.assertEqual(current_epoch, new_epoch)
 
     def testForceResync(self):
         "Confirm that we can force resync using sync_manager_destinations"
@@ -303,7 +297,7 @@ class TestSql(unittest.TestCase):
         t2 = self.server.session.query( Table1).filter_by(
             id = t.id).all()
         assert t2 == []
-        self.assertEqual( self.d2.incoming_serial, t.sync_serial)
+        self.assertEqual( self.d2.owners[0].incoming_serial, t.sync_serial)
         deleted = s.query( sql.base.SyncDeleted).first()
         self.assertEqual( deleted.sync_serial, t.sync_serial)
         self.assertEqual( t.to_sync(), json.loads(deleted.primary_key))
@@ -419,6 +413,6 @@ class TestSql(unittest.TestCase):
 
 if __name__ == '__main__':
     import logging, unittest, unittest.main
-    logging.basicConfig(level = 'ERROR')
-#    logging.basicConfig(level = 10)
+#    logging.basicConfig(level = 'ERROR')
+    logging.basicConfig(level = 10)
     unittest.main(module = "tests.sql")

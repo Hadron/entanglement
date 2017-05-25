@@ -27,7 +27,7 @@ class SynchronizableMeta(type):
             cls.sync_registry.register_syncable(cls.sync_type, cls)
         super().__init__( name, bases, _dict)
 
-    def __new__(cls, name, bases, ns):
+    def __new__(cls, name, bases, ns, **kwargs):
         if 'sync_registry' in ns:
             ns['_sync_registry'] = ns['sync_registry']
             del ns['sync_registry']
@@ -42,8 +42,12 @@ class SynchronizableMeta(type):
                 del v.wraps
                 if not v.encoderfn: v.encoderfn = default_encoder
                 if not v.decoderfn: v.decoderfn = lambda obj, propname, val: val
+            elif isinstance(v, no_sync_property):
+                if v.wraps is not None:
+                    ns[k] = v.wraps
+                else: del ns[k]
         ns['_sync_meta'] = sync_meta
-        return type.__new__(cls, name, bases, ns)
+        return type.__new__(cls, name, bases, ns, **kwargs)
 
     sync_registry = property(doc = "A registry of classes that this Syncable belongs to.  Registries can be associated with a connection; only classes in registries associated with a connection are permitted to be synchronized over that connection")
 
@@ -113,6 +117,20 @@ class sync_property:
         self.decoderfn = decoderfn
         return self
 
+class no_sync_property:
+
+    '''Wraps a property that should not be synchronized.  Used mostly to
+    wrap SQLAlchemy columns in SqlSynchronizable classes that would be
+    synchronized by default.  Can also be used to mask a parent's
+    sync_property for example when the value is always the same for
+    some subclass.
+
+    '''
+
+    def __init__(self, wraps = None):
+        self.wraps = wraps
+
+        
 class Synchronizable( metaclass = SynchronizableMeta):
 
     def to_sync(self, attributes = None):

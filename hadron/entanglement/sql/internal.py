@@ -53,10 +53,15 @@ class _SqlMetaRegistry(SyncRegistry):
             manager.session.rollback()
 
     def handle_sync_owner_sync(self, obj, manager, sender):
-        assert obj in manager.session
-        manager.session.flush()
-        if not obj.sync_owner: obj.sync_owner_id = obj.id
-        manager.session.commit()
+        session = manager.session
+        assert obj in session
+        session.commit()
+        i_have = IHave()
+        i_have.serial = obj.incoming_serial
+        i_have.epoch = obj.incoming_epoch
+        i_have._sync_owner = obj.id
+        manager.synchronize(i_have, destinations = [sender])
+
         
     @asyncio.coroutine
     def handle_i_have(self, obj, sender, manager):
@@ -126,8 +131,8 @@ class _SqlMetaRegistry(SyncRegistry):
                 ours = sender.incoming_serial,
                 d = owner,
                 obj = obj.serial))
-            owner.incoming_serial = max(sender.incoming_serial, obj.serial)
-            owner.incoming_epoch = obj.epoch
+        owner.incoming_serial = max(owner.incoming_serial, obj.serial)
+        owner.incoming_epoch = obj.epoch
         logger.debug("We have serial {s} from {d}".format(
             s = obj.serial,
             d = owner))
@@ -152,13 +157,6 @@ class _SqlMetaRegistry(SyncRegistry):
     def handle_my_owners(self, obj, manager, sender):
         session = manager.session
         session.rollback()
-        owners = session.query(base.SyncOwner).filter(base.SyncOwner.id.in_(obj.owners), base.SyncOwner.destination == sender)
-        for o in owners:
-            i_have = IHave()
-            i_have.serial = o.incoming_serial
-            i_have.epoch = o.incoming_epoch
-            i_have._sync_owner = o.id
-            manager.synchronize(i_have, destinations = [sender])
         old_owners = session.query(base.SyncOwner).filter(base.SyncOwner.destination == sender, base.SyncOwner.id.notin_(obj.owners))
         for o in old_owners:
             o.clear_all_objects(manager = manager, session = session)
