@@ -429,16 +429,21 @@ class SyncOwner(_internal_base, SqlSynchronizable, metaclass = SqlSyncMeta):
         obj = None
         if hasattr(context, 'session'):
             obj = context.session.query(SyncOwner).get(msg['id'])
-            if obj and (obj.destination != sender):
+            if obj and (obj.destination  != sender):
                 raise SyncBadOwner("{} sent by {} but belongs to {}".format(
                     obj, sender, obj.destination))
             try: del msg['sync_owner_id']
             except KeyError: pass
         if not obj:
             obj = cls()
-            try: context.session.add(obj)
-            except AttributeError: pass
-            obj.destination = sender
+            try:
+                context.session.add(obj)
+                # We don't want an autoflush between the time we add the object and the time sync_serial is set.
+                context.session.autoflush = False
+                obj.destination = context.session.merge(sender)
+            except AttributeError:
+                obj.destination = sender
+
         return obj
     
             

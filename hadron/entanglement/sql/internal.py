@@ -31,15 +31,15 @@ class _SqlMetaRegistry(SyncRegistry):
 
         ctx = context()
         if hasattr(manager, 'session'):
-            ctx.session = manager.session
-            manager.session.rollback()
+            ctx.session = base.SqlSyncSession(bind = manager.session.bind)
+
         return ctx
     
-    def sync_receive(self, obj, sender, manager, **info):
+    def sync_receive(self, obj, sender, manager, context, **info):
         try:
             # remember to handle subclasses first
             if isinstance(obj, base.SyncOwner):
-                self.handle_sync_owner_sync(obj, manager, sender)
+                self.handle_sync_owner_sync(obj, manager, sender, context)
             elif isinstance(obj,YouHave):
                 self.handle_you_have(obj, sender, manager)
             elif isinstance(obj,IHave):
@@ -52,8 +52,8 @@ class _SqlMetaRegistry(SyncRegistry):
         finally:
             manager.session.rollback()
 
-    def handle_sync_owner_sync(self, obj, manager, sender):
-        session = manager.session
+    def handle_sync_owner_sync(self, obj, manager, sender, context):
+        session = context.session
         assert obj in session
         session.commit()
         i_have = IHave()
@@ -124,8 +124,8 @@ class _SqlMetaRegistry(SyncRegistry):
 
     def handle_you_have(self, obj, sender, manager):
         manager.session.rollback()
-        if not sender in manager.session: manager.session.add(sender)
         owner = obj.sync_owner
+        owner = manager.session.merge(owner)
         if owner.incoming_serial > obj.serial:
             logger.error("{d} claims we have serial {obj} but we already have {ours}".format(
                 ours = sender.incoming_serial,
@@ -141,7 +141,7 @@ class _SqlMetaRegistry(SyncRegistry):
     def handle_wrong_epoch(self, obj,  sender, manager):
         manager.session.rollback()
         if sender not in manager.session: manager.session.add(sender)
-        owner = obj.sync_owner
+        owner = manager.session.merge(obj.sync_owner)
         owner.clear_all_objects(manager)
         owner.incoming_epoch = obj.new_epoch
         owner.incoming_serial = 0
@@ -175,7 +175,8 @@ def populate_owner_from_msg(msg, obj, session):
     obj.sync_owner = session.query(base.SyncOwner).get(obj._sync_owner)
     if not obj.sync_owner:
         raise SyncBadEncodingError("You must synchronize the sync_owner, then drain before synchronizing IHave", msg = msg)
-        
+    session.expunge(obj.sync_owner)
+    
 
 class IHave(Synchronizable):
     sync_primary_keys = ('serial','epoch', '_sync_owner')
@@ -190,7 +191,8 @@ class IHave(Synchronizable):
     @classmethod
     def sync_receive(self, msg, manager, **info):
         obj = super().sync_receive(msg, manager = manager, **info)
-        populate_owner_from_msg(msg, obj, manager.session)
+        try: populate_owner_from_msg(msg, obj, info['context'].session)
+        except (KeyError, AttributeError): pass
         return obj
 
 class YouHave(IHave):

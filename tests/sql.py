@@ -18,26 +18,8 @@ from sqlalchemy import create_engine, Column, Integer, inspect, String, ForeignK
 from sqlalchemy.orm import sessionmaker
 from hadron.entanglement.sql import SqlSynchronizable,  sync_session_maker, sql_sync_declarative_base, SqlSyncDestination, SqlSyncRegistry, sync_manager_destinations
 import hadron.entanglement.sql as sql
+from .utils import wait_for_call, SqlFixture
 
-@contextmanager
-def wait_for_call(loop, obj, method, calls = 1):
-    fut = loop.create_future()
-    num_calls = 0
-    def cb(*args, **kwards):
-        nonlocal num_calls
-        if not fut.done():
-            num_calls +=1
-            if num_calls >= calls:
-                fut.set_result(True)
-    try:
-        with mock.patch.object(obj, method,
-                               wraps = getattr(obj, method),
-                               side_effect = cb):
-            yield
-            loop.run_until_complete(asyncio.wait_for(fut, 0.5))
-    except  asyncio.futures.TimeoutError:
-        raise AssertionError("Timeout waiting for call to {} of {}".format(
-            method, obj)) from None
 
 # SQL declaration
 Base = sql_sync_declarative_base()
@@ -76,58 +58,13 @@ manager_registry = SqlSyncRegistry()
 manager_registry.registry = Base.registry.registry
     
     
-class TestSql(unittest.TestCase):
+class TestSql(SqlFixture, unittest.TestCase):
 
-    def setUp(self):
-        sql.internal.you_have_timeout = 0 #Send YouHave serial number updates immediately for testing
-        warnings.filterwarnings('ignore', module = 'asyncio.sslproto')
-        warnings.filterwarnings('ignore', module = 'asyncio.selector_events')
-        self.e1 = create_engine('sqlite:///:memory:', echo = False)
-        self.e2 = create_engine('sqlite:///:memory:', echo = False)
-        Session = sync_session_maker()
-        self.session = Session(bind = self.e2)
-        Base.registry.sessionmaker.configure(bind = self.e1)
-        manager_registry.sessionmaker.configure( bind = self.e2)
-        Base.metadata.create_all(bind = self.e1)
-        Base.metadata.create_all(bind = self.e2)
-        Base.registry.create_bookkeeping(self.e1)
-        Base.registry.create_bookkeeping(self.e2)
-        self.server = SyncServer(cafile = "ca.pem",
-                                 cert = "host1.pem", key = "host1.key",
-                                 port = 9120,
-                                 registries = [Base.registry])
-        self.manager = SyncManager(cafile = "ca.pem",
-                                   cert = "host2.pem",
-                                   key = "host2.key",
-                                   loop = self.server.loop,
-                                   registries = [manager_registry],
-                                   port = 9120)
-        self.loop = self.server.loop
-        self.d1 = SqlSyncDestination(certhash_from_file("host1.pem"),
-                                  "server", host = "127.0.0.1",
-                                  server_hostname = "host1")
-        self.d2 = SqlSyncDestination(certhash_from_file("host2.pem"),
-                                  "client")
-        self.server.add_destination(self.d2)
-        self.manager.add_destination(self.d1)
-        with wait_for_call(self.loop,
-                           sql.internal.sql_meta_messages,
-                           'handle_i_have', 4):
-            self.manager.run_until_complete(asyncio.wait(self.manager._connecting.values()))
-
-        sql.internal.sql_meta_messages.yield_between_classes = False
-
-
-    def tearDown(self):
-        self.manager.close()
-        self.server.close()
-        self.session.close()
-        del self.session
-        del self.server
-        del self.manager
-        del self.d1
-        del self.d2
-        gc.collect()
+    def __init__(self, *args, **kwargs):
+        self.base = Base
+        self.manager_registry = manager_registry
+        super().__init__(*args, **kwargs)
+        
 
     def testCertHash(self):
         t = Table1()
