@@ -80,6 +80,8 @@ class SyncManager:
     def synchronize(self, obj, *,
                     destinations = None, operation = 'sync',
                     attributes_to_sync = None):
+        if isinstance(obj, interface.Synchronizable) and (obj.sync_receive.__func__ is not interface.Synchronizable.sync_receive.__func__):
+            raise SyntaxError('Must not override sync_receive in {}'.format(obj.__class__.__name__))
         if destinations is None:
             destinations = filter(lambda  x: x.cert_hash in self._connections,
                                   self.destinations)
@@ -255,7 +257,11 @@ class SyncManager:
         try:
             with registry.sync_context(sync_type = cls, **info) as ctx:
                 info['context'] = ctx
-                registry.sync_receive(cls.sync_receive(msg, **info), **info)
+            obj = cls.sync_construct(msg, **info)
+            if self.should_listen_constructed(obj, msg, **info) is not True:
+                raise SyntaxError("should_listen_constructed must either return True or raise")
+            obj.sync_receive_constructed(msg, **info)
+            registry.sync_receive(obj, **info)
         except Exception as e:
             logger.exception("Error receiving a {}".format(cls.__name__),
 exc_info = e)
@@ -290,6 +296,11 @@ exc_info = e)
             raise SyntaxError('should_listen must return True or raise')
         if cls.sync_should_listen(msg, registry = registry, sender = sender) is not True:
             raise SyntaxError('sync_should_listen must return True or raise')
+        return True
+
+    def should_listen_constructed(self, obj, msg, **info):
+        if obj.sync_should_listen_constructed(msg, **info) is not True:
+            raise SyntaxError('sync_should_listen_constructed must return True or raise')
         return True
 
     

@@ -51,7 +51,7 @@ This is responsible for defining SQL operations:
 
 * sync: floods a new or existing object's state out to recipients
 
-* sync_request: requests a set of changes (or a new object) be synchronized.  That is, a request to an object owner to consider creating or updating an object
+* forward: requests a set of changes (or a new object) be synchronized.  That is, a request to an object owner to consider creating or updating an object
 
 
 # Receive Workflow
@@ -72,13 +72,19 @@ The SyncProtocol calls manager._sync_receive.  This method:
 
 1. Calls the registry's sync_context method to get a context in which to perform the operation.  (used as a context manager)
 
-1. Calls the class's sync_receive method to construct an instance of the class from the message.
+1. Calls the class's sync_construct method to construct an instance of the class from the message.
+
+1.  Calls the manager's should_listen_constructed method.  Some operations are easier to implement with a constructed object than only with a message.  Where possible it is better to implement checks in should_listen rather than should_listen_constructed to minimize the attack surface.  However it is generally better to avoid duplicating code and use should_listen_constructed for tasks that cannot easily be done in should_listen.  This method:
+
+   1. Calls the object's should_listen_constructed method.
+
+1. Call the class's sync_receive_constructed method to fill in non-primary-key attributes from the message.
 
 1. Calls the registry's sync_receive method to  perform the operation.
 
 1. Exits the context manager.
 
 All should_listen methods must return True for the object to be received.
-The should_listen methods  are passed the message dictionary not a constructed object.  This is valuable in that it provides an opportunity to examine the object before much of the class code is run.  The attack surface is reduced.  However it may make certain policy checks more difficult because the object is not available.  The registry and object can perform additional policy checks in the sync_receive and operation-specific methods, throwing an exception if desired.  That may ease implementation but provides a wider attack surface.
+The should_listen methods  are passed the message dictionary not a constructed object.  This is valuable in that it provides an opportunity to examine the object before much of the class code is run.  The attack surface is reduced.  However it may make certain policy checks more difficult because the object is not available.  The registry and object can perform additional policy checks in the sync_constructed and sync_receive_constructed and operation-specific methods, throwing an exception if desired.  That may ease implementation but provides a wider attack surface.
 
 # Send workflow

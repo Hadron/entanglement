@@ -28,6 +28,10 @@ class SynchronizableMeta(type):
         super().__init__( name, bases, _dict)
 
     def __new__(cls, name, bases, ns, **kwargs):
+        if '_sync_construct' in ns:
+            #Should warn in a future version
+            ns['sync_construct'] = ns['_sync_construct']
+            del ns['_sync_construct']
         if 'sync_registry' in ns:
             ns['_sync_registry'] = ns['sync_registry']
             del ns['sync_registry']
@@ -156,8 +160,8 @@ class Synchronizable( metaclass = SynchronizableMeta):
         return d
 
     @classmethod
-    def _sync_construct(cls, msg, **kwargs):
-        '''Return a new object of cls consistent with msg that can be filled in with the rest of the contents of msg.
+    def sync_construct(cls, msg, **kwargs):
+        '''Return a new object of cls consistent with msg that can be filled in with the rest of the contents of msg.  Renamed from the previously non-API _sync_construct.
 
         For many classes, this could simply call the class.  It could also be overridden to look up an existing instance of a class in a database.  The default implementation calls the constructor with sync properties where the constructor argument to the property is set.  If constructor is set to a number, that ordinal index is used.  If True, the property name is used as a constructor keyword.
         '''
@@ -183,23 +187,34 @@ class Synchronizable( metaclass = SynchronizableMeta):
 
     @classmethod
     def sync_receive(cls, msg, **kwargs):
-        obj = cls._sync_construct(msg, **kwargs)
+        '''A convenience method for constructing an object from a json dictionary.  NOTE! Do not override this method: the SyncManager does not call it.  Instead override sync_construct and sync_receive_constructed.'''
+        obj = cls.sync_construct(msg, **kwargs)
+        assert obj.sync_should_listen_constructed(msg, **kwargs) is True
+        return obj.sync_receive_constructed(msg, **kwargs)
+
+    def sync_receive_constructed(self, msg, **kwargs):
+        '''Given a constructed object, fill in the remaining fields from a javascript message'''
+        cls = self.__class__
         for k, v in msg.items():
             if k not in cls._sync_properties:
                 if k.startswith('_'): continue
                 raise SyncBadEncodingError('{} unknown property in sync encoding'.format(k), msg = msg)
             try:
-                setattr(obj, k, cls._sync_properties[k].decoderfn(obj, k, v))
+                setattr(self, k, cls._sync_properties[k].decoderfn(self, k, v))
             except Exception as e:
                 raise SyncBadEncodingError("Failed to decode {}".format(k),
                                            msg = msg) from e
-        return obj
+        return self
 
     @classmethod
     def sync_should_listen(self, msg, **info):
         '''Return True or raise SynchronizationUnauthorized'''
         return True
 
+    def sync_should_listen_constructed(self, msg, **info):
+        '''Return True if we should listen to this object else return an exception.  Called after an object is constructed; several checks are easier after construction.  Checks that can be made without construct should be made there to avoid the security exposure of constructing objects.'''
+        return True
+    
     def sync_should_send(self, destination, **info):
         "Returns True if this object should be ynchronized to the given destination"
         return True

@@ -188,12 +188,11 @@ class IHave(Synchronizable):
         encoder = encoders.uuid_encoder,
         decoder = encoders.uuid_decoder)
 
-    @classmethod
-    def sync_receive(self, msg, manager, **info):
-        obj = super().sync_receive(msg, manager = manager, **info)
-        try: populate_owner_from_msg(msg, obj, info['context'].session)
+    def sync_receive_constructed(self, msg, manager, **info):
+        super().sync_receive_constructed(msg, manager = manager, **info)
+        try: populate_owner_from_msg(msg, self, info['context'].session)
         except (KeyError, AttributeError): pass
-        return obj
+        return self
 
 class YouHave(IHave):
     "Same structure as IHave message; sent to update someone's idea of their serial number"
@@ -218,9 +217,8 @@ class WrongEpoch(SyncError):
         else: self._sync_owner = owner
         super().__init__(*args)
 
-    @classmethod
-    def sync_receive(self, msg, manager, **info):
-        obj = super().sync_receive(msg, manager = manager, **info)
+    def sync_receive_constructed(obj, msg, manager, **info):
+        super().sync_receive_constructed(msg, manager = manager, **info)
         populate_owner_from_msg(msg, obj, manager.session)
         return obj
 

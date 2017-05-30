@@ -362,7 +362,7 @@ class SqlSynchronizable(interface.Synchronizable):
         return self.sync_owner is None or self.sync_owner.destination is None
 
     @classmethod
-    def _sync_construct(cls, msg, context, operation = None, manager = None, registry = None,
+    def sync_construct(cls, msg, context, operation = None, manager = None, registry = None,
                         **info):
         # post condition: in the sync operation, either the object is
         # new or it is already owned by the same owner.  For other
@@ -394,7 +394,7 @@ class SqlSynchronizable(interface.Synchronizable):
         if obj is not None:
             for k in primary_keys: del msg[k]
             return obj
-        obj =  super()._sync_construct(msg,**info)
+        obj =  super().sync_construct(msg,**info)
         obj.sync_owner = owner
         if session:
             assert owner is not None
@@ -425,7 +425,7 @@ class SyncOwner(_internal_base, SqlSynchronizable, metaclass = SqlSyncMeta):
     def sync_owner(self): return self
     
     @classmethod
-    def _sync_construct(cls, msg, context, sender, **info):
+    def sync_construct(cls, msg, context, sender, **info):
         obj = None
         if hasattr(context, 'session'):
             obj = context.session.query(SyncOwner).get(msg['id'])

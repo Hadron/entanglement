@@ -19,16 +19,17 @@ from unittest import mock
 def wait_for_call(loop, obj, method, calls = 1):
     fut = loop.create_future()
     num_calls = 0
-    def cb(*args, **kwards):
+    def cb(*args, **kwargs):
         nonlocal num_calls
         if not fut.done():
             num_calls +=1
             if num_calls >= calls:
                 fut.set_result(True)
+        return wraps(*args, **kwargs)
     try:
+        wraps = getattr(obj, method)
         with mock.patch.object(obj, method,
-                               wraps = getattr(obj, method),
-                               side_effect = cb):
+                               new= cb):
             yield
             loop.run_until_complete(asyncio.wait_for(fut, 0.5))
     except  asyncio.futures.TimeoutError:

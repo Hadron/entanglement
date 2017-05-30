@@ -154,7 +154,7 @@ class TestSql(SqlFixture, unittest.TestCase):
                 session.add(t)
                 session.commit()
                 self.d1.connect_at = 0
-                with wait_for_call(self.loop, TableInherits, 'sync_receive'):
+                with wait_for_call(self.loop, TableInherits, 'sync_receive_constructed'):
                     self.manager.run_until_complete(self.manager.add_destination(self.d1))
         t2 = self.server.session.query(TableInherits).get(t.id)
         assert t2.__class__ is  t.__class__
