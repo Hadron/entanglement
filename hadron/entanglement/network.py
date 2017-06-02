@@ -78,7 +78,9 @@ class SyncManager:
 
 
     def synchronize(self, obj, *,
-                    destinations = None, operation = 'sync',
+                    destinations = None,
+                    exclude = [],
+                    operation = 'sync',
                     attributes_to_sync = None):
         if isinstance(obj, interface.Synchronizable) and (obj.sync_receive.__func__ is not interface.Synchronizable.sync_receive.__func__):
             raise SyntaxError('Must not override sync_receive in {}'.format(obj.__class__.__name__))
@@ -94,6 +96,7 @@ class SyncManager:
         info['registry'] = registry
         info['operation'] = operation
         for d in destinations:
+            if d in exclude: continue
             if d.cert_hash not in valid_cert_hashes:
                 raise SyncNotConnected(dest = d)
             if self.should_send( obj, destination = d, **info):
@@ -242,8 +245,10 @@ class SyncManager:
                 'manager': self}
         if protocol.dest: info['sender'] = protocol.dest
         self._validate_message(msg)
-        info['operation'] = msg['_sync_operation']
         cls, registry = self._find_registered_class(msg['_sync_type'])
+        info['operation'] = registry.get_operation(msg['_sync_operation'])
+        info['registry'] = registry
+        info['attributes'] = frozenset(filter(lambda a: not a.startswith('_'), msg.keys()))
         if self.should_listen(msg, cls, registry,
                               sender = info.get('sender', None)) is not True:
             # Failure should raise because ignoring an exception takes
@@ -299,6 +304,8 @@ exc_info = e)
         return True
 
     def should_listen_constructed(self, obj, msg, **info):
+        if info['registry'].should_listen_constructed(obj, msg, **info) is not True:
+            raise SyntaxError("should_listen_constructed must return true or raise")
         if obj.sync_should_listen_constructed(msg, **info) is not True:
             raise SyntaxError('sync_should_listen_constructed must return True or raise')
         return True

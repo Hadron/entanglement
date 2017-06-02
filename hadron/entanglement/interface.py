@@ -17,6 +17,17 @@ def default_encoder(obj, propname):
     return val
 
 
+class EphemeralUnflooded:
+
+    "A sync_owner value indicating that an object is not to be flooded and when received shall be considered belonging to the sender.  Used for protocol messages like errors, Ihave and the like"
+
+    #Not to be constructed; use the class
+    def __init__(self): raise RunTimeError
+
+    destination = NotImplemented
+    @classmethod
+    def __str__(self): return "EphemeralUnflooded"
+
 class SynchronizableMeta(type):
     '''A metaclass for capturing Synchronizable classes.  In python3.6, no metaclass will be needed; __init__subclass will be sufficient.'''
 
@@ -62,7 +73,7 @@ class SynchronizableMeta(type):
     @sync_registry.setter
     def sync_registry(inst, value):
         inst._sync_registry = value
-        
+
 
 
     @property
@@ -134,7 +145,7 @@ class no_sync_property:
     def __init__(self, wraps = None):
         self.wraps = wraps
 
-        
+
 class Synchronizable( metaclass = SynchronizableMeta):
 
     def to_sync(self, attributes = None):
@@ -206,6 +217,12 @@ class Synchronizable( metaclass = SynchronizableMeta):
                                            msg = msg) from e
         return self
 
+    sync_owner = EphemeralUnflooded
+
+    @property
+    def sync_is_local(self):
+        return self.sync_owner is None or self.sync_owner.destination is None
+    
     @classmethod
     def sync_should_listen(self, msg, **info):
         '''Return True or raise SynchronizationUnauthorized'''
@@ -214,7 +231,7 @@ class Synchronizable( metaclass = SynchronizableMeta):
     def sync_should_listen_constructed(self, msg, **info):
         '''Return True if we should listen to this object else return an exception.  Called after an object is constructed; several checks are easier after construction.  Checks that can be made without construct should be made there to avoid the security exposure of constructing objects.'''
         return True
-    
+
     def sync_should_send(self, destination, **info):
         "Returns True if this object should be ynchronized to the given destination"
         return True
@@ -241,7 +258,7 @@ class Synchronizable( metaclass = SynchronizableMeta):
 
     sync_primary_keys = _sync_primary_keys()
     del _sync_primary_keys
-    
+
 
     class _Sync_type:
         "The type of object being synchronized"
@@ -253,7 +270,7 @@ class Synchronizable( metaclass = SynchronizableMeta):
     del _Sync_type
 
 Unique = "Unique" #Constant indicating that a synchronizable is not combinable with any other instance
-
+    
 
 
 class SyncRegistry:
@@ -277,30 +294,40 @@ class SyncRegistry:
     def associate_with_manager(self, manager):
         "Called by a manager when the registry is in the manager's list of registries.  Should not hold a non weak reference to the manager"
         pass
-    
+
     def register_syncable(self, type_name, cls):
         if type_name in self.registry:
             raise ValueError("`{} is already registered in this registry.".format(type_name))
         self.registry[type_name] = cls
 
-    def register_operation(self, operation, handle_incoming):
-        "Add the <operation> operation to the set of operations this class accepts on input.  When an object is synchronized using that operation, call <handle_incoming> passing the same arguments as sync_receive.  Note that self is not explicitly passed; pass in a bound method or use functools.partial if needed."
-        self.operations[operation] = handle_incoming
-        
+    def register_operation(self, operation, op):
+        "Add the <operation> operation to the set of operations this class accepts on input.  Either pass in a <handle_incoming> function passing the same arguments as sync_receive.  Note that self is not explicitly passed; pass in a bound method or use functools.partial if needed. or a SyncOperation instance"
+        from . import operations
+        if not isinstance(op, operations.SyncOperation):
+            op = operations.MethodOperation(operation, op)
+        self.operations[operation] = op
+
+    def get_operation(self, operation):
+        try: return self.operations[operation]
+        except KeyError:
+            raise SyncInvalidOperation("{} is not supported by this registry".format(operation)) from None
+
     def should_listen(self, msg, cls, **info):
         "Authorization check as well as a check on whether we want to ignore the class for some reason"
         return True
 
     def should_send(self, obj, destination, **info):
         return True
-    
+
+    def should_listen_constructed(self, obj, msg, **info):
+        op = info.get('operation', self.get_operation('sync'))
+        assert op.should_listen_constructed(obj, msg, **info) is True
+        return True
+
     def sync_receive(self, object, operation, **kwargs):
         "Called after the object is constructed. May do nothing, may arrange to merge into a database, etc."
-        if operation not in self.operations:
-            raise SyncInvalidOperation("{} is not a valid operation for {}"
-                                       .format(operation, self))
-        return self.operations[operation](object, operation = operation, **kwargs)
-    
+        return operation.incoming(object, operation = operation, **kwargs)
+
 
 
     @contextlib.contextmanager
@@ -361,13 +388,13 @@ class SyncBadEncodingError(SyncError):
 
 class SyncInvalidOperation(SyncError): pass
 
+class SyncBadOwner(SyncError): pass
+
 class SyncNotConnected(SyncError):
 
     dest = sync_property( constructor = True)
-    
+
     def __init__(self, msg = None, dest = None):
         if dest and not msg:
             msg = "Not currently connected to {}".format(dest)
             super().__init__( msg, dest)
-
-            

@@ -225,9 +225,7 @@ class TestSql(SqlFixture, unittest.TestCase):
                 id = t.id).one()
         assert t.ch == t2.ch
         m = mock.MagicMock( wraps= Base.registry.incoming_delete)
-        with mock.patch.dict( Base.registry.operations, 
-                              delete = m
-        ): 
+        with mock.patch.object(Base.registry, 'incoming_delete', new = m): 
             with wait_for_call(self.loop, sql.internal.sql_meta_messages, 'handle_you_have'):
                 s.commit()
         self.assertEqual( m.call_count, 1)

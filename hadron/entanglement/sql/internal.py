@@ -11,15 +11,21 @@ import asyncio, datetime, iso8601, uuid
 
 from ..interface import Synchronizable, SyncRegistry, SyncError, sync_property, SyncBadEncodingError
 from . import encoders
-from .. import interface
+from .. import interface, operations
 from ..network import logger
 from ..util import get_or_create
 from sqlalchemy import inspect
+
 class _SqlMetaRegistry(SyncRegistry):
 
     # If true, then yield between each class while handling an IHave.  In general it is better to  let the event loop have an opportunity to run, but this makes testing much more complicated so it can be disabled.
     yield_between_classes = True
 
+    def __init__(self):
+        super().__init__()
+        self.register_operation('sync', operations.sync_operation)
+        self.register_operation('forward', operations.forward_operation)
+        
     def sync_context(self, manager, **info):
         class context:
 
@@ -34,8 +40,11 @@ class _SqlMetaRegistry(SyncRegistry):
             ctx.session = base.SqlSyncSession(bind = manager.session.bind)
 
         return ctx
+
+    def incoming_forward(self, obj, **info):
+        return self.incoming_sync(obj, **info)
     
-    def sync_receive(self, obj, sender, manager, context, **info):
+    def incoming_sync(self, obj, sender, manager, context, **info):
         try:
             # remember to handle subclasses first
             if isinstance(obj, base.SyncOwner):
@@ -60,7 +69,8 @@ class _SqlMetaRegistry(SyncRegistry):
         i_have.serial = obj.incoming_serial
         i_have.epoch = obj.incoming_epoch
         i_have._sync_owner = obj.id
-        manager.synchronize(i_have, destinations = [sender])
+        manager.synchronize(i_have, destinations = [sender],
+                            operation = 'forward')
 
         
     @asyncio.coroutine
@@ -117,6 +127,7 @@ class _SqlMetaRegistry(SyncRegistry):
             you_have.serial =max_serial
             you_have.epoch = owner.outgoing_epoch
             you_have._sync_owner = owner.id
+            you_have.sync_owner = owner
             manager.synchronize(you_have,
                                 destinations = [sender])
             sender.outgoing_serial = max_serial
@@ -141,7 +152,7 @@ class _SqlMetaRegistry(SyncRegistry):
     def handle_wrong_epoch(self, obj,  sender, manager):
         manager.session.rollback()
         if sender not in manager.session: manager.session.add(sender)
-        owner = manager.session.merge(obj.sync_owner)
+        owner = manager.session.merge(obj.owner)
         owner.clear_all_objects(manager)
         owner.incoming_epoch = obj.new_epoch
         owner.incoming_serial = 0
@@ -151,6 +162,7 @@ class _SqlMetaRegistry(SyncRegistry):
         i_have.epoch = owner.incoming_epoch
         i_have._sync_owner = owner.id
         manager.synchronize( i_have,
+                             operation = 'forward',
                              destinations = [sender])
 
     @asyncio.coroutine
@@ -172,7 +184,11 @@ sql_meta_messages = _SqlMetaRegistry()
 
 
 def populate_owner_from_msg(msg, obj, session):
-    obj.sync_owner = session.query(base.SyncOwner).get(obj._sync_owner)
+    owner = msg.get('_sync_owner', None)
+    if not owner: owner = getattr(obj, '_sync_owner', None)
+    if owner is None:
+        raise interface.SyncBadEncodingError("Owner not specified")
+    obj.sync_owner = session.query(base.SyncOwner).get(owner)
     if not obj.sync_owner:
         raise SyncBadEncodingError("You must synchronize the sync_owner, then drain before synchronizing IHave", msg = msg)
     session.expunge(obj.sync_owner)
@@ -186,17 +202,30 @@ class IHave(Synchronizable):
                           decoder = encoders.datetime_decoder)
     _sync_owner = sync_property(
         encoder = encoders.uuid_encoder,
-        decoder = encoders.uuid_decoder)
+        decoder = encoders.uuid_decoder,)
 
-    def sync_receive_constructed(self, msg, manager, **info):
-        super().sync_receive_constructed(msg, manager = manager, **info)
-        try: populate_owner_from_msg(msg, self, info['context'].session)
+    generated_locally = True
+    def sync_should_send(self, destination, operation, **info):
+        # An IHave is forwarded towards the owner.  We don't want it flooded past the first hop.
+        return self.generated_locally
+        # that because this is only for the owner.  We also want to stop flooding at the first hop.
+
+
+    @classmethod
+    def sync_construct(cls, msg, context, **info):
+        obj = cls()
+        obj.generated_locally = False
+        try:
+                    populate_owner_from_msg(msg, obj, context.session)
         except (KeyError, AttributeError): pass
-        return self
-
+        return obj
+        
 class YouHave(IHave):
     "Same structure as IHave message; sent to update someone's idea of their serial number"
-    pass
+
+    def sync_should_send(self, destination, **info):
+        # Do not permit flooding.  That is, only send in if our owner is local
+        return self.sync_is_local
 
     
 
@@ -217,10 +246,16 @@ class WrongEpoch(SyncError):
         else: self._sync_owner = owner
         super().__init__(*args)
 
-    def sync_receive_constructed(obj, msg, manager, **info):
+    def sync_receive_constructed(self, msg, manager, **info):
         super().sync_receive_constructed(msg, manager = manager, **info)
-        populate_owner_from_msg(msg, obj, manager.session)
-        return obj
+        populate_owner_from_msg(msg, self, manager.session)
+        # It's not really true that we're owned by that SyncOwner;
+        # it's more that we're about that sync_owner.  We still use
+        # populate_owner_from_msg, but we'd like the owner in a
+        # different attribute
+        self.owner = self.sync_owner
+        self.sync_owner = interface.EphemeralUnflooded
+        return self
 
 class MyOwners(Synchronizable):
 
@@ -250,6 +285,7 @@ async def gen_you_have_task(sender, manager):
         you_have.epoch = o.outgoing_epoch
         you_have.serial = o.outgoing_serial
         you_have._sync_owner = o.id
+        you_have.sync_owner = o
         you_haves.append(you_have)
     sender.send_you_have.clear()
     await sender.protocol.sync_drain()

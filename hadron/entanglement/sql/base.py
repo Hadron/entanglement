@@ -15,7 +15,7 @@ from sqlalchemy.orm import load_only
 import sqlalchemy.exc
 import sqlalchemy.orm, sqlalchemy.ext.declarative, sqlalchemy.ext.declarative.api
 from ..util import CertHash, SqlCertHash, get_or_create, GUID
-from .. import interface, network
+from .. import interface, network, operations
 from ..protocol import logger
 from . import internal as _internal
 
@@ -170,9 +170,9 @@ class SqlSyncRegistry(interface.SyncRegistry):
                  bind = None,
                  **kwargs):
         super().__init__(*args, **kwargs)
-        self.register_operation('sync', self.incoming_sync)
-        self.register_operation( 'delete', self.incoming_delete)
-        self.register_operation('forward', self.incoming_forward) # forward to owner
+        self.register_operation('sync', operations.sync_operation)
+        self.register_operation( 'delete', operations.delete_operation)
+        self.register_operation('forward', operations.forward_operation) # forward to owner
         if sessionmaker is None:
             sessionmaker = sync_session_maker()
         if bind is not None: sessionmaker.configure(bind = bind)
@@ -213,7 +213,7 @@ class SqlSyncRegistry(interface.SyncRegistry):
 
     def incoming_forward(self, obj, context, sender, manager, **info):
         if not obj.sync_is_local:
-            raise interface.SyncBadOwnerError("Currently you can only forward to the object's direct owner")
+            raise interface.SyncBadOwner("Currently you can only forward to the object's direct owner")
         assert obj in context.session
         context.session.manager = manager #Flood out the new update
         context.session.commit()
@@ -357,9 +357,6 @@ class SqlSynchronizable(interface.Synchronizable):
         return sqlalchemy.orm.relationship(SyncOwner, foreign_keys = [self.sync_owner_id], lazy = 'joined')
 
 
-    @property
-    def sync_is_local(self):
-        return self.sync_owner is None or self.sync_owner.destination is None
 
     @classmethod
     def sync_construct(cls, msg, context, operation = None, manager = None, registry = None,
@@ -386,11 +383,12 @@ class SqlSynchronizable(interface.Synchronizable):
             owner = SyncOwner.find_or_create(session, sender, msg)
             if obj is not None:
                 if obj.sync_is_local  and operation == 'sync':
-                    raise interface.SyncBadOwnerError("{} tried to synchronize our object to us".format(
+                    raise interface.SyncBadOwner("{} tried to synchronize our object to us".format(
                         sender))
                 elif (obj.sync_owner_id is not None) and (obj.sync_owner_id != owner.id):
-                    raise interface.SyncBadOwnerError("Object owned by {}, but sent by {}".format(
+                    raise interface.SyncBadOwnerssss("Object owned by {}, but sent by {}".format(
                         obj.sync_owner.destination, owner.destination))
+        context.owner = owner
         if obj is not None:
             for k in primary_keys: del msg[k]
             return obj
