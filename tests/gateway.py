@@ -12,12 +12,12 @@ from unittest import mock
 
 from hadron.entanglement.interface import Synchronizable, sync_property, SyncRegistry
 from hadron.entanglement.network import  SyncServer,  SyncManager
-from hadron.entanglement.util import certhash_from_file, CertHash, SqlCertHash, get_or_create, entanglement_logs_disabled
+from hadron.entanglement.util import certhash_from_file, CertHash, SqlCertHash, get_or_create, entanglement_logs_disabled, GUID
 from sqlalchemy import create_engine, Column, Integer, inspect, String, ForeignKey
 from sqlalchemy.orm import sessionmaker
-from hadron.entanglement.sql import SqlSynchronizable,  sync_session_maker, sql_sync_declarative_base, SqlSyncDestination, SqlSyncRegistry, sync_manager_destinations
+from hadron.entanglement.sql import SqlSynchronizable,  sync_session_maker, sql_sync_declarative_base, SqlSyncDestination, SqlSyncRegistry, sync_manager_destinations, SyncOwner
 import hadron.entanglement.sql as sql
-from .utils import wait_for_call, SqlFixture
+from .utils import wait_for_call, SqlFixture, settle_loop
 
 # SQL declaration
 Base = sql_sync_declarative_base()
@@ -27,8 +27,8 @@ Base = sql_sync_declarative_base()
 class TableBase(Base):
     __tablename__ = "base_table"
 
-    id = Column(String(128), primary_key = True,
-                default = lambda: str(uuid.uuid4()))
+    id = Column(GUID, primary_key = True,
+                default = lambda: uuid.uuid4())
     type = Column(String, nullable = False)
     __mapper_args__ = {
         'polymorphic_on': 'type',
@@ -36,7 +36,7 @@ class TableBase(Base):
 
 class TableInherits(TableBase):
     __tablename__ = "inherits_table"
-    id = Column(String(128),
+    id = Column(GUID,
                 ForeignKey(TableBase.id, ondelete = "cascade"),
                 primary_key = True)
     info = Column(String(30))
@@ -84,7 +84,7 @@ class TestGateway(SqlFixture, unittest.TestCase):
         self.client.close()
         del self.client
         super().tearDown()
-        
+
 
 
     def testGatewayFlood(self):
@@ -110,7 +110,40 @@ class TestGateway(SqlFixture, unittest.TestCase):
             self.assertEqual(len(owners), 3)
             for o in owners:
                 self.assertIn(o.id, owner_uuids)
-                
+
+    def testFullFloodingAndBookkeeping(self):
+        "Test that all nodes can flood and that object states synchronize"
+        def msg(m):
+            return "Error between {} and {}: {}".format(
+                a['name'],b['name'], m)
+        count = 0
+        managers = ['client', 'server', 'manager']
+        l = [{'name': m} for m in managers]
+        for i in l:
+            i['manager'] = getattr(self, i['name'])
+            session = i['session'] = Base.registry.sessionmaker(bind = i['manager'].session.bind)
+            count += 1
+            i['obj'] = TableInherits(info = "object {}".format(count))
+            session.add(i['obj'])
+            session.manager = i['manager']
+            session.commit()
+            session.refresh(i['obj'])
+            i['owner'] = session.query(SyncOwner).filter_by(destination_id = None).one()
+        settle_loop(self.loop)
+        for a in l:
+            for b in l:
+                if a is b: continue
+                session_b = b['session']
+                obj_b = session_b.query(TableInherits).get(a['obj'].id)
+                self.assertIsNotNone(obj_b, msg('Failed to propagate object'))
+                self.assertEqual(a['owner'].id, obj_b.sync_owner.id,
+                                 msg("sync owner id"))
+                self.assertEqual(obj_b.sync_serial, a['obj'].sync_serial,
+                                 msg("Sync serial not correct"))
+
+
+
+
 
 if __name__ == '__main__':
     import logging, unittest, unittest.main

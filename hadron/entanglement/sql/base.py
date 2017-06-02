@@ -417,7 +417,14 @@ class SyncOwner(_internal_base, SqlSynchronizable, metaclass = SqlSyncMeta):
                           default = lambda: datetime.datetime.now(datetime.timezone.utc), nullable = False))
     outgoing_serial = 0
 
-    # All SyncOwners own themselves
+    def __repr__(self):
+        if self.destination is not None:
+            dest_str = repr(self.destination)
+        else: dest_str = "local"
+        return "<SyncOwner id: {} {}>".format(
+            str(self.id), dest_str)
+    
+            # All SyncOwners own themselves
     sync_owner_id = sqlalchemy.orm.synonym('id')
     @property
     def sync_owner(self): return self

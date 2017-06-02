@@ -67,7 +67,7 @@ class SqlFixture(unittest.TestCase):
                                   "server", host = "127.0.0.1",
                                   server_hostname = "host1")
         self.d2 = self.to_client = SqlSyncDestination(certhash_from_file("host2.pem"),
-                                  "client")
+                                  "manager")
         self.server.add_destination(self.d2)
         self.manager.add_destination(self.d1)
         with wait_for_call(self.loop,
@@ -88,3 +88,18 @@ class SqlFixture(unittest.TestCase):
         del self.d1
         del self.d2
         gc.collect()
+
+def settle_loop(loop, timeout = 0.5):
+    "Call the loop while it continues to have callbacks, waiting at most timeout seconds"
+    try:
+        timeout_fut =loop.create_task(asyncio.sleep(timeout))
+        while len(loop._ready) > 0:
+            loop.call_soon(loop.stop)
+            loop.run_forever()
+            if timeout_fut.done(): break
+        #after loop
+        if timeout_fut.done():
+            raise AssertionError("Loop failed to settle in {} seconds".format(timeout))
+    finally:
+        timeout_fut.cancel()
+        
