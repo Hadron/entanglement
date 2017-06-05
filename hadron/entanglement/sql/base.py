@@ -361,10 +361,6 @@ class SqlSynchronizable(interface.Synchronizable):
     @classmethod
     def sync_construct(cls, msg, context, operation = None, manager = None, registry = None,
                         **info):
-        # post condition: in the sync operation, either the object is
-        # new or it is already owned by the same owner.  For other
-        # operations, either the object is new, we own it, or it is
-        # owned by its existing owner.
         if manager and registry: registry.ensure_session(manager)
         session = None
         obj = None
@@ -376,18 +372,8 @@ class SqlSynchronizable(interface.Synchronizable):
                 raise interface.SyncBadEncodingError("All primary keys must be present in the encoding", msg = msg) from e
             sender = info['sender']
             session = context.session
-            sender_inspect = inspect(sender)
-            load_required = (not sender_inspect.persistent) or  sender_inspect.modified
-            sender = session.merge(sender, load = load_required)
             obj = session.query(cls).get(primary_key_values)
-            owner = SyncOwner.find_or_create(session, sender, msg)
-            if obj is not None:
-                if obj.sync_is_local  and operation == 'sync':
-                    raise interface.SyncBadOwner("{} tried to synchronize our object to us".format(
-                        sender))
-                elif (obj.sync_owner_id is not None) and (obj.sync_owner_id != owner.id):
-                    raise interface.SyncBadOwnerssss("Object owned by {}, but sent by {}".format(
-                        obj.sync_owner.destination, owner.destination))
+            owner = SyncOwner.find_from_msg(session, sender, msg)
         context.owner = owner
         if obj is not None:
             for k in primary_keys: del msg[k]
@@ -454,14 +440,14 @@ class SyncOwner(_internal_base, SqlSynchronizable, metaclass = SqlSyncMeta):
             
     
     @classmethod
-    def find_or_create(self, session, dest, msg):
-        return get_or_create(session, SyncOwner,
-                             {'destination':
-                              get_or_create(session, SqlSyncDestination,
-                                            {'cert_hash': dest.cert_hash},
-                                            {'name': dest.name,
-                                             'host': dest.host})})
-
+    def find_from_msg(self, session, dest, msg):
+        if '_sync_owner' in msg: id = msg['_sync_owner']
+        elif hasattr(dest, 'first_owner'): id = dest.first_owner
+        else: raise interface.SyncBadOwner("Unable to find owner for message")
+        try: return session.query(SyncOwner).get(id)
+        except sqlalchemy.orm.exc.NoResultFound:
+            raise interface.SyncBadOwner("{} not found is an owner".format(id)) from None
+        
     def clear_all_objects(self, manager = None,
                               *, registries = None, session = None):
         if manager:
@@ -477,6 +463,8 @@ class SyncOwner(_internal_base, SqlSynchronizable, metaclass = SqlSyncMeta):
                 session.delete(o)
             session.flush()
 
+    def sync_encode_value(self):
+        return str(self.id)
 def sql_sync_declarative_base(*args, registry = None,
                               registry_class = SqlSyncRegistry,
                               **kwargs):

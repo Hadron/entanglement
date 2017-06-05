@@ -171,6 +171,7 @@ class _SqlMetaRegistry(SyncRegistry):
     def handle_my_owners(self, obj, manager, sender):
         session = manager.session
         session.rollback()
+        sender.first_owner = obj.owners[0]
         old_owners = session.query(base.SyncOwner).filter(base.SyncOwner.destination == sender, base.SyncOwner.id.notin_(obj.owners))
         for o in old_owners:
             o.clear_all_objects(manager = manager, session = session)

@@ -28,6 +28,10 @@ class EphemeralUnflooded:
     @classmethod
     def __str__(self): return "EphemeralUnflooded"
 
+    @classmethod
+    def sync_encode_value(cls): return None
+    
+
 class SynchronizableMeta(type):
     '''A metaclass for capturing Synchronizable classes.  In python3.6, no metaclass will be needed; __init__subclass will be sufficient.'''
 
@@ -151,6 +155,8 @@ class Synchronizable( metaclass = SynchronizableMeta):
     def to_sync(self, attributes = None):
         '''Return a dictionary containing the attributes of self that should be synchronized.  Attributes can be passed in; if so, then the list of attributes will be limited to tohse passed in.'''
         d = {}
+        if hasattr(self, 'sync_owner') and self.sync_owner is not None:
+            d['_sync_owner'] = self.sync_owner.sync_encode_value()
         for k,v in self.__class__._sync_properties.items():
             if attributes and k not in attributes: continue
             try: val = v.encoderfn(self, k)
