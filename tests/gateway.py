@@ -130,6 +130,7 @@ class TestGateway(SqlFixture, unittest.TestCase):
             session.refresh(i['obj'])
             i['owner'] = session.query(SyncOwner).filter_by(destination_id = None).one()
         settle_loop(self.loop)
+        self.loop.run_until_complete(asyncio.sleep(0.1))
         for a in l:
             for b in l:
                 if a is b: continue
@@ -140,7 +141,9 @@ class TestGateway(SqlFixture, unittest.TestCase):
                                  msg("sync owner id"))
                 self.assertEqual(obj_b.sync_serial, a['obj'].sync_serial,
                                  msg("Sync serial not correct"))
-
+                self.assertEqual(obj_b.sync_owner.incoming_serial, a['obj'].sync_serial,
+                                 msg('owner incoming serial'))
+                
 
 
 

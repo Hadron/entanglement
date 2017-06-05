@@ -61,7 +61,7 @@ class SqlSyncSession(sqlalchemy.orm.Session):
             if self.manager:
                 for x , attrs in self.sync_dirty: assert not self.is_modified(x)
                 self.sync_commit( detach_forwarded = False)
-                
+
         @sqlalchemy.events.event.listens_for(self, 'after_rollback')
         def after_rollback(session):
             session.sync_dirty.clear()
@@ -114,18 +114,10 @@ class SqlSyncSession(sqlalchemy.orm.Session):
                 self.manager.synchronize(o, operation = 'delete',
                                      attributes_to_sync  = o.sync_primary_keys)
             for c in self.manager.connections:
-                for o in self.manager.session.query(SyncOwner).filter((SyncOwner.destination != c.dest)|(SyncOwner.destination == None)):
-                    if o.sync_is_local:
-                        outgoing_serial = max(o.outgoing_serial, serial)
-                    else:
-                        outgoing_serial = max(o.incoming_serial, o.outgoing_serial)
-                    if outgoing_serial > o.outgoing_serial:
-                        o.outgoing_serial = outgoing_serial
-                        c.dest.send_you_have.append(o)
-                if not c.dest.you_have_task:
-                    c.dest.you_have_task = self.manager.loop.create_task(_internal.gen_you_have_task(c.dest, self.manager))
-                    c.dest.you_have_task._log_destroy_pending = False
-
+                for o in self.manager.session.query(SyncOwner).filter((SyncOwner.destination == None)):
+                    o.outgoing_serial = max(o.outgoing_serial, serial)
+                    c.dest.send_you_have.add(o)
+                _internal.schedule_you_have(c.dest, self.manager)
         for o, dest, attrs in forward_objects:
             self.manager.synchronize(o, operation = 'forward',
                                      destinations = [dest],
@@ -257,7 +249,7 @@ class  SqlSyncDestination(_internal_base, network.SyncDestination):
         network.SyncDestination.__init__(self, *args, **kwargs)
         self.you_have_task = None
         self.i_have_task = None
-        self.send_you_have = [] 
+        self.send_you_have = set()
 
     @sqlalchemy.orm.reconstructor
     def reconstruct(self):
@@ -266,12 +258,12 @@ class  SqlSyncDestination(_internal_base, network.SyncDestination):
         self.connect_at = 0
         self.server_hostname = None
         self.i_have_task = None
-        self.send_you_have = []
+        self.send_you_have = set()
 
 
     async def connected(self, manager, *args, **kwargs):
         res = await super().connected(manager, *args, **kwargs)
-        if hasattr(manager, 'session'): 
+        if hasattr(manager, 'session'):
             if not self in manager.session: manager.session.add(self)
             manager.session.commit()
             await _internal.handle_connected(self, manager, manager.session)
@@ -409,12 +401,12 @@ class SyncOwner(_internal_base, SqlSynchronizable, metaclass = SqlSyncMeta):
         else: dest_str = "local"
         return "<SyncOwner id: {} {}>".format(
             str(self.id), dest_str)
-    
+
             # All SyncOwners own themselves
     sync_owner_id = sqlalchemy.orm.synonym('id')
     @property
     def sync_owner(self): return self
-    
+
     @classmethod
     def sync_construct(cls, msg, context, sender, **info):
         obj = None
@@ -436,9 +428,9 @@ class SyncOwner(_internal_base, SqlSynchronizable, metaclass = SqlSyncMeta):
                 obj.destination = sender
 
         return obj
-    
-            
-    
+
+
+
     @classmethod
     def find_from_msg(self, session, dest, msg):
         if '_sync_owner' in msg: id = msg['_sync_owner']
@@ -447,7 +439,7 @@ class SyncOwner(_internal_base, SqlSynchronizable, metaclass = SqlSyncMeta):
         try: return session.query(SyncOwner).get(id)
         except sqlalchemy.orm.exc.NoResultFound:
             raise interface.SyncBadOwner("{} not found is an owner".format(id)) from None
-        
+
     def clear_all_objects(self, manager = None,
                               *, registries = None, session = None):
         if manager:

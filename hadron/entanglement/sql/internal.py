@@ -149,7 +149,12 @@ class _SqlMetaRegistry(SyncRegistry):
         logger.debug("We have serial {s} from {d}".format(
             s = obj.serial,
             d = owner))
+        for c in manager.connections:
+            if c.dest == sender: continue
+            c.dest.send_you_have.add(owner)
+            schedule_you_have(c.dest, manager)
         manager.session.commit()
+            
 
     def handle_wrong_epoch(self, obj,  sender, manager):
         manager.session.rollback()
@@ -210,8 +215,8 @@ class IHave(Synchronizable):
     generated_locally = True
     def sync_should_send(self, destination, operation, **info):
         # An IHave is forwarded towards the owner.  We don't want it flooded past the first hop.
-        return self.generated_locally
         # that because this is only for the owner.  We also want to stop flooding at the first hop.
+        return self.generated_locally
 
 
     @classmethod
@@ -224,9 +229,6 @@ class IHave(Synchronizable):
 class YouHave(IHave):
     "Same structure as IHave message; sent to update someone's idea of their serial number"
 
-    def sync_should_send(self, destination, **info):
-        # Do not permit flooding.  That is, only send in if our owner is local
-        return self.sync_is_local
 
 
 
@@ -277,6 +279,11 @@ class MyOwners(Synchronizable):
 
 you_have_timeout = 0.5
 
+def schedule_you_have(dest, manager):
+                    if not dest.you_have_task:
+                        dest.you_have_task = manager.loop.create_task(gen_you_have_task(dest, manager))
+                        dest.you_have_task._log_destroy_pending = False
+
 async def gen_you_have_task(sender, manager):
     await asyncio.sleep(you_have_timeout)
     try:
@@ -286,7 +293,7 @@ async def gen_you_have_task(sender, manager):
     for o in sender.send_you_have:
         you_have = YouHave()
         you_have.epoch = o.outgoing_epoch
-        you_have.serial = o.outgoing_serial
+        you_have.serial = o.outgoing_serial if o.sync_is_local else o.incoming_serial
         you_have._sync_owner = o.id
         you_have.sync_owner = o
         you_haves.append(you_have)
@@ -297,6 +304,9 @@ async def gen_you_have_task(sender, manager):
                         destinations = [sender])
 
     sender.you_have_task = None
+    if len(sender.send_you_have) > 0:
+        schedule_you_have(sender, manager)
+        
 
 def process_column(name, col, wraps = True):
     d = {}
