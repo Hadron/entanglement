@@ -91,8 +91,11 @@ class _SqlMetaRegistry(SyncRegistry):
             logger.info("{s} has serial {n} for {o}; synchronizing changes since then".format( o = owner,
                                                                                                   n = max_serial,
                                                                                                   s = sender))
+            owner_condition = base.SyncOwner.id == owner.id
+            if owner.id == sender.first_local_owner:
+                owner_condition = owner_condition | (base.SyncOwner.id == None)
             if obj.serial > 0:
-                for d in session.query(SyncDeleted).filter(SyncDeleted.sync_serial > max_serial):
+                for d in session.query(SyncDeleted).filter(SyncDeleted.sync_serial > max_serial, owner_condition):
                     try: cls, registry  = manager._find_registered_class(d.sync_type)
                     except UnregisteredSyncClass:
                         logger.error("{} is not a registered sync class for this manager, but deletes are recorded for it; forcing full resync of {}".format(
@@ -103,13 +106,10 @@ class _SqlMetaRegistry(SyncRegistry):
                     d.registry = registry
                     manager.synchronize(d, operation = 'delete',
                                         destinations = [sender],
-                                        attributes_to_sync = d.sync_primary_keys)
+                                        attributes_to_sync = (set(d.sync_primary_keys) | {'sync_serial'}))
                     max_serial = max(max_serial, d.sync_serial)
 
             for c in classes_in_registries(manager.registries):
-                owner_condition = base.SyncOwner.id == owner.id
-                if owner.id == sender.first_local_owner:
-                    owner_condition = owner_condition | (base.SyncOwner.id == None)
                 try:
                     if c is base.SyncOwner or issubclass(c, base.SyncOwner): continue
                     if self.yield_between_classes: yield
@@ -124,6 +124,9 @@ class _SqlMetaRegistry(SyncRegistry):
                     manager.synchronize(o,
                                         destinations = [sender])
             yield from sender.protocol.sync_drain()
+            sender.received_i_have.add(owner.id)
+            if not owner.sync_is_local:
+                max_serial = owner.incoming_serial
             if max_serial <= obj.serial: return
             you_have = YouHave()
             you_have.serial =max_serial
@@ -151,8 +154,9 @@ class _SqlMetaRegistry(SyncRegistry):
             d = owner))
         for c in manager.connections:
             if c.dest == sender: continue
-            c.dest.send_you_have.add(owner)
-            schedule_you_have(c.dest, manager)
+            if owner.id in c.dest.received_i_have:
+                c.dest.send_you_have.add(owner)
+                schedule_you_have(c.dest, manager)
         manager.session.commit()
             
 

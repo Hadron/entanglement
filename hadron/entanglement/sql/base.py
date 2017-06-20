@@ -10,7 +10,7 @@
 import contextlib, datetime, json, sqlalchemy, uuid
 from datetime import timezone
 
-from sqlalchemy import Column, Table, String, Integer, DateTime, ForeignKey, inspect, TEXT
+from sqlalchemy import Column, Table, String, Integer, DateTime, ForeignKey, inspect, TEXT, Index
 from sqlalchemy.orm import load_only
 import sqlalchemy.exc
 import sqlalchemy.orm, sqlalchemy.ext.declarative, sqlalchemy.ext.declarative.api
@@ -52,7 +52,8 @@ class SqlSyncSession(sqlalchemy.orm.Session):
                         deleted = SyncDeleted()
                         deleted.sync_serial = new_serial
                         deleted.sync_type = inst.sync_type
-                        deleted.primary_key = json.dumps(inst.to_sync())
+                        deleted.sync_owner = inst.sync_owner
+                        deleted.primary_key = json.dumps(inst.to_sync(attributes = inst.sync_primary_keys))
                         session.add(deleted)
                     else: inst.sync_owner #grab while we can issue sql
 
@@ -112,12 +113,14 @@ class SqlSyncSession(sqlalchemy.orm.Session):
                 self.manager.synchronize(o)
             for o in deleted_objects:
                 self.manager.synchronize(o, operation = 'delete',
-                                     attributes_to_sync  = o.sync_primary_keys)
+                                     attributes_to_sync  = (set(o.sync_primary_keys)
+                                                            | {'sync_serial'}))
             for c in self.manager.connections:
                 for o in self.manager.session.query(SyncOwner).filter((SyncOwner.destination == None)):
                     o.outgoing_serial = max(o.outgoing_serial, serial)
-                    c.dest.send_you_have.add(o)
-                _internal.schedule_you_have(c.dest, self.manager)
+                    if o.id in c.dest.received_i_have:
+                        c.dest.send_you_have.add(o)
+                        _internal.schedule_you_have(c.dest, self.manager)
         for o, dest, attrs in forward_objects:
             self.manager.synchronize(o, operation = 'forward',
                                      destinations = [dest],
@@ -196,11 +199,15 @@ class SqlSyncRegistry(interface.SyncRegistry):
         session = context.session
         ins = inspect(obj)
         if not ins.persistent: return
-        #flood back on forward delete to owner
-        if  (obj.sync_owner is None or sender != obj.sync_owner.destination ):
-            session.manager = manager #flood it
         assert obj in session
         session.delete(obj)
+        if obj.sync_owner and obj.sync_owner.destination == sender:
+            #It's from the sender.
+            sd = SyncDeleted(sync_serial = obj.sync_serial,
+                             sync_owner_id = obj.sync_owner_id,
+                             sync_type = obj.sync_type,
+                             primary_key = json.dumps(obj.to_sync(attributes = obj.sync_primary_keys)))
+            session.add(sd)
         session.commit()
 
     def incoming_forward(self, obj, context, sender, manager, **info):
@@ -250,6 +257,7 @@ class  SqlSyncDestination(_internal_base, network.SyncDestination):
         self.you_have_task = None
         self.i_have_task = None
         self.send_you_have = set()
+        self.received_i_have = set()
 
     @sqlalchemy.orm.reconstructor
     def reconstruct(self):
@@ -259,9 +267,13 @@ class  SqlSyncDestination(_internal_base, network.SyncDestination):
         self.server_hostname = None
         self.i_have_task = None
         self.send_you_have = set()
+        self.received_i_have = set()
 
 
     async def connected(self, manager, *args, **kwargs):
+        self.you_have_task = None
+        self.send_you_have = set()
+        self.received_i_have = set()
         res = await super().connected(manager, *args, **kwargs)
         if hasattr(manager, 'session'):
             if not self in manager.session: manager.session.add(self)
@@ -278,7 +290,12 @@ class SyncDeleted( _internal_base):
     id = Column( Integer, primary_key = True)
     sync_type = Column( String(128), nullable = False)
     primary_key = Column( TEXT, nullable = False)
-    sync_serial = Column(Integer, nullable = False, index = True)
+    sync_owner_id = Column(GUID, ForeignKey('sync_owners.id'),
+                           nullable = True)
+    sync_serial = Column(Integer, nullable = False)
+    _table_args = (Index("sync_deleted_serial_idx", sync_owner_id, sync_serial))
+
+    sync_owner = sqlalchemy.orm.relationship('SyncOwner')
 
     @property
     def _obj(self):
@@ -288,7 +305,9 @@ class SyncDeleted( _internal_base):
         msg = json.loads(self.primary_key)
         msg['_sync_type'] =  self.sync_type
         msg['_sync_operation'] = 'delete'
+        msg['sync_serial'] = self.sync_serial
         self._constructed_obj = cls.sync_receive(msg, context = self, operation = 'delete', sender = None)
+        self._constructed_obj.sync_owner = self.sync_owner
         return self._constructed_obj
 
     def proxyfn(method):
@@ -382,8 +401,8 @@ class SyncOwner(_internal_base, SqlSynchronizable, metaclass = SqlSyncMeta):
     __tablename__ = "sync_owners"
     id = Column(GUID, primary_key = True,
                 default = uuid.uuid4)
-    destination_id = Column(Integer, ForeignKey(SqlSyncDestination.id, ondelete = 'cascade'),
-                            index = True, nullable = True)
+    destination_id = interface.no_sync_property(Column(Integer, ForeignKey(SqlSyncDestination.id, ondelete = 'cascade'),
+                            index = True, nullable = True))
     destination = sqlalchemy.orm.relationship(SqlSyncDestination, lazy = 'subquery',
                                               backref = sqlalchemy.orm.backref('owners'),
     )
@@ -413,7 +432,7 @@ class SyncOwner(_internal_base, SqlSynchronizable, metaclass = SqlSyncMeta):
         if hasattr(context, 'session'):
             obj = context.session.query(SyncOwner).get(msg['id'])
             if obj and (obj.destination  != sender):
-                raise SyncBadOwner("{} sent by {} but belongs to {}".format(
+                raise interface.SyncBadOwner("{} sent by {} but belongs to {}".format(
                     obj, sender, obj.destination))
             try: del msg['sync_owner_id']
             except KeyError: pass
