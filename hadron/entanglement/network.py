@@ -97,9 +97,9 @@ class SyncManager:
         info['operation'] = operation
         for d in destinations:
             if d in exclude: continue
-            if d.cert_hash not in valid_cert_hashes:
-                raise SyncNotConnected(dest = d)
             if self.should_send( obj, destination = d, **info):
+                if d.cert_hash not in valid_cert_hashes:
+                    raise SyncNotConnected(dest = d)
                 should_send_destinations.add( d)
         for d in should_send_destinations:
             con = d.protocol
