@@ -111,11 +111,8 @@ class TestGateway(SqlFixture, unittest.TestCase):
             for o in owners:
                 self.assertIn(o.id, owner_uuids)
 
-    def testFullFloodingAndBookkeeping(self):
-        "Test that all nodes can flood and that object states synchronize"
-        def msg(m):
-            return "Error between {} and {}: {}".format(
-                a['name'],b['name'], m)
+
+    def setup_one_obj_layout(self):
         count = 0
         managers = ['client', 'server', 'manager']
         l = [{'name': m} for m in managers]
@@ -130,7 +127,15 @@ class TestGateway(SqlFixture, unittest.TestCase):
             session.refresh(i['obj'])
             i['owner'] = session.query(SyncOwner).filter_by(destination_id = None).one()
         settle_loop(self.loop)
-        self.loop.run_until_complete(asyncio.sleep(0.1))
+        settle_loop(self.loop) # you_have has a 0 second delay
+        return l
+
+    def testFullFloodingAndBookkeeping(self):
+        "Test that all nodes can flood and that object states synchronize"
+        def msg(m):
+            return "Error between {} and {}: {}".format(
+                a['name'],b['name'], m)
+        l = self.setup_one_obj_layout()
         for a in l:
             for b in l:
                 if a is b: continue
@@ -143,7 +148,60 @@ class TestGateway(SqlFixture, unittest.TestCase):
                                  msg("Sync serial not correct"))
                 self.assertEqual(obj_b.sync_owner.incoming_serial, a['obj'].sync_serial,
                                  msg('owner incoming serial'))
-                
+
+    def testDeleteConnected(self):
+        "Test that object deletion works when nodes are connected"
+        def msg(s):
+            return "Examining {a} object viewed at {b}: {s}".format(
+                a = a['name'],
+                b = b['name'],
+                s = s)
+        l = self.setup_one_obj_layout()
+        for e in l:
+            e['session'].delete(e['obj'])
+            e['session'].commit()
+        settle_loop(self.loop)
+        for a in l:
+            for b in l:
+                session_b = b['session']
+                self.assertIsNone(
+                    session_b.query(TableInherits).get(a['obj'].id),
+                    msg("Object not deleted"))
+
+    def testDeleteDisconnected(self):
+        "Test that object deletion works when nodes are disconnected"
+        def msg(s):
+            return "Examining {a} object viewed at {b}: {s}".format(
+                a = a['name'],
+                b = b['name'],
+                s = s)
+        l = self.setup_one_obj_layout()
+        with entanglement_logs_disabled():
+            self.client.remove_destination(self.client_to_server)
+            self.manager.remove_destination(self.to_server)
+            settle_loop(self.loop)
+        for e in l:
+            e['session'].delete(e['obj'])
+            e['session'].commit()
+        settle_loop(self.loop)
+        self.client_to_server.connect_at = 0
+        self.client.add_destination(self.client_to_server)
+        self.loop.run_until_complete(asyncio.wait(self.client._connecting.values()))
+        settle_loop(self.loop)
+        self.to_server.connect_at = 0
+        self.manager.add_destination(self.to_server)
+        self.loop.run_until_complete(asyncio.wait(self.manager._connecting.values()))
+        settle_loop(self.loop) # and again for you_have
+        settle_loop(self.loop)
+        for a in l:
+            for b in l:
+                session_b = b['session']
+                self.assertIsNone(
+                    session_b.query(TableInherits).get(a['obj'].id),
+                    msg("Object not deleted"))
+
+
+
 
 
 
