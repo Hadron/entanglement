@@ -235,7 +235,7 @@ class TestSql(SqlFixture, unittest.TestCase):
         self.assertEqual( self.d2.owners[0].incoming_serial, t.sync_serial)
         deleted = s.query( sql.base.SyncDeleted).first()
         self.assertEqual( deleted.sync_serial, t.sync_serial)
-        self.assertEqual( t.to_sync(), json.loads(deleted.primary_key))
+        self.assertEqual( t.to_sync(attributes = t.sync_primary_keys), json.loads(deleted.primary_key))
 
     def testDeleteIHave(self):
         "Test that at connection start up, IHave handling will delete objects"
