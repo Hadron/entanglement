@@ -48,17 +48,17 @@ parser.add_argument('--reflect', action='store_true',
 
 mode_group = parser.add_mutually_exclusive_group(required = True)
 mode_group.add_argument('--add-destination', dest="mode", const="add_destination", action="store_const",
-help = "Add a destination")
+                        help = "Add a destination")
 mode_group.add_argument('--remove-destination', dest='mode',
-const = 'remove_destination', action = 'store_const',
-help = "Remove a destination by cert_hash")
+                        const = 'remove_destination', action = 'store_const',
+                        help = "Remove a destination by cert_hash")
 mode_group.add_argument('--server', const = 'server',
-dest ='mode', action='store_const',
-help = "Run a synchronization server")
+                        dest ='mode', action='store_const',
+                        help = "Run a synchronization server")
 
 parser.add_argument('--ca')
 parser.add_argument('--cert',
-help = "Certificate file for server or to compute cert_hash for destination")
+                    help = "Certificate file for server or to compute cert_hash for destination")
 
 parser.add_argument('--key',
                     help = "Key file for certificate if not included in the certificate file")
