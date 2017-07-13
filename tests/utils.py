@@ -91,12 +91,22 @@ class SqlFixture(unittest.TestCase):
 
 def settle_loop(loop, timeout = 0.5):
     "Call the loop while it continues to have callbacks, waiting at most timeout seconds"
+    def loop_busy(loop):
+        if len(loop._ready) > 0: return True
+        event_list = loop._selector.select(0)
+        if len(event_list) > 0: return True
+        if len(loop._scheduled) == 0: return False
+        timeout = loop._scheduled[0]._when
+        timeout -= loop.time()
+        return timeout <= 0
     try:
         timeout_fut =loop.create_task(asyncio.sleep(timeout))
-        while len(loop._ready) > 0:
+        done = False
+        while not done:
             loop.call_soon(loop.stop)
             loop.run_forever()
             if timeout_fut.done(): break
+            done = not loop_busy(loop)
         #after loop
         if timeout_fut.done():
             raise AssertionError("Loop failed to settle in {} seconds".format(timeout))
