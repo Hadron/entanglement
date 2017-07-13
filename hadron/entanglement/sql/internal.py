@@ -343,7 +343,7 @@ async def handle_connected(destination, manager, session):
     from .base import SyncOwner, SqlSyncDestination
     get_or_create(session, SyncOwner, {'destination': None})
     session.commit()
-    my_owners = session.query(SyncOwner).filter((SyncOwner.destination == None)|(SyncOwner.destination != destination)).all()
+    my_owners = session.query(SyncOwner).outerjoin(SqlSyncDestination).filter((SyncOwner.destination == None)|(SqlSyncDestination.cert_hash != destination.cert_hash)).all()
     for o in my_owners:
         manager.synchronize(o, destinations = [destination])
     my_owner = MyOwners()

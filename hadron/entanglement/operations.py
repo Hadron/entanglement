@@ -111,7 +111,7 @@ class delete_operation(SyncOperation):
                                     attributes_to_sync = obj.sync_primary_keys,
                                     exclude = [sender])
             else: #not from direction of object owner, so forward there
-                dest = manager.dest_by_cert_hash(obj.sync_owner.destination)
+                dest = manager.dest_by_cert_hash(obj.sync_owner.destination.cert_hash)
                 manager.synchronize(obj, operation = 'delete',
                                     attributes_to_sync = obj.sync_primary_keys,
                                     destinations = [dest])
