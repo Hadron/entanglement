@@ -200,6 +200,23 @@ class TestGateway(SqlFixture, unittest.TestCase):
                     session_b.query(TableInherits).get(a['obj'].id),
                     msg("Object not deleted"))
 
+    def testForwardUpdate(self):
+        "Test that forward operation works across middle nodes"
+        t = TableInherits(info2 = "blah")
+        self.client_session.add(t)
+        self.client_session.commit()
+        settle_loop(self.loop)
+        manager_session = manager_registry.sessionmaker()
+        manager_session.manager = self.manager
+        t2 = manager_session.query(TableInherits).get(t.id)
+        self.assertEqual(t2.id, t.id)
+        self.assertEqual(t2.info2, t.info2)
+        t2.info2 = "Force a forward update"
+        manager_session.commit()
+        self.client_session.expire(t)
+        settle_loop(self.loop)
+        self.assertEqual(t.info2, t2.info2)
+        
 
 
 

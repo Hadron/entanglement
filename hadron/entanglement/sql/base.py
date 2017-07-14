@@ -211,11 +211,9 @@ class SqlSyncRegistry(interface.SyncRegistry):
         session.commit()
 
     def incoming_forward(self, obj, context, sender, manager, **info):
-        if not obj.sync_is_local:
-            raise interface.SyncBadOwner("Currently you can only forward to the object's direct owner")
         assert obj in context.session
-        context.session.manager = manager #Flood out the new update
-        context.session.commit()
+        if obj.sync_is_local:
+            context.session.commit()
 
     def incoming_sync(self, object, manager, context, **info):
         # By this point the owner check has already been done
