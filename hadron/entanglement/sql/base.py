@@ -26,49 +26,73 @@ class SqlSyncSession(sqlalchemy.orm.Session):
         self.manager = manager
         self.sync_dirty = set()
         self.sync_deleted = set()
-        @sqlalchemy.events.event.listens_for(self, "before_flush")
-        def before_flush(session, internal, instances):
-            serial_insert = Serial.__table__.insert().values(timestamp = datetime.datetime.now())
-            serial_flushed = False
-            for inst in session.new | session.dirty:
-                if isinstance(inst, SqlSynchronizable) and session.is_modified(inst):
-                    inspect_inst = inspect(inst)
-                    modified_attrs = frozenset(inst.__class__._sync_properties.keys()) - frozenset(inspect_inst.unmodified)
-                    self.sync_dirty.add((inst, modified_attrs))
-                    if (inst.sync_owner_id is None and inst.sync_owner is None) or inst.sync_is_local:
-                        if not serial_flushed:
-                            new_serial = session.execute(serial_insert).lastrowid
-                            serial_flushed = True
-                        inst.sync_serial = new_serial
-                    else:  inst.sync_owner # get while we can
-            for inst in session.deleted:
-                if isinstance( inst, SqlSynchronizable):
-                    self.sync_deleted.add(inst)
-                    if inst.sync_owner_id is None and inst.sync_owner is None:
-                        if not serial_flushed:
-                            new_serial = session.execute(serial_insert).lastrowid
-                            serial_flushed = True
-                        inst.sync_serial = new_serial
-                        deleted = SyncDeleted()
-                        deleted.sync_serial = new_serial
-                        deleted.sync_type = inst.sync_type
-                        deleted.sync_owner = inst.sync_owner
-                        deleted.primary_key = json.dumps(inst.to_sync(attributes = inst.sync_primary_keys))
-                        session.add(deleted)
-                    else: inst.sync_owner #grab while we can issue sql
+        sqlalchemy.events.event.listens_for(self, "before_flush")(self._handle_dirty)
 
         @sqlalchemy.events.event.listens_for(self, "after_commit")
         def receive_after_commit(session):
             if self.manager:
                 for x , attrs in self.sync_dirty: assert not self.is_modified(x)
-                self.sync_commit( detach_forwarded = False)
+                self.sync_commit( expunge_nonlocal = False)
 
         @sqlalchemy.events.event.listens_for(self, 'after_rollback')
         def after_rollback(session):
             session.sync_dirty.clear()
             session.sync_deleted.clear()
 
-    def sync_commit(self, detach_forwarded = True):
+    @staticmethod
+    def _handle_dirty(session, internal = None, instances = None, expunge_nonlocal = False):
+        serial_insert = Serial.__table__.insert().values(timestamp = datetime.datetime.now())
+        serial_flushed = False
+        for inst in session.new | session.dirty:
+            if isinstance(inst, SqlSynchronizable) and session.is_modified(inst):
+                inspect_inst = inspect(inst)
+                modified_attrs = frozenset(inst.__class__._sync_properties.keys()) - frozenset(inspect_inst.unmodified)
+                session.sync_dirty.add((inst, modified_attrs))
+                if (inst.sync_owner_id is None and inst.sync_owner is None) or inst.sync_is_local:
+                    if not serial_flushed:
+                        new_serial = session.execute(serial_insert).lastrowid
+                        serial_flushed = True
+                    inst.sync_serial = new_serial
+                else:
+                        inst.sync_owner # get while we can
+                        if expunge_nonlocal:
+                            session.expunge(inst)
+                        elif session.manager:
+                            raise NotImplementedError('The semantics of a local commit of nonlocal objects are undefined and unimplemented')
+                            
+        for inst in session.deleted:
+            if isinstance( inst, SqlSynchronizable):
+                if inst in session.sync_deleted: continue
+                session.sync_deleted.add(inst)
+                if (inst.sync_owner_id is None and inst.sync_owner is None) or inst.sync_is_local:
+                    if not serial_flushed:
+                        new_serial = session.execute(serial_insert).lastrowid
+                        serial_flushed = True
+                    inst.sync_serial = new_serial
+                    deleted = SyncDeleted()
+                    deleted.sync_serial = new_serial
+                    deleted.sync_type = inst.sync_type
+                    deleted.sync_owner = inst.sync_owner
+                    deleted.primary_key = json.dumps(inst.to_sync(attributes = inst.sync_primary_keys))
+                    session.add(deleted)
+                else:
+                    inst.sync_owner #grab while we can issue sql
+                    if expunge_nonlocal:
+                        session.expunge(inst)
+                    elif session.manager:
+                        raise NotImplementedError('Semantics of committing nonlocal objects is undefined and unimplemented')
+                    
+
+    def sync_commit(self, expunge_nonlocal = True):
+        self._handle_dirty(self, expunge_nonlocal = expunge_nonlocal)
+        # Behavior if expunge_nonlocal is false is no not fully
+        # implemented; there used to be partial behavior from prior to
+        # multi-owner support, but updates and deletes were handled
+        # differently, and there were significant bugs around when
+        # flushes happened.  For now, if expunge_nonlocal is false, we
+        # will error out if there are nonlocal objects.  If that
+        # changes, this function and _handle_dirty as well as _do_sync
+        # will need careful refactoring.
         if self.sync_dirty or  self.sync_deleted:
             # For updates, if we are the owner, we flood the update
             # (by including in dirty_objects in do_sync).  If not, we
@@ -78,6 +102,7 @@ class SqlSyncSession(sqlalchemy.orm.Session):
             s_new = sqlalchemy.orm.Session(bind = self.bind)
             objects = []
             forward_objects = [] #obj, dest, attrs
+            deleted_objects = [] #obj, dest
             for o, modified_attrs  in self.sync_dirty:
                 forward_dest = None
                 if o.sync_owner_id or o.sync_owner: #an update The
@@ -90,9 +115,6 @@ class SqlSyncSession(sqlalchemy.orm.Session):
                         logger.error("Requested forward to owner of {}, but manager doesn't recognize {} as a destination".format(
                             o, o.sync_owner.destination))
                         continue
-                    # If we are going to detach forwarded, do it now
-                    # before we re-alias o
-                    if detach_forwarded: self.expunge(o)
 
                 o = s_new.merge(o)
                 sqlalchemy.orm.session.make_transient(o)
@@ -100,27 +122,34 @@ class SqlSyncSession(sqlalchemy.orm.Session):
                 if forward_dest:
                     forward_objects.append((o, forward_dest, modified_attrs))
                 else: objects.append(o)
-            # For deleted, we break the loop in that we refuse to flood deletes for objects we don't have
-            self.manager.loop.call_soon_threadsafe(self._do_sync, objects, list(self.sync_deleted), forward_objects)
+            for o in self.sync_deleted:
+                if o.sync_is_local:
+                    deleted_objects.append((o, None))
+                else:
+                    delete_dest = self.manager.dest_by_cert_hash(o.sync_owner.destination.cert_hash)
+                    if not delete_dest:
+                        logger.error("Requested delete to owner of {}, but manager doesn't recognize {} as a destination".format(
+                            o, o.sync_owner.destination))
+                        continue
+                    deleted_objects.append((o, [delete_dest]))
+                    
+            self.manager.loop.call_soon_threadsafe(self._do_sync, objects, deleted_objects, forward_objects)
         self.sync_dirty.clear()
         self.sync_deleted.clear()
 
     def _do_sync(self, dirty_objects, deleted_objects, forward_objects):
         #This is called in the event loop and thus in the thread of the manager
         if dirty_objects or deleted_objects:
-            serial = max(map( lambda x: x.sync_serial, dirty_objects + deleted_objects))
+            del_objs = [x[0] for x in deleted_objects]
+            serial = max(map( lambda x: x.sync_serial, dirty_objects + del_objs))
             for o in dirty_objects:
                 self.manager.synchronize(o)
-            for o in deleted_objects:
+            for o, dest in deleted_objects:
                 self.manager.synchronize(o, operation = 'delete',
                                      attributes_to_sync  = (set(o.sync_primary_keys)
-                                                            | {'sync_serial'}))
-            for c in self.manager.connections:
-                for o in self.manager.session.query(SyncOwner).filter((SyncOwner.destination == None)):
-                    o.outgoing_serial = max(o.outgoing_serial, serial)
-                    if o.id in c.dest.received_i_have:
-                        c.dest.send_you_have.add(o)
-                        _internal.schedule_you_have(c.dest, self.manager)
+                                                            | {'sync_serial'}),
+                                         destinations = dest)
+            _internal.trigger_you_haves(self.manager, serial)
         for o, dest, attrs in forward_objects:
             self.manager.synchronize(o, operation = 'forward',
                                      destinations = [dest],
@@ -210,11 +239,19 @@ class SqlSyncRegistry(interface.SyncRegistry):
             session.add(sd)
         session.commit()
 
+    def after_flood_delete(self, obj, manager, **info):
+        if obj.sync_is_local:
+            _internal.trigger_you_haves(manager, obj.sync_serial)
+            
     def incoming_forward(self, obj, context, sender, manager, **info):
         assert obj in context.session
         if obj.sync_is_local:
             context.session.commit()
 
+    def after_flood_forward(self, obj, manager, **info):
+        if obj.sync_is_local:
+            _internal.trigger_you_haves(manager, obj.sync_serial)
+            
     def incoming_sync(self, object, manager, context, **info):
         # By this point the owner check has already been done
         session = context.session

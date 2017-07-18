@@ -17,10 +17,12 @@ class SyncOperation:
     def incoming(self, obj, registry, **info):
         operation = str(info.get('operation', sync_operation))
         meth = getattr(registry, 'incoming_'+operation, None)
+        meth_post_flood = getattr(registry, 'after_flood_'+operation, None)
         res = None
         if callable(meth):
             res =  meth(obj, registry = registry, **info)
         self.flood(obj, registry = registry, **info)
+        if callable(meth_post_flood): meth_post_flood(obj, registry = registry, **info)
         return res
 
     def __str__(self):

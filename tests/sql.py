@@ -213,7 +213,7 @@ class TestSql(SqlFixture, unittest.TestCase):
 
     def testDelete(self):
         "Test Object Deletion"
-        s = self.manager.session
+        s = self.manager_registry.sessionmaker()
         s.manager = self.manager
         t = Table1()
         t.ch = self.d1.cert_hash
@@ -240,7 +240,7 @@ class TestSql(SqlFixture, unittest.TestCase):
     def testDeleteIHave(self):
         "Test that at connection start up, IHave handling will delete objects"
         t = Table1(ch = self.d2.cert_hash)
-        s = self.manager.session
+        s = self.manager_registry.sessionmaker()
         s.manager = self.manager
         s.add(t)
         with wait_for_call(self.loop,
@@ -275,13 +275,15 @@ class TestSql(SqlFixture, unittest.TestCase):
         self.session.manager = self.manager
         with wait_for_call(self.loop, sql.internal.sql_meta_messages, 'handle_you_have'):
             self.session.commit()
-        t2 = self.server.session.query(TableInherits).filter_by(
+        server_session = self.base.registry.sessionmaker()
+        server_session.manager = self.server
+        t2 = server_session.query(TableInherits).filter_by(
             id = t.id).one()
         t2.info = "bazfutz"
-        self.server.session.manager = self.server
         with wait_for_call(self.loop, sql.internal.sql_meta_messages, 'handle_you_have'):
-            self.server.session.commit()
-            # refetches because of expire after commit
+            server_session.sync_commit()
+            server_session.commit()
+        # refetches because of expire after commit
         self.assertEqual(t.id, t2.id)
 
     def testRemoteDelete(self):
@@ -291,12 +293,14 @@ class TestSql(SqlFixture, unittest.TestCase):
         self.session.manager = self.manager
         with wait_for_call(self.loop, sql.internal.sql_meta_messages, 'handle_you_have'):
             self.session.commit()
-        t2 = self.server.session.query(TableInherits).filter_by(
+        server_session = self.base.registry.sessionmaker()
+        server_session.manager = self.server
+        t2 = server_session.query(TableInherits).filter_by(
             id = t.id).one()
-        self.server.session.delete(t2)
-        self.server.session.manager = self.server
+        server_session.delete(t2)
         with wait_for_call(self.loop, sql.internal.sql_meta_messages, 'handle_you_have'):
-            self.server.session.commit()
+            server_session.sync_commit()
+            server_session.commit()
         res =  self.session.query(TableInherits).all()
         self.assertEqual(res, [])
 
@@ -308,14 +312,16 @@ class TestSql(SqlFixture, unittest.TestCase):
         self.session.manager = self.manager
         with wait_for_call(self.loop, sql.internal.sql_meta_messages, 'handle_you_have'):
             self.session.commit()
-        t2 = self.server.session.query(TableInherits).filter_by(
+        server_session = self.base.registry.sessionmaker()
+        server_session.manager = self.server
+        t2 = server_session.query(TableInherits).filter_by(
             id = t.id).one()
         t2.info = "bazfutz"
-        self.server.session.manager = self.server
         with wait_for_call(self.loop, sql.internal.sql_meta_messages, 'handle_you_have'):
-            self.server.session.commit()
+            server_session.sync_commit()
+            t2 = server_session.query(TableInherits).get(t2.id)
             t2.info2 = "quux"
-            self.server.session.commit()
+            server_session.sync_commit()
             self.session.expire(t)
         self.assertEqual(t.id, t2.id)
         self.assertEqual(t.info2, t2.info2)

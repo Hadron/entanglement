@@ -212,6 +212,7 @@ class TestGateway(SqlFixture, unittest.TestCase):
         self.assertEqual(t2.id, t.id)
         self.assertEqual(t2.info2, t.info2)
         t2.info2 = "Force a forward update"
+        manager_session.sync_commit()
         manager_session.commit()
         self.client_session.expire(t)
         settle_loop(self.loop)

@@ -355,5 +355,13 @@ async def handle_connected(destination, manager, session):
     await destination.protocol.sync_drain()
     manager.synchronize(my_owner, destinations = [destination])
 
+def trigger_you_haves(manager, serial):
+    for c in manager.connections:
+        for o in manager.session.query(base.SyncOwner).filter((base.SyncOwner.destination == None)):
+            o.outgoing_serial = max(o.outgoing_serial, serial)
+            if o.id in c.dest.received_i_have:
+                c.dest.send_you_have.add(o)
+                schedule_you_have(c.dest, manager)
+
 
 from . import base
