@@ -81,7 +81,27 @@ class SyncManager:
                     destinations = None,
                     exclude = [],
                     operation = 'sync',
-                    attributes_to_sync = None):
+                    attributes_to_sync = None,
+                    response = False,
+                    response_for = None):
+        '''The primary interface for synchronizing an object.  Destinations
+        must be destinations in self.destinations; exclude is a set of
+        destinations to exclude.  If attributes is set only these
+        attributes are included in outgoing messages.  If response is
+        True, returns a future that will receive the response from
+        this message.  Response_for should be passed the response
+        object from the context when responding to a message in a
+        flood
+
+        '''
+        future = None
+        if response and response_for:
+            raise ValueError('Response and response_for cannot both be true')
+        if response:
+            response_for = protocol.ResponseReceiver()
+            future = self.loop.create_future()
+            response_for.add_future(future)
+            
         if isinstance(obj, interface.Synchronizable) and (obj.sync_receive.__func__ is not interface.Synchronizable.sync_receive.__func__):
             raise SyntaxError('Must not override sync_receive in {}'.format(obj.__class__.__name__))
         if destinations is None:
@@ -91,6 +111,7 @@ class SyncManager:
         should_send_destinations = set()
         info = {}
         info['manager'] = self
+        info['response_for'] = response_for
         info['sync_type'] = obj.__class__
         cls, registry = self._find_registered_class( obj.sync_type)
         info['registry'] = registry
@@ -105,7 +126,9 @@ class SyncManager:
             con = d.protocol
             con._synchronize_object(obj,
             attributes = attributes_to_sync,
-            operation = operation)
+                                    operation = operation,
+                                    response_for = response_for)
+        return future
 
 
     async     def _create_connection(self, dest):

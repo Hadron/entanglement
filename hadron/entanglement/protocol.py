@@ -15,13 +15,75 @@ protocol_logger = logging.getLogger('hadron.entanglement.protocol')
 #protocol_logger.setLevel('DEBUG')
 protocol_logger.setLevel('ERROR')
 
-_msg_header = ">I" # A 4-byte big-endien size
+_msg_header = ">II" # A 4-byte big-endien size
 _msg_header_size = struct.calcsize(_msg_header)
-assert _msg_header_size == 4
+assert _msg_header_size == 8
+_MSG_FLAG_RESPONSE_NEEDED = 1
+_MSG_FLAGS_CRITICAL = 0xffff
+_MSG_FLAGS_UNDERSTOOD = _MSG_FLAG_RESPONSE_NEEDED
+# If a message is received where flags&(_MSG_FLAGS_CRITICAL & (~_MSG_FLAGS_UNDERSTOOD)) != 0, then we throw away the connection because we don't understand critical extensions
+
+class ResponseReceiver:
+    '''A class representing the responses that should be sent in responce
+    to a synchronized object.  Passed into SyncManager.synchronize as
+    the response_for parameter, generally in the flood rule of an
+    operation.
+
+    There are two assymetric response handling paths.  On receive,
+    sync_receive needs to look up the incoming message and see if it
+    is a response.  If so, it should be set as the result for futures
+    waiting on that response.  However, when we generate a response
+    message to forward, we do that in the middle of the flood method
+    of the operation, rather than by returning from some handler.  So,
+    a response context needs to be passed along to the flood rule so
+    that outgoing messages can be marked as needing a response and
+    tied back to the triggering message.
+
+    '''
+
+    __slots__ = ('futures', 'forwards')
+
+    def __init__():
+        self.futures = []
+        self.forwards = weakref.WeakKeyDictionary()
+
+
+    def __call__(self, result):
+        '''Result is the response received from the message; should be called in the message receive loop'''
+        for fut in self.futures:
+            if fut.canceled: continue
+            if isinstance(result, Exception):
+                fut.set_exception(result)
+            else: fut.set_result(result)
+
+    def add_forward(self, protocol, msgnum):
+        l = self.forwards.setdefault(protocol, [])
+        l.append(msgnum)
+
+    def add_future(self, fut):
+        self.futures.append(fut)
+
+    def merge(self, other):
+        if other is None: return
+        self.futures.extend(other.futures)
+        for k, v in other.forwards.items():
+            l = self.forwards.setdefault(k, [])
+            l.extend(v)
+
+    def responses_to(self, protocol):
+        "Returns the set of messages that are being responded to when responding out the given protocol"
+        try:
+            l = self.forwards[protocol]
+            del self.forwards[protocol]
+            return l
+        except KeyError: return None
+
+
+
 
 class DirtyMember:
 
-    __slots__ = ('obj', 'operation', 'attrs')
+    __slots__ = ('obj', 'operation', 'attrs', 'response_for')
 
     def __eq__(self, other):
         return self.obj.sync_compatible(other.obj)
@@ -40,20 +102,24 @@ class DirtyMember:
             k = keydict,
             o = repr(self.obj))
 
-    def update(self, obj, operation, attrs):
+    def update(self, obj, operation, attrs, response_for):
         assert self.obj.sync_compatible(obj)
         if (attrs or self.attrs) and (self.attrs - set(attrs)): #Removing attributes
             raise NotImplementedError("Would need merge to handle removing outgoing attributes")
         self.obj = obj
         self.operation = operation
         self.attrs = frozenset(attrs) if attrs else None
+        if self.response_for:
+            self.response_for.merge(response_for)
+        else: self.response_for = response_for
 
-    def __init__(self, obj, operation, attrs):
+    def __init__(self, obj, operation, attrs, response_for):
         self.obj = obj
         self.operation = operation
         if attrs:
             self.attrs = frozenset(attrs)
         else: self.attrs = None
+        self.response_for = response_for
 
 class SyncProtocol(asyncio.Protocol):
 
@@ -78,13 +144,13 @@ class SyncProtocol(asyncio.Protocol):
         self._incoming = incoming
 
     def _synchronize_object(self,obj,
-                            operation, attributes):
+                            operation, attributes, response_for):
         """Send obj out to be synchronized; this is an internal interface that should only be called by SyncManager.synchronize"""
-        elt = DirtyMember(obj, operation, attributes)
+        elt = DirtyMember(obj, operation, attributes, response_for)
         if elt in self.current_dirty:
-            self.current_dirty[elt].update(obj, operation, attributes)
+            self.current_dirty[elt].update(obj, operation, attributes, response_for)
         else:
-            self.dirty.setdefault(elt, elt).update(obj, operation, attributes)
+            self.dirty.setdefault(elt, elt).update(obj, operation, attributes, response_for)
         if self.task is None:
             self.task = self.loop.create_task(self._run_sync())
 
@@ -124,6 +190,7 @@ class SyncProtocol(asyncio.Protocol):
                     self.task = self.loop.create_task(self._run_sync())
 
     def _send_sync_message(self, elt):
+        flags = 0
         obj = elt.obj
         sync_rep = obj.to_sync(attributes = elt.attrs)
         sync_rep['_sync_type'] = obj.sync_type
@@ -134,14 +201,18 @@ class SyncProtocol(asyncio.Protocol):
             js = js, d = self.dest))
 
         assert len(js) <= 65536
-        header = struct.pack(_msg_header, len(js))
+        header = struct.pack(_msg_header, len(js), flags)
         self.transport.write(header + js)
 
     async def _read_task(self):
         while True:
             header = await self.reader.readexactly(_msg_header_size)
-            jslen = struct.unpack(_msg_header, header)[0]
+            jslen, flags = struct.unpack(_msg_header, header)
             assert jslen <= 65536
+            if flags&(_MSG_FLAGS_CRITICAL&(~_MSG_FLAGS_UNDERSTOOD)) != 0:
+                self.close()
+                raise ValueError("Flags contained unknown critical option")
+                
             js = await self.reader.readexactly(jslen)
             protocol_logger.debug("Receiving {js} from {d}".format(
                 js = js, d = self.dest))
