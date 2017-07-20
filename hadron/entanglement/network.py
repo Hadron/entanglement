@@ -89,7 +89,7 @@ class SyncManager:
         destinations to exclude.  If attributes is set only these
         attributes are included in outgoing messages.  If response is
         True, returns a future that will receive the response from
-        this message.  Response_for should be passed the response
+        this message.  Response may also be a future to associate with the object.  Response_for should be passed the response
         object from the context when responding to a message in a
         flood
 
@@ -98,8 +98,9 @@ class SyncManager:
         if response and response_for:
             raise ValueError('Response and response_for cannot both be true')
         if response:
+            if isinstance(response, asyncio.Future): future = response
+            else: future = self.loop.create_future()
             response_for = protocol.ResponseReceiver()
-            future = self.loop.create_future()
             response_for.add_future(future)
             
         if isinstance(obj, interface.Synchronizable) and (obj.sync_receive.__func__ is not interface.Synchronizable.sync_receive.__func__):

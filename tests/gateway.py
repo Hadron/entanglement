@@ -217,6 +217,33 @@ class TestGateway(SqlFixture, unittest.TestCase):
         self.client_session.expire(t)
         settle_loop(self.loop)
         self.assertEqual(t.info2, t2.info2)
+
+    def testForwardResponse(self):
+        "Test that forwards response futures work"
+        t = TableInherits(info2 = "blah")
+        self.client_session.add(t)
+        self.client_session.commit()
+        settle_loop(self.loop)
+        manager_session = manager_registry.sessionmaker()
+        manager_session.manager = self.manager
+        t2 = manager_session.query(TableInherits).get(t.id)
+        self.assertEqual(t2.id, t.id)
+        self.assertEqual(t2.info2, t.info2)
+        t2.info2 = "Force a forward update"
+        manager_session.sync_commit()
+        manager_session.commit()
+        assert hasattr(t2,'sync_future')
+        c = next(iter(self.manager.connections))
+        found = False
+        for v in c.dirty.values():
+            if v.obj.sync_compatible(t2):
+                found = True
+                self.assertIsNotNone(v.response_for)
+                self.assertIn(t2.sync_future, v.response_for.futures)
+        assert found
+        self.loop.run_until_complete(asyncio.wait([t2.sync_future], timeout = 0.5))
+        self.assertEqual(t2.sync_future.result().info2, t2.info2)
+        
         
 
 

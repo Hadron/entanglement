@@ -83,7 +83,8 @@ class SqlSyncSession(sqlalchemy.orm.Session):
                         raise NotImplementedError('Semantics of committing nonlocal objects is undefined and unimplemented')
                     
 
-    def sync_commit(self, expunge_nonlocal = True):
+    def sync_commit(self, expunge_nonlocal = True, *,
+                    update_responses = True):
         self._handle_dirty(self, expunge_nonlocal = expunge_nonlocal)
         # Behavior if expunge_nonlocal is false is no not fully
         # implemented; there used to be partial behavior from prior to
@@ -105,7 +106,7 @@ class SqlSyncSession(sqlalchemy.orm.Session):
             deleted_objects = [] #obj, dest
             for o, modified_attrs  in self.sync_dirty:
                 forward_dest = None
-                if o.sync_owner_id or o.sync_owner: #an update The
+                if (o.sync_owner_id or o.sync_owner) and not o.sync_is_local: #an update The
                     # manager may have a subclass of
                     # SqlSyncDestination that is loaded and almost
                     # certainly has a different session, so we want
@@ -116,9 +117,29 @@ class SqlSyncSession(sqlalchemy.orm.Session):
                             o, o.sync_owner.destination))
                         continue
 
+                # We want to be manipulating fully refreshed detached
+                # instances.  We want fully refreshed in case
+                # coalescing causes us to touch other attributes
+                # besides what this commit updates.  However we want
+                # detached instances that do not share with other
+                # objects in the system so that later updates that are
+                # not committed do not touch our objects.  The best
+                # way to accomplish this is to merge into a new
+                # session (forcing a refresh).  That avoids refreshing
+                # the input object unintentionally, but also works
+                # around the fact that you cannot cause any SQL in an
+                # after_commit hook.  However merging into a new
+                # session complicates response handling.  We need to
+                # allocate the future here and attach it to the old
+                # and new objects.
+                future = None
+                if update_responses and forward_dest:
+                    future = self.manager.loop.create_future()
+                    o.sync_future = future
                 o = s_new.merge(o)
                 sqlalchemy.orm.session.make_transient(o)
                 sqlalchemy.orm.session.make_transient_to_detached(o)
+                o.sync_future = future #new object after merge
                 if forward_dest:
                     forward_objects.append((o, forward_dest, modified_attrs))
                 else: objects.append(o)
@@ -133,11 +154,11 @@ class SqlSyncSession(sqlalchemy.orm.Session):
                         continue
                     deleted_objects.append((o, [delete_dest]))
                     
-            self.manager.loop.call_soon_threadsafe(self._do_sync, objects, deleted_objects, forward_objects)
+            self._do_sync( update_responses, objects, deleted_objects, forward_objects)
         self.sync_dirty.clear()
         self.sync_deleted.clear()
 
-    def _do_sync(self, dirty_objects, deleted_objects, forward_objects):
+    def _do_sync(self, update_responses, dirty_objects, deleted_objects, forward_objects):
         #This is called in the event loop and thus in the thread of the manager
         if dirty_objects or deleted_objects:
             del_objs = [x[0] for x in deleted_objects]
@@ -145,15 +166,19 @@ class SqlSyncSession(sqlalchemy.orm.Session):
             for o in dirty_objects:
                 self.manager.synchronize(o)
             for o, dest in deleted_objects:
-                self.manager.synchronize(o, operation = 'delete',
+                future = self.manager.synchronize(o, operation = 'delete',
                                      attributes_to_sync  = (set(o.sync_primary_keys)
                                                             | {'sync_serial'}),
-                                         destinations = dest)
-            _internal.trigger_you_haves(self.manager, serial)
+                                         destinations = dest,
+                                         response = update_responses if dest else False)
+                if future is not None: o.sync_future = future
+            self.manager.loop.call_soon_threadsafe(_internal.trigger_you_haves, self.manager, serial)
         for o, dest, attrs in forward_objects:
             self.manager.synchronize(o, operation = 'forward',
                                      destinations = [dest],
-                                     attributes_to_sync = attrs |  set(o.sync_primary_keys))
+                                     attributes_to_sync = attrs |  set(o.sync_primary_keys),
+                                     response = update_responses and o.sync_future)
+
 
 
 def sync_session_maker(*args, **kwargs):
