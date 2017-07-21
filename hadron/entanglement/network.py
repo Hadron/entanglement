@@ -9,7 +9,7 @@
 
 
 
-import asyncio, logging, ssl, time
+import asyncio, logging, ssl, time, weakref
 from . import protocol
 from .util import CertHash, certhash_from_file
 from .bandwidth import BwLimitProtocol
@@ -208,6 +208,7 @@ class SyncManager:
         dest = protocol.dest
         if self.cert_hash == dest.cert_hash:
             logger.debug("Self connection to {}".format(dest.cert_hash))
+            self.incoming_self_protocol = weakref.ref(protocol)
             return
         if dest.cert_hash in self._connections:
             logger.warning("Replacing existing connection to {}".format(dest))
