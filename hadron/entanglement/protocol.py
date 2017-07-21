@@ -291,7 +291,9 @@ class SyncProtocol(asyncio.Protocol):
                 logger.exception("Error receiving {}".format(sync_repr))
                 if isinstance(e,SyncError) and not '_sync_is_error' in sync_repr:
                     self._manager.synchronize(e,
-                                              destinations = [self.dest])
+                                              destinations = [self.dest],
+                                              response_for = response_for,
+                                              operation = 'error')
             finally:
                 self._in_counter += 1
                 response_for = None

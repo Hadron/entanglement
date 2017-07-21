@@ -28,6 +28,20 @@ class SyncOperation:
     def __str__(self):
         return  self.name #should be set by subclasses
 
+
+    def __eq__(self, other):
+        if isinstance(other, str):
+            return str(self) == other
+        return super().__eq__(other)
+
+    def __hash__(self):
+        return id(self)
+
+        def __ne__(self, other):
+            res = (self == other)
+            if res is NotImplemented: return NotImplemented
+            return not res
+        
     def should_listen_constructed(self, obj, msg, **info):
         '''Implement owner checks etc'''
         raise NotImplementedError
@@ -125,3 +139,29 @@ class delete_operation(SyncOperation):
                 
 
 delete_operation = delete_operation()
+
+class ResponseOperation(SyncOperation):
+
+    "an operation that floods a response back toward the initial senders"
+
+    def should_listen_constructed(self, obj, msg, **info):
+        return True
+
+    def flood(self, obj, response_for, manager, sender, operation, **info):
+        if response_for is None: return
+        for p in list(response_for.forwards.keys()):
+            try:
+                dest = manager.dest_by_cert_hash(p.dest.cert_hash)
+                if dest:
+                    manager.synchronize(obj,
+                                        operation = str(operation),
+                                        destinations = [dest],
+                                        response_for = response_for,
+                                        attributes_to_sync = info.get('attributes', None))
+            except AttributeError: pass
+
+class error_operation(ResponseOperation):
+
+    name = 'error'
+
+error_operation = error_operation()

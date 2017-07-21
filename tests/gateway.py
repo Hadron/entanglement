@@ -15,7 +15,7 @@ from hadron.entanglement.network import  SyncServer,  SyncManager
 from hadron.entanglement.util import certhash_from_file, CertHash, SqlCertHash, get_or_create, entanglement_logs_disabled, GUID
 from sqlalchemy import create_engine, Column, Integer, inspect, String, ForeignKey
 from sqlalchemy.orm import sessionmaker
-from hadron.entanglement.sql import SqlSynchronizable,  sync_session_maker, sql_sync_declarative_base, SqlSyncDestination, SqlSyncRegistry, sync_manager_destinations, SyncOwner
+from hadron.entanglement.sql import SqlSynchronizable,  sync_session_maker, sql_sync_declarative_base, SqlSyncDestination, SqlSyncRegistry, sync_manager_destinations, SyncOwner, SyncSqlError
 import hadron.entanglement.sql as sql
 from .utils import wait_for_call, SqlFixture, settle_loop
 import hadron.entanglement.protocol
@@ -73,6 +73,11 @@ class TableInherits(TableBase):
     info2 = Column(String(30))
     __mapper_args__ = {'polymorphic_identity': "inherits"}
 
+class TableError(Base):
+    __tablename__ = 'error'
+    id = Column(String, primary_key = True)
+    other = Column(String, nullable = False)
+    
 manager_registry = SqlSyncRegistry()
 manager_registry.registry = Base.registry.registry
 
@@ -327,7 +332,23 @@ class TestGateway(SqlFixture, unittest.TestCase):
             self.assertTrue(mock_called)
             self.assertTrue(fut.done())
             self.assertIsNone(fut.result())
-            
+
+    def testError(self):
+        "Test that errors flood to response"
+        t = TableError(id = "123", other = "456")
+        self.client_session.add(t)
+        self.client_session.commit()
+        settle_loop(self.loop)
+        manager_session = manager_registry.sessionmaker()
+        manager_session.manager = self.manager
+        t2 = manager_session.query(TableError).all()[0]
+        t2.other = None
+        manager_session.sync_commit()
+        fut = t2.sync_future
+        with entanglement_logs_disabled(): 
+            self.loop.run_until_complete(asyncio.wait([fut], timeout = 0.6))
+        self.assertRaises(SyncSqlError, fut.result)
+        
         
 
 

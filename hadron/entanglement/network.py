@@ -301,6 +301,13 @@ class SyncManager:
         except Exception as e:
             logger.exception("Error receiving a {}".format(cls.__name__),
 exc_info = e)
+            if isinstance(e,interface.SyncError) and not '_sync_is_error' in msg:
+                if not e.network_msg: e.network_msg = msg
+                self.synchronize(e,
+                                          destinations = [protocol.dest],
+                                          response_for = response_for,
+                                          operation = 'error')
+
         finally:
             if 'context' in info: del info['context']
 

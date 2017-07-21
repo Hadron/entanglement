@@ -359,22 +359,35 @@ error_registry = SyncRegistry()
 class SyncError(RuntimeError, Synchronizable):
 
     args = sync_property()
+    network_msg = sync_property()
     context = sync_property()
     @context.encoder
     def context(obj, propname):
-        if obj.__context__: return str(obj.__context__)
-    @context.decoder
-    def context(obj, propname, value): pass
+        if obj.__context__ and not obj.__cause__: return str(obj.__context__)
+        else: return default_encoder(obj, propname)
 
     cause = sync_property()
     @cause.encoder
     def cause(obj, propname):
         if obj.__cause__: return str(obj.__cause__)
-    @cause.decoder
-    def cause(obj, propname, value): pass
+        else: return default_encoder(obj, propname)
 
     sync_registry = error_registry
     sync_primary_keys = Unique
+
+    def __init__(self, *args, network_msg = None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.network_msg = network_msg
+
+    def __str__(self):
+        s = super().__str__()
+        if self.network_msg is not None:
+            s = s + "(in response to )"+str(self.network_msg)+")"
+        try:
+            if self.cause is not None:
+                s = s + ":"+ self.cause
+        except AttributeError: pass
+        return s
 
     def to_sync(selff, **kwargs):
         d = super().to_sync(**kwargs)
@@ -394,11 +407,11 @@ class WrongSyncDestination(SyncError):
 
 class SyncBadEncodingError(SyncError):
 
-    msg = sync_property(constructor =True)
+
 
     def __init__(self, *args, msg = None, **kwargs):
         super().__init__(*args, **kwargs)
-        self.msg = msg
+        self.network_msg = msg
 
 class SyncInvalidOperation(SyncError): pass
 
@@ -412,3 +425,6 @@ class SyncNotConnected(SyncError):
         if dest and not msg:
             msg = "Not currently connected to {}".format(dest)
             super().__init__( msg, dest)
+
+from . import operations
+error_registry.register_operation('error', operations.error_operation)

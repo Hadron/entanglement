@@ -6,4 +6,4 @@
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the file
 # LICENSE for details.
 
-from .base import SqlSyncRegistry, SqlSynchronizable,  sql_sync_declarative_base,  sync_session_maker, SqlSyncSession, SqlSyncDestination, sync_manager_destinations, SyncOwner
+from .base import SqlSyncRegistry, SqlSynchronizable,  sql_sync_declarative_base,  sync_session_maker, SqlSyncSession, SqlSyncDestination, sync_manager_destinations, SyncOwner, SyncSqlError
