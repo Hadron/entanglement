@@ -8,7 +8,7 @@
 
 import asyncio, json, logging, struct, weakref
 from .util import CertHash
-from .interface import SyncError
+from .interface import SyncError, SyncBadEncodingError
 
 logger = logging.getLogger("hadron.entanglement")
 protocol_logger = logging.getLogger('hadron.entanglement.protocol')
@@ -41,20 +41,30 @@ class ResponseReceiver:
 
     '''
 
-    __slots__ = ('futures', 'forwards')
+    __slots__ = ('futures', 'forwards', 'no_response_yet')
 
-    def __init__():
+    def __init__(self):
         self.futures = []
         self.forwards = weakref.WeakKeyDictionary()
+        self.no_response_yet = True
 
 
     def __call__(self, result):
         '''Result is the response received from the message; should be called in the message receive loop'''
         for fut in self.futures:
-            if fut.canceled: continue
+            if fut.cancelled(): continue
             if isinstance(result, Exception):
                 fut.set_exception(result)
             else: fut.set_result(result)
+
+    def sending_to(self, dests):
+        "Indicate what destinations we are sending to; if we are sending to a destination already waiting for a response, then we are the response and none of these sends should request a future response."
+        for p in self.forwards.keys():
+            try:
+                if p.dest in dests:
+                    self.no_response_yet = False
+                    return
+            except KeyError: pass
 
     def add_forward(self, protocol, msgnum):
         l = self.forwards.setdefault(protocol, [])
@@ -65,6 +75,7 @@ class ResponseReceiver:
 
     def merge(self, other):
         if other is None: return
+        if other is self: return
         self.futures.extend(other.futures)
         for k, v in other.forwards.items():
             l = self.forwards.setdefault(k, [])
@@ -128,6 +139,9 @@ class SyncProtocol(asyncio.Protocol):
                  **kwargs):
         super().__init__()
         self._manager = manager
+        self._out_counter = 0
+        self._in_counter = 0
+        self._expected = {}
         self.loop = manager.loop
         #self.dirty is where we add new object not equal to anything we are currently considering
         # self.current_dirty is where we send from, which may be self.dirty
@@ -191,18 +205,28 @@ class SyncProtocol(asyncio.Protocol):
 
     def _send_sync_message(self, elt):
         flags = 0
+        responses_to = None
+        if elt.response_for:
+            if elt.response_for.no_response_yet:
+                flags |= _MSG_FLAG_RESPONSE_NEEDED
+                self._expected[self._out_counter] = elt.response_for
+            responses_to = elt.response_for.responses_to(self)
         obj = elt.obj
         sync_rep = obj.to_sync(attributes = elt.attrs)
+        if responses_to:
+            sync_rep['_resp_for'] = responses_to
         sync_rep['_sync_type'] = obj.sync_type
         if elt.operation != 'sync':
             sync_rep['_sync_operation'] = elt.operation
         js = bytes(json.dumps(sync_rep), 'utf-8')
-        protocol_logger.debug("Sending `{js}' to {d}".format(
-            js = js, d = self.dest))
+        protocol_logger.debug("#{c}: Sending `{js}' to {d} (flags {f})".format(
+            js = js, d = self.dest,
+            c = self._out_counter, f = flags))
 
         assert len(js) <= 65536
         header = struct.pack(_msg_header, len(js), flags)
         self.transport.write(header + js)
+        self._out_counter += 1
 
     async def _read_task(self):
         while True:
@@ -214,18 +238,37 @@ class SyncProtocol(asyncio.Protocol):
                 raise ValueError("Flags contained unknown critical option")
                 
             js = await self.reader.readexactly(jslen)
-            protocol_logger.debug("Receiving {js} from {d}".format(
+            protocol_logger.debug("#{c}: Receiving {js} from {d} (flags {f})".format(
+                f = flags, c = self._in_counter,
                 js = js, d = self.dest))
             try:
                 sync_repr = json.loads(str(js, 'utf-8'))
-                self._manager._sync_receive(sync_repr, self)
+                self._handle_meta(sync_repr, flags)
+                response_for = None
+                if flags&_MSG_FLAG_RESPONSE_NEEDED:
+                    response_for = ResponseReceiver()
+                    response_for.add_forward(self, self._in_counter)
+                if '_resp_for' in sync_repr:
+                    if response_for is not None:
+                        raise SyncBadEncodingError('A message cannot both be a response and require a response')
+                    for msgnum in sync_repr['_resp_for']:
+                        msgnum = int(msgnum)
+                        new_resp = self._expected.pop(msgnum, None)
+                        if not response_for:
+                            response_for = new_resp
+                        else: response_for.merge(new_resp)
+                    del sync_repr['_resp_for']
+                self._manager._sync_receive(sync_repr, self, response_for = response_for)
             except Exception as e:
                 logger.exception("Error receiving {}".format(sync_repr))
                 if isinstance(e,SyncError) and not '_sync_is_error' in sync_repr:
                     self._manager.synchronize(e,
                                               destinations = [self.dest])
+            finally:
+                self._in_counter += 1
 
-
+    def _handle_meta(self, sync_repr, flags): pass
+                
     def data_received(self, data):
         self.reader.feed_data(data)
 
@@ -243,6 +286,7 @@ class SyncProtocol(asyncio.Protocol):
         del self.transport
         del self.loop
         del self._manager
+        del self._expected
 
     def close(self):
         if not (hasattr(self, 'loop') and hasattr(self, 'transport')): return
@@ -279,5 +323,6 @@ class SyncProtocol(asyncio.Protocol):
 
 
 sync_magic_attributes = ('_sync_type', '_sync_is_error',
+                         '_resp_for', '_no_resp',
                          '_sync_operation',
                          '_sync_owner')

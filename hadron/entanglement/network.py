@@ -117,6 +117,9 @@ class SyncManager:
         cls, registry = self._find_registered_class( obj.sync_type)
         info['registry'] = registry
         info['operation'] = operation
+        if response_for:
+            destinations = list(destinations)
+            response_for.sending_to(filter(lambda d: not d in exclude, destinations))
         for d in destinations:
             if d in exclude: continue
             if self.should_send( obj, destination = d, **info):
@@ -264,9 +267,10 @@ class SyncManager:
     def run_until_complete(self, *args):
         return self.loop.run_until_complete(*args)
 
-    def _sync_receive(self, msg, protocol):
+    def _sync_receive(self, msg, protocol, response_for):
         info = {'protocol': protocol,
-                'manager': self}
+                'manager': self,
+                'response_for': response_for}
         if protocol.dest: info['sender'] = protocol.dest
         self._validate_message(msg)
         cls, registry = self._find_registered_class(msg['_sync_type'])
@@ -291,6 +295,8 @@ class SyncManager:
                 raise SyntaxError("should_listen_constructed must either return True or raise")
             obj.sync_receive_constructed(msg, **info)
             registry.sync_receive(obj, **info)
+            if response_for:
+                response_for(obj)
         except Exception as e:
             logger.exception("Error receiving a {}".format(cls.__name__),
 exc_info = e)

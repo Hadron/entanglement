@@ -63,10 +63,11 @@ class sync_operation(SyncOperation):
                 sender, owner, owner.destination))
         return True
 
-    def flood(self, obj, manager, sender, **info):
+    def flood(self, obj, manager, sender, response_for, **info):
         if obj.sync_owner is interface.EphemeralUnflooded: return
         assert obj.sync_owner.destination == sender
-        manager.synchronize(obj, exclude = [sender], operation = 'sync')
+        manager.synchronize(obj, exclude = [sender], operation = 'sync',
+                            response_for = response_for)
 
 sync_operation = sync_operation()
 
@@ -83,13 +84,14 @@ class forward_operation(SyncOperation):
                     sender, obj))
         return True
 
-    def flood(self, obj, manager, sender, **info):
+    def flood(self, obj, manager, sender, response_for,  **info):
         if obj.sync_is_local:
-            manager.synchronize(obj, operation = 'sync')
+            manager.synchronize(obj, operation = 'sync', response_for = response_for)
         else:
             dest = manager.dest_by_cert_hash(obj.sync_owner.destination.cert_hash)
             manager.synchronize(obj, destinations = [dest], operation = 'forward',
-                                attributes_to_sync = info.get('attributes'))
+                                attributes_to_sync = info.get('attributes'),
+                                response_for = response_for)
             
 
 
@@ -104,19 +106,22 @@ class delete_operation(SyncOperation):
             raise interface.SyncBadOwner("{} is EphemeralUnflooded and cannot be deleted".format(obj))
         return True
 
-    def flood(self, obj, sender, manager, **info):
+    def flood(self, obj, sender, manager, response_for, **info):
         if obj.sync_is_local:
-            manager.synchronize(obj, operation ='delete', attributes_to_sync = obj.sync_primary_keys)
+            manager.synchronize(obj, operation ='delete', attributes_to_sync = obj.sync_primary_keys,
+                                response_for = response_for)
         else:
             if obj.sync_owner.destination == sender:
                 manager.synchronize(obj, operation = 'delete',
                                     attributes_to_sync = obj.sync_primary_keys,
-                                    exclude = [sender])
+                                    exclude = [sender],
+                                    response_for = response_for)
             else: #not from direction of object owner, so forward there
                 dest = manager.dest_by_cert_hash(obj.sync_owner.destination.cert_hash)
                 manager.synchronize(obj, operation = 'delete',
                                     attributes_to_sync = obj.sync_primary_keys,
-                                    destinations = [dest])
+                                    destinations = [dest],
+                                    response_for = response_for)
                 
 
 delete_operation = delete_operation()

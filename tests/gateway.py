@@ -18,6 +18,7 @@ from sqlalchemy.orm import sessionmaker
 from hadron.entanglement.sql import SqlSynchronizable,  sync_session_maker, sql_sync_declarative_base, SqlSyncDestination, SqlSyncRegistry, sync_manager_destinations, SyncOwner
 import hadron.entanglement.sql as sql
 from .utils import wait_for_call, SqlFixture, settle_loop
+import hadron.entanglement.protocol
 
 # SQL declaration
 Base = sql_sync_declarative_base()
@@ -243,6 +244,37 @@ class TestGateway(SqlFixture, unittest.TestCase):
         assert found
         self.loop.run_until_complete(asyncio.wait([t2.sync_future], timeout = 0.5))
         self.assertEqual(t2.sync_future.result().info2, t2.info2)
+        settle_loop(self.loop)
+        
+    def testDeleteResponse(self):
+        "Test that delete response futures work"
+        t = TableInherits(info2 = "blah")
+        self.client_session.add(t)
+        self.client_session.commit()
+        settle_loop(self.loop)
+        manager_session = manager_registry.sessionmaker()
+        manager_session.manager = self.manager
+        t2 = manager_session.query(TableInherits).get(t.id)
+        self.assertEqual(t2.id, t.id)
+        self.assertEqual(t2.info2, t.info2)
+        manager_session.delete(t2)
+        manager_session.sync_commit()
+        manager_session.commit()
+        assert hasattr(t2,'sync_future')
+        c = next(iter(self.manager.connections))
+        found = False
+        for v in c.dirty.values():
+            if v.obj.sync_compatible(t2):
+                found = True
+                self.assertIsNotNone(v.response_for)
+                self.assertIn(t2.sync_future, v.response_for.futures)
+        assert found
+        self.loop.run_until_complete(asyncio.wait([t2.sync_future], timeout = 0.5))
+        self.assertEqual(t2.sync_future.result().id, t2.id)
+        self.assertEqual(
+            self.client_session.query(TableInherits).filter_by(id = t.id).all(),
+            [])
+        settle_loop(self.loop)
         
         
 
@@ -255,5 +287,5 @@ if __name__ == '__main__':
     import logging, unittest, unittest.main
 #    logging.basicConfig(level = 'ERROR')
     logging.basicConfig(level = 10)
-    #logging.getLogger('hadron.entanglement.protocol').setLevel(10)
+    hadron.entanglement.protocol.protocol_logger.setLevel(10)
     unittest.main(module = "tests.gateway")
