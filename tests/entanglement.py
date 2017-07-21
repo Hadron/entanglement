@@ -16,6 +16,8 @@ from hadron.entanglement.interface import Synchronizable, sync_property, SyncReg
 from hadron.entanglement.network import  SyncServer, SyncDestination
 from hadron.entanglement.util import certhash_from_file, CertHash, SqlCertHash, entanglement_logs_disabled
 
+from .utils import settle_loop
+
 
 
 
@@ -248,6 +250,7 @@ class TestSynchronization(unittest.TestCase):
                                                               bw_per_sec = 2000000))
         self.transport, self.cprotocol = self.manager.run_until_complete(client)
         self.bwprotocol = self.cprotocol.dest.bwprotocol
+        self.sprotocol = self.manager.incoming_self_protocol()
 
         self.loop = self.manager.loop
         
@@ -359,8 +362,21 @@ class TestSynchronization(unittest.TestCase):
                                    side_effect = lambda x: self.assertFalse(obj_send2.to_sync.called))
         self.loop.run_until_complete(fut)
         self.assertEqual(obj_send.to_sync.call_count, 1)
-        
 
+    def testNoResponseMetaOnly(self):
+        "Confirm that if there is nothing to send, no_responses are still sent."
+        count = self.cprotocol._out_counter
+        self.cprotocol._out_counter += 1
+        r = protocol.ResponseReceiver()
+        fut = self.loop.create_future()
+        r.add_future(fut)
+        self.assertEqual(self.sprotocol.dirty, {},
+                         msg = "Server protocol has messages to send already")
+        self.sprotocol._no_response([count])
+        self.cprotocol._expected[count] = r
+        self.loop.run_until_complete(asyncio.wait([fut], timeout = 0.3))
+        self.assertTrue(fut.done())
+        self.assertIsNone(fut.result())
 
        
 
@@ -368,8 +384,9 @@ class TestSynchronization(unittest.TestCase):
 
 if __name__ == '__main__':
     import logging, unittest, unittest.main
-    logging.basicConfig(level = 'ERROR')
-#    logging.basicConfig(level = 10)
+    #logging.basicConfig(level = 'ERROR')
+    logging.basicConfig(level = 10)
+    logging.getLogger('hadron.entanglement.protocol').setLevel(10)
     unittest.main(module = "tests.entanglement")
     
     

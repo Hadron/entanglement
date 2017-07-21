@@ -39,6 +39,8 @@ def wait_for_call(loop, obj, method, calls = 1):
 class SqlFixture(unittest.TestCase):
 
     def setUp(self):
+        if not hasattr(self, 'other_registries'):
+            self.other_registries = []
         sql.internal.you_have_timeout = 0 #Send YouHave serial number updates immediately for testing
         warnings.filterwarnings('ignore', module = 'asyncio.sslproto')
         warnings.filterwarnings('ignore', module = 'asyncio.selector_events')
@@ -55,12 +57,12 @@ class SqlFixture(unittest.TestCase):
         self.server = SyncServer(cafile = "ca.pem",
                                  cert = "host1.pem", key = "host1.key",
                                  port = 9120,
-                                 registries = [self.base.registry])
+                                 registries = [self.base.registry] + self.other_registries)
         self.manager = SyncManager(cafile = "ca.pem",
                                    cert = "host2.pem",
                                    key = "host2.key",
                                    loop = self.server.loop,
-                                   registries = [self.manager_registry],
+                                   registries = [self.manager_registry] + self.other_registries,
                                    port = 9120)
         self.loop = self.server.loop
         self.d1 = self.to_server = SqlSyncDestination(certhash_from_file("host1.pem"),

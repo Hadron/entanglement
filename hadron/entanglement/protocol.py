@@ -56,6 +56,10 @@ class ResponseReceiver:
             if isinstance(result, Exception):
                 fut.set_exception(result)
             else: fut.set_result(result)
+        self.futures.clear()
+
+    def __del__(self):
+        self.no_response()
 
     def sending_to(self, dests):
         "Indicate what destinations we are sending to; if we are sending to a destination already waiting for a response, then we are the response and none of these sends should request a future response."
@@ -65,6 +69,12 @@ class ResponseReceiver:
                     self.no_response_yet = False
                     return
             except KeyError: pass
+
+    def no_response(self):
+        self(None)
+        for p, l in self.forwards.items():
+            p._no_response(l)
+        self.forwards.clear()
 
     def add_forward(self, protocol, msgnum):
         l = self.forwards.setdefault(protocol, [])
@@ -142,6 +152,7 @@ class SyncProtocol(asyncio.Protocol):
         self._out_counter = 0
         self._in_counter = 0
         self._expected = {}
+        self._no_resp_for = []
         self.loop = manager.loop
         #self.dirty is where we add new object not equal to anything we are currently considering
         # self.current_dirty is where we send from, which may be self.dirty
@@ -185,6 +196,15 @@ class SyncProtocol(asyncio.Protocol):
                 fut.set_result(True)
                 return fut
 
+    def _no_response(self, msgnums):
+        self._no_resp_for.extend(msgnums)
+        self._schedule_meta()
+
+    def _schedule_meta(self):
+        if self.task is not None: return
+        if not hasattr(self, 'loop'): return
+        self.task = self.loop.create_task(self._run_sync())
+
     async def _run_sync(self):
         if self.waiter: await self.waiter
         try:
@@ -196,6 +216,7 @@ class SyncProtocol(asyncio.Protocol):
                 if self.waiter: await self.waiter
         except StopIteration: #empty set
             self.task = None
+            self._send_sync_message(None) #Send metadata only message if useful
             if self.drain_future:
                 self.drain_future.set_result(True)
                 self.drain_future = None
@@ -206,18 +227,23 @@ class SyncProtocol(asyncio.Protocol):
     def _send_sync_message(self, elt):
         flags = 0
         responses_to = None
-        if elt.response_for:
+        if elt and elt.response_for:
             if elt.response_for.no_response_yet:
                 flags |= _MSG_FLAG_RESPONSE_NEEDED
                 self._expected[self._out_counter] = elt.response_for
             responses_to = elt.response_for.responses_to(self)
-        obj = elt.obj
-        sync_rep = obj.to_sync(attributes = elt.attrs)
-        if responses_to:
-            sync_rep['_resp_for'] = responses_to
-        sync_rep['_sync_type'] = obj.sync_type
-        if elt.operation != 'sync':
-            sync_rep['_sync_operation'] = elt.operation
+        if elt:
+            obj = elt.obj
+            sync_rep = obj.to_sync(attributes = elt.attrs)
+            if responses_to:
+                sync_rep['_resp_for'] = responses_to
+            sync_rep['_sync_type'] = obj.sync_type
+            if elt.operation != 'sync':
+                sync_rep['_sync_operation'] = elt.operation
+        else:
+            sync_rep = {}
+        new_flags = self._handle_meta_out(flags, sync_rep)
+        if len(sync_rep) == 0: return
         js = bytes(json.dumps(sync_rep), 'utf-8')
         protocol_logger.debug("#{c}: Sending `{js}' to {d} (flags {f})".format(
             js = js, d = self.dest,
@@ -236,7 +262,7 @@ class SyncProtocol(asyncio.Protocol):
             if flags&(_MSG_FLAGS_CRITICAL&(~_MSG_FLAGS_UNDERSTOOD)) != 0:
                 self.close()
                 raise ValueError("Flags contained unknown critical option")
-                
+
             js = await self.reader.readexactly(jslen)
             protocol_logger.debug("#{c}: Receiving {js} from {d} (flags {f})".format(
                 f = flags, c = self._in_counter,
@@ -244,6 +270,8 @@ class SyncProtocol(asyncio.Protocol):
             try:
                 sync_repr = json.loads(str(js, 'utf-8'))
                 self._handle_meta(sync_repr, flags)
+                if '_sync_type' not in sync_repr: # metadata only
+                    continue
                 response_for = None
                 if flags&_MSG_FLAG_RESPONSE_NEEDED:
                     response_for = ResponseReceiver()
@@ -266,9 +294,24 @@ class SyncProtocol(asyncio.Protocol):
                                               destinations = [self.dest])
             finally:
                 self._in_counter += 1
+                response_for = None
 
-    def _handle_meta(self, sync_repr, flags): pass
-                
+    def _handle_meta(self, sync_repr, flags):
+        if '_no_resp_for' in sync_repr:
+            for msgnum in sync_repr['_no_resp_for']:
+                msgnum = int(msgnum)
+                try:
+                    r = self._expected.pop(msgnum)
+                    r.no_response()
+                except KeyError: pass
+            del sync_repr['_no_resp_for']
+
+    def _handle_meta_out(self, flags, sync_repr):
+        if self._no_resp_for:
+            sync_repr['_no_resp_for'] = list(self._no_resp_for)
+            self._no_resp_for.clear()
+        return flags
+
     def data_received(self, data):
         self.reader.feed_data(data)
 

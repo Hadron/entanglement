@@ -23,6 +23,35 @@ import hadron.entanglement.protocol
 # SQL declaration
 Base = sql_sync_declarative_base()
 
+class NoResponseRegistry(SyncRegistry):
+
+    def __init__(self):
+        super().__init__()
+        self.register_operation('sync',self.incoming)
+
+    def incoming(self, obj, manager, sender, response_for, **info):
+#We want to be able to trigger a non-responseful synchronization so we
+#can confirm no_resp will piggyback on other messages.  So, if we
+#receive an object with flood as its string, we generate a new object
+#that floods but that is not a response
+        if obj.str == "flood":
+            manager.synchronize(NoResponseHelper("grumble"))
+        manager.synchronize(obj,
+                            response_for = response_for,
+                            exclude = [sender])
+no_response_registry = NoResponseRegistry()
+
+class NoResponseHelper(Synchronizable):
+
+    sync_registry = no_response_registry
+
+    str = sync_property()
+
+    sync_primary_keys = ('str'),
+
+    def __init__(self, str = ""):
+        self.str = str
+    
 
 
 class TableBase(Base):
@@ -55,6 +84,7 @@ class TestGateway(SqlFixture, unittest.TestCase):
     def __init__(self, *args, **kwargs):
         self.base = Base
         self.manager_registry = manager_registry
+        self.other_registries = [no_response_registry]
         super().__init__(*args, **kwargs)
 
     def setUp(self):
@@ -66,7 +96,7 @@ class TestGateway(SqlFixture, unittest.TestCase):
         self.client = SyncManager(cafile = "ca.pem",
                                  cert = "host3.pem", key = "host3.key",
                                  port = 9120,
-                                 registries = [client_registry],
+                                 registries = [client_registry] + self.other_registries,
                                  loop = self.loop)
         self.to_client = SqlSyncDestination(certhash_from_file("host3.pem"), 'client',
                                             server_hostname = 'host3')
@@ -275,7 +305,29 @@ class TestGateway(SqlFixture, unittest.TestCase):
             self.client_session.query(TableInherits).filter_by(id = t.id).all(),
             [])
         settle_loop(self.loop)
-        
+
+    def testNoResponse(self):
+        "Test the full no response logic.  This test confirms that no responses can be piggybacked; entanglement.py:TestSynchronization.testNoResponseMetaOnly tests the other path."
+        handle_meta = hadron.entanglement.protocol.SyncProtocol._handle_meta
+        mock_called = False
+        def mock_handle_meta(protocol,sync_repr, flags):
+            nonlocal mock_called
+            mock_called = True
+            self.assertIn('_sync_type', sync_repr)
+            return handle_meta(protocol, sync_repr, flags)
+        with mock.patch.object(hadron.entanglement.protocol.SyncProtocol,
+                               '_handle_meta', new = mock_handle_meta):
+            nrh = NoResponseHelper("flood")
+            fut = self.client.synchronize(nrh, response = True)
+            self.assertIsInstance(fut, asyncio.Future)
+            settle_loop(self.loop)
+            gc.collect()
+            settle_loop(self.loop)
+            self.loop.run_until_complete(asyncio.wait([fut], timeout = 0.5))
+            self.assertTrue(mock_called)
+            self.assertTrue(fut.done())
+            self.assertIsNone(fut.result())
+            
         
 
 
