@@ -12,7 +12,7 @@ import asyncio, contextlib, types
 
 def default_encoder(obj, propname):
     "Default function used when encoding a sync_property; retrieves the property from an object"
-    val = getattr(obj, propname, None)
+    val = getattr(obj, propname, NotPresent)
     if hasattr(val,'sync_encode_value'): val = val.sync_encode_value()
     return val
 
@@ -162,7 +162,7 @@ class Synchronizable( metaclass = SynchronizableMeta):
             try: val = v.encoderfn(self, k)
             except BaseException as e:
                 raise ValueError("Failed encoding {} using encoder from class {}".format(k, v.declaring_class)) from e
-            if val is not None: d[k] = val
+            if val is not NotPresent: d[k] = val
         return d
 
     @classmethod
@@ -276,7 +276,15 @@ class Synchronizable( metaclass = SynchronizableMeta):
     del _Sync_type
 
 Unique = "Unique" #Constant indicating that a synchronizable is not combinable with any other instance
-    
+class NotPresent:
+
+    def __repr__(self):
+        return "NotPresent"
+
+    def __str__(self):
+        return "NotPresent"
+
+NotPresent  = NotPresent()
 
 
 class SyncRegistry:
