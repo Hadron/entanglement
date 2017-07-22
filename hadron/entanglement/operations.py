@@ -14,6 +14,8 @@ from . import interface
 
 class SyncOperation:
 
+    primary_keys_required = True # Does this operation require primary keys to be set
+    
     def incoming(self, obj, registry, **info):
         operation = str(info.get('operation', sync_operation))
         meth = getattr(registry, 'incoming_'+operation, None)
@@ -179,7 +181,43 @@ class transition_operation(SyncOperation):
 
 transition_operation = transition_operation()
 
-        
+class create_operation(SyncOperation):
+
+    primary_keys_required = False
+    name = 'create'
+    
+
+    def should_listen_constructed(self, obj, msg, sender, context, **info):
+        should_listen_primary_keys = getattr(obj, 'sync_should_listen_primary_keys', None)
+        #If the class has a sync_should_listen_primary_keys method, it
+        #must return true in order for the create to be able to set a
+        #primary key value
+        intersection = set(obj.__class__.sync_primary_keys).intersection(msg.keys())
+        if len(intersection) > 0:
+            if not (should_listen_primary_keys and should_listen_primary_keys(msg, **info) is True):
+                raise interface.SyncUnauthorized('Create set {}, which are primary keys'.format(intersection))
+
+        if not hasattr(context, 'owner'):
+            raise interface.SyncBadEncodingError('Create requires _sync_owner')
+        if sender == context.owner.destination:
+            raise interface.WrongSyncDestination('create loop detected')
+        return True
+
+    def flood(self, obj, context, manager, response_for, **info):
+
+        if obj.sync_is_local:
+            manager.synchronize(obj, response_for = response_for)
+        else:
+            manager.synchronize(obj,
+                                operation = str(self),
+                                destinations = [manager.dest_by_cert_hash(context.owner.destination.cert_hash)],
+                                response_for = response_for,
+                                attributes_to_sync = info.get('attributes', None))
+
+create_operation = create_operation()
+
+                                
+            
 
             
 class ResponseOperation(SyncOperation):

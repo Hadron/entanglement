@@ -10,7 +10,7 @@ import asyncio, copy, datetime, gc, json, logging, ssl, unittest, uuid, warnings
 from contextlib import contextmanager
 from unittest import mock
 
-from hadron.entanglement.interface import Synchronizable, sync_property, SyncRegistry
+from hadron.entanglement.interface import Synchronizable, sync_property, SyncRegistry, SyncUnauthorized
 from hadron.entanglement.network import  SyncServer,  SyncManager
 from hadron.entanglement.util import certhash_from_file, CertHash, SqlCertHash, get_or_create, entanglement_logs_disabled, GUID
 from sqlalchemy import create_engine, Column, Integer, inspect, String, ForeignKey
@@ -412,17 +412,36 @@ class TestGateway(SqlFixture, unittest.TestCase):
             self.client_session.expire(t)
             self.assertEqual(t.x, 8192)
             self.assertEqual(t.y, -30, msg = "Transition updates were incorrectly folded into other changes")
-            
-                    
 
-            
-                
-                
+    def testCreate(self):
+        "Confirm that the create operation works"
+        t = TableInherits(info2 = "blah baz")
+        manager_session = manager_registry.sessionmaker()
+        manager_session.manager = self.manager
+        manager_owner = manager_session.query(SyncOwner).filter_by(destination = None).one()
+        t.sync_owner = self.client_session.query(SyncOwner).get(manager_owner.id)
+        #logging.getLogger('hadron.entanglement.protocol').setLevel(10)
+        fut = t.sync_create(self.client, t.sync_owner)
+        self.loop.run_until_complete(asyncio.wait([fut], timeout = 0.6))
+        self.assertTrue(fut.done())
+        t = self.client_session.merge(fut.result())
+        t2 = manager_session.query(TableInherits).get(t.id)
+        self.assertEqual(t.to_sync(), t2.to_sync())
 
-        
-
-
-
+    def testCreateError(self):
+        "Confirm we get an error for create as a response"
+        t = TableInherits(info2 = "blah baz")
+        manager_session = manager_registry.sessionmaker()
+        manager_session.manager = self.manager
+        manager_owner = manager_session.query(SyncOwner).filter_by(destination = None).one()
+        t.sync_owner = self.client_session.query(SyncOwner).get(manager_owner.id)
+        t.id = t.sync_owner.id # Will cause an error
+        #logging.getLogger('hadron.entanglement.protocol').setLevel(10)
+        fut = t.sync_create(self.client, t.sync_owner)
+        with entanglement_logs_disabled():
+            self.loop.run_until_complete(asyncio.wait([fut], timeout = 0.6))
+        self.assertTrue(fut.done())
+        self.assertRaises(SyncUnauthorized, fut.result)
 
 
 

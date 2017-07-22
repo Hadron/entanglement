@@ -222,6 +222,7 @@ class SqlSyncRegistry(interface.SyncRegistry):
         self.register_operation('sync', operations.sync_operation)
         self.register_operation( 'delete', operations.delete_operation)
         self.register_operation('forward', operations.forward_operation) # forward to owner
+        self.register_operation('create', operations.create_operation)
         if sessionmaker is None:
             sessionmaker = sync_session_maker()
         if bind is not None: sessionmaker.configure(bind = bind)
@@ -276,10 +277,13 @@ class SqlSyncRegistry(interface.SyncRegistry):
             except sqlalchemy.exc.StatementError as e:
                 raise SqlSyncError("Failed to update {}".format(obj.sync_type)) from e
 
+    incoming_create = incoming_forward
+    
     def after_flood_forward(self, obj, manager, **info):
         if obj.sync_is_local:
             _internal.trigger_you_haves(manager, obj.sync_serial)
-            
+
+    after_flood_create = after_flood_forward
     def incoming_sync(self, object, manager, context, **info):
         # By this point the owner check has already been done
         session = context.session
@@ -443,10 +447,13 @@ class SqlSynchronizable(interface.Synchronizable):
             primary_keys = map(lambda x:x.name, inspect(cls).primary_key)
             try: primary_key_values = tuple(map(lambda k: msg[k], primary_keys))
             except KeyError as e:
-                raise interface.SyncBadEncodingError("All primary keys must be present in the encoding", msg = msg) from e
+                if (not operation) or operation.primary_keys_required:
+                    raise interface.SyncBadEncodingError("All primary keys must be present in the encoding", msg = msg) from e
+                else: primary_key_values = None
             sender = info['sender']
             session = context.session
-            obj = session.query(cls).get(primary_key_values)
+            if primary_key_values:
+                obj = session.query(cls).get(primary_key_values)
             owner = SyncOwner.find_from_msg(session, sender, msg)
         context.owner = owner
         if obj is not None:
@@ -458,6 +465,17 @@ class SqlSynchronizable(interface.Synchronizable):
             assert owner is not None
             session.add(obj)
         return obj
+
+    def sync_create(self, manager, owner):
+        "Send a create operation to a given owner for this object.  Returns a future whose result will either be the object synchronized by the owner or an error."
+        self.sync_owner = owner
+        attrs = frozenset(self.__class__._sync_properties.keys()) - inspect(self).unmodified
+        return manager.synchronize(self,
+                            operation = 'create',
+                            attributes_to_sync = attrs,
+                            destinations = [manager.dest_by_cert_hash(owner.destination.cert_hash)],
+                            response = True)
+        
 
 class SyncOwner(_internal_base, SqlSynchronizable, metaclass = SqlSyncMeta):
     sync_registry = _internal.sql_meta_messages

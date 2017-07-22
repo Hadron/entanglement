@@ -394,6 +394,8 @@ class SyncError(RuntimeError, Synchronizable):
         d['_sync_is_error'] = True
         return d
 
+class SyncUnauthorized(SyncError): pass
+
 class UnregisteredSyncClass(SyncError): pass
 
 class WrongSyncDestination(SyncError):
