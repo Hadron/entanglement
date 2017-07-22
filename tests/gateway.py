@@ -6,7 +6,7 @@
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the file
 # LICENSE for details.
 
-import asyncio, copy, datetime, gc, json, ssl, unittest, uuid, warnings
+import asyncio, copy, datetime, gc, json, logging, ssl, unittest, uuid, warnings
 from contextlib import contextmanager
 from unittest import mock
 
@@ -15,10 +15,11 @@ from hadron.entanglement.network import  SyncServer,  SyncManager
 from hadron.entanglement.util import certhash_from_file, CertHash, SqlCertHash, get_or_create, entanglement_logs_disabled, GUID
 from sqlalchemy import create_engine, Column, Integer, inspect, String, ForeignKey
 from sqlalchemy.orm import sessionmaker
-from hadron.entanglement.sql import SqlSynchronizable,  sync_session_maker, sql_sync_declarative_base, SqlSyncDestination, SqlSyncRegistry, sync_manager_destinations, SyncOwner, SyncSqlError
+from hadron.entanglement.sql import SqlSynchronizable,  sync_session_maker, sql_sync_declarative_base, SqlSyncDestination, SqlSyncRegistry, sync_manager_destinations, SyncOwner, SqlSyncError
 import hadron.entanglement.sql as sql
-from .utils import wait_for_call, SqlFixture, settle_loop
-import hadron.entanglement.protocol
+from .utils import *
+import hadron.entanglement.protocol, hadron.entanglement.operations
+from hadron.entanglement.sql.transition import SqlTransitionTrackerMixin
 
 # SQL declaration
 Base = sql_sync_declarative_base()
@@ -84,6 +85,12 @@ manager_registry.registry = Base.registry.registry
 client_registry = SqlSyncRegistry()
 client_registry.registry = Base.registry.registry
 
+class TableTransition(Base, SqlTransitionTrackerMixin):
+    __tablename__ = 'transition'
+    id = Column(Integer, primary_key = True)
+    x = Column(Integer, nullable = False)
+    y = Column(Integer)
+    
 class TestGateway(SqlFixture, unittest.TestCase):
 
     def __init__(self, *args, **kwargs):
@@ -347,8 +354,71 @@ class TestGateway(SqlFixture, unittest.TestCase):
         fut = t2.sync_future
         with entanglement_logs_disabled(): 
             self.loop.run_until_complete(asyncio.wait([fut], timeout = 0.6))
-        self.assertRaises(SyncSqlError, fut.result)
-        
+        self.assertRaises(SqlSyncError, fut.result)
+
+    def  testTransition(self):
+        " Test TransitionTrackerMixin"
+        for r in (Base.registry, manager_registry, client_registry):
+            r.register_operation('transition', hadron.entanglement.operations.transition_operation)
+        t = TableTransition(x = 10, id = 20, y = -30)
+        self.client_session.add(t)
+        self.client_session.commit()
+        settle_loop(self.loop)
+        t.x = 99
+        with transitions_tracked_as(self.client):
+            t.perform_transition(self.client)
+            #logging.getLogger('hadron.entanglement.protocol').setLevel(10)
+            self.assertIsNone(inspect(t).session)
+            self.assertIs(t, TableTransition.get_from_transition(t.transition_key()))
+        with transitions_partitioned():
+            settle_loop(self.loop)
+            with transitions_tracked_as(self.manager):
+                t2 = TableTransition.get_from_transition(t.id)
+                self.assertIsInstance(t2, TableTransition)
+                self.assertIsNone(inspect(t2).session)
+            manager_session = manager_registry.sessionmaker()
+            manager_session.manager = self.manager
+            with transitions_tracked_as(self.manager):
+                t2.remove_from_transition()
+            manager_session.add(t2)
+            manager_session.sync_commit()
+            settle_loop(self.loop)
+            t2 = t2.sync_future.result()
+            t =self.client_session.merge(t)
+            self.client_session.refresh(t)
+            with transitions_tracked_as(self.manager):
+                self.assertIsNone(TableTransition.get_from_transition(t.transition_key()))
+            self.assertEqual(t.sync_serial,t2.sync_serial)
+            # Now make sure that if we transition one column and then
+            # commit a change to another column the first change is
+            # not folded in.  That is make sure that parties discard
+            # state when an object exits transition
+            t2.y = -20
+            with transitions_tracked_as(self.manager):
+                t2.perform_transition(self.manager)
+            settle_loop(self.loop)
+            with transitions_tracked_as(self.client):
+                t_client = TableTransition.get_from_transition(t2.transition_key())
+            self.assertIsInstance(t_client, TableTransition)
+            self.assertEqual(t2.y, t_client.y)
+            with transitions_tracked_as(self.manager):
+                t2.remove_from_transition()
+            t2 = manager_session.merge(t2)
+            manager_session.refresh(t2)
+            self.assertEqual(t2.y, -30)
+            t2.x = 8192
+            manager_session.sync_commit()
+            settle_loop(self.loop)
+            self.client_session.expire(t)
+            self.assertEqual(t.x, 8192)
+            self.assertEqual(t.y, -30, msg = "Transition updates were incorrectly folded into other changes")
+            
+                    
+
+            
+                
+                
+
         
 
 

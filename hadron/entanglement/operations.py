@@ -140,6 +140,48 @@ class delete_operation(SyncOperation):
 
 delete_operation = delete_operation()
 
+class transition_operation(SyncOperation):
+
+    name = 'transition'
+
+    def incoming(self, obj, **info):
+        obj.store_for_transition()
+        return super().incoming(obj, **info)
+    
+    
+    def should_listen_constructed(self, obj, msg, **info):
+        from .transition import TransitionTrackerMixin
+        if not isinstance(obj, TransitionTrackerMixin):
+            raise interface.SyncBadOperation('{} does not support transitions'.format(
+                msg['_sync_type']))
+        return True
+
+    def flood(self, obj, manager, sender, response_for, **info):
+        owner_dest = None
+        exclude = [sender]
+        # We flood to everyone except the sender.  However, when
+        # flooding toward the owner, we'd prefer to preserve the
+        # response_fonr so that the initial sender can get an error
+        # response if they like
+        if not obj.sync_is_local:
+            owner_dest = manager.dest_by_cert_hash(obj.sync_owner.destination.cert_hash)
+        if owner_dest:
+            manager.synchronize(obj,
+                                operation = str(self),
+                                attributes_to_sync = info.get('attributes', None),
+                                response_for = response_for,
+                                destinations = [owner_dest],
+                                exclude = exclude)
+            exclude.append(owner_dest)
+        manager.synchronize(obj, operation = str(self),
+                            attributes_to_sync = info.get('attributes', None),
+                            exclude = exclude)
+
+transition_operation = transition_operation()
+
+        
+
+            
 class ResponseOperation(SyncOperation):
 
     "an operation that floods a response back toward the initial senders"

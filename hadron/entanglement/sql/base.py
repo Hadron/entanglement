@@ -274,7 +274,7 @@ class SqlSyncRegistry(interface.SyncRegistry):
             try:
                 context.session.commit()
             except sqlalchemy.exc.StatementError as e:
-                raise SyncSqlError("Failed to update {}".format(obj.sync_type)) from e
+                raise SqlSyncError("Failed to update {}".format(obj.sync_type)) from e
 
     def after_flood_forward(self, obj, manager, **info):
         if obj.sync_is_local:
@@ -540,7 +540,7 @@ class SyncOwner(_internal_base, SqlSynchronizable, metaclass = SqlSyncMeta):
     def sync_encode_value(self):
         return str(self.id)
 
-class SyncSqlError(interface.SyncError): pass
+class SqlSyncError(interface.SyncError): pass
 
 def sql_sync_declarative_base(*args, registry = None,
                               registry_class = SqlSyncRegistry,

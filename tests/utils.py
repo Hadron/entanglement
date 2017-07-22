@@ -8,12 +8,13 @@
 # LICENSE for details.
 
 from contextlib import contextmanager
-import asyncio, gc, unittest, warnings
+import asyncio, gc, unittest, warnings, weakref
 from sqlalchemy import create_engine
-from hadron.entanglement import SyncManager, SyncServer, certhash_from_file
+from hadron.entanglement import SyncManager, SyncServer, certhash_from_file, interface
 import hadron.entanglement.sql as sql
 from hadron.entanglement.sql import SqlSyncDestination, sync_session_maker
 from unittest import mock
+from hadron.entanglement import transition
 
 @contextmanager
 def wait_for_call(loop, obj, method, calls = 1):
@@ -95,7 +96,7 @@ def settle_loop(loop, timeout = 0.5):
     "Call the loop while it continues to have callbacks, waiting at most timeout seconds"
     def loop_busy(loop):
         if len(loop._ready) > 0: return True
-        event_list = loop._selector.select(0)
+        event_list = loop._selector.select(0.01)
         if len(event_list) > 0: return True
         if len(loop._scheduled) == 0: return False
         timeout = loop._scheduled[0]._when
@@ -115,3 +116,28 @@ def settle_loop(loop, timeout = 0.5):
     finally:
         timeout_fut.cancel()
         
+
+@contextmanager
+def transitions_tracked_as(manager):
+    old_dict = transition.transition_objects
+    if not hasattr(manager, 'transition_objects'):
+        manager.transition_objects = weakref.WeakKeyDictionary()
+    transition.transition_objects = manager.transition_objects
+    try:
+        yield
+    finally:
+        transition.transition_objects = old_dict
+
+@contextmanager
+def transitions_partitioned():
+    old_receive = SyncManager._sync_receive
+    def receive_wrap(manager, *args, **kwargs):
+        with transitions_tracked_as(manager):
+            res = old_receive(manager, *args, **kwargs)
+        return res
+    with mock.patch.object(SyncManager, '_sync_receive',
+                           new = receive_wrap):
+        yield
+        
+
+__all__ = "wait_for_call SqlFixture settle_loop transitions_tracked_as transitions_partitioned".split(' ')
