@@ -1,3 +1,9 @@
+hadron-entanglement (0.7.1) unstable; urgency=medium
+
+  * Unstable release to include Klee's --hash and --list-destinations
+
+ -- Sam Hartman <hartmans@debian.org>  Sun, 23 Jul 2017 17:02:20 -0400
+
 hadron-entanglement (0.7) unstable; urgency=medium
 
   * Fix CA path
