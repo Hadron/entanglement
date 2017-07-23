@@ -487,6 +487,7 @@ class SyncOwner(_internal_base, SqlSynchronizable, metaclass = SqlSyncMeta):
     destination = sqlalchemy.orm.relationship(SqlSyncDestination, lazy = 'subquery',
                                               backref = sqlalchemy.orm.backref('owners'),
     )
+    type = Column(String, nullable = False)
     incoming_serial = interface.no_sync_property(Column(Integer, default = 0, nullable = False))
     #outgoing_serial is managed but is transient
     incoming_epoch = interface.no_sync_property(Column(sqlalchemy.types.DateTime(True),
@@ -494,6 +495,10 @@ class SyncOwner(_internal_base, SqlSynchronizable, metaclass = SqlSyncMeta):
     outgoing_epoch = interface.no_sync_property(Column(sqlalchemy.types.DateTime(True),
                           default = lambda: datetime.datetime.now(datetime.timezone.utc), nullable = False))
     outgoing_serial = 0
+    __mapper_args__ = {
+        'polymorphic_on': type,
+        'polymorphic_identity': 'SyncOwner'
+    }
 
     def __repr__(self):
         if self.destination is not None:
