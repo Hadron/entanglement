@@ -1,3 +1,13 @@
+hadron-entanglement (0.8) UNRELEASED; urgency=medium
+
+  * Support multiple owners
+  * Message header and protocol have backward incompatible changes to support responses
+  * Errors and other messages can have responses
+  * Support create operations
+  * Fold in Transition support
+
+ -- Sam Hartman <hartmans@debian.org>  Sun, 23 Jul 2017 16:58:39 -0400
+
 hadron-entanglement (0.7) unstable; urgency=medium
 
   * Fix CA path
