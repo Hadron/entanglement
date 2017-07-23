@@ -8,12 +8,13 @@
 # LICENSE for details.
 
 from contextlib import contextmanager
-import asyncio, gc, unittest, warnings
+import asyncio, gc, unittest, warnings, weakref
 from sqlalchemy import create_engine
-from hadron.entanglement import SyncManager, SyncServer, certhash_from_file
+from hadron.entanglement import SyncManager, SyncServer, certhash_from_file, interface
 import hadron.entanglement.sql as sql
 from hadron.entanglement.sql import SqlSyncDestination, sync_session_maker
 from unittest import mock
+from hadron.entanglement import transition
 
 @contextmanager
 def wait_for_call(loop, obj, method, calls = 1):
@@ -39,6 +40,8 @@ def wait_for_call(loop, obj, method, calls = 1):
 class SqlFixture(unittest.TestCase):
 
     def setUp(self):
+        if not hasattr(self, 'other_registries'):
+            self.other_registries = []
         sql.internal.you_have_timeout = 0 #Send YouHave serial number updates immediately for testing
         warnings.filterwarnings('ignore', module = 'asyncio.sslproto')
         warnings.filterwarnings('ignore', module = 'asyncio.selector_events')
@@ -55,19 +58,19 @@ class SqlFixture(unittest.TestCase):
         self.server = SyncServer(cafile = "ca.pem",
                                  cert = "host1.pem", key = "host1.key",
                                  port = 9120,
-                                 registries = [self.base.registry])
+                                 registries = [self.base.registry] + self.other_registries)
         self.manager = SyncManager(cafile = "ca.pem",
                                    cert = "host2.pem",
                                    key = "host2.key",
                                    loop = self.server.loop,
-                                   registries = [self.manager_registry],
+                                   registries = [self.manager_registry] + self.other_registries,
                                    port = 9120)
         self.loop = self.server.loop
         self.d1 = self.to_server = SqlSyncDestination(certhash_from_file("host1.pem"),
                                   "server", host = "127.0.0.1",
                                   server_hostname = "host1")
         self.d2 = self.to_client = SqlSyncDestination(certhash_from_file("host2.pem"),
-                                  "client")
+                                  "manager")
         self.server.add_destination(self.d2)
         self.manager.add_destination(self.d1)
         with wait_for_call(self.loop,
@@ -88,3 +91,53 @@ class SqlFixture(unittest.TestCase):
         del self.d1
         del self.d2
         gc.collect()
+
+def settle_loop(loop, timeout = 0.5):
+    "Call the loop while it continues to have callbacks, waiting at most timeout seconds"
+    def loop_busy(loop):
+        if len(loop._ready) > 0: return True
+        event_list = loop._selector.select(0.01)
+        if len(event_list) > 0: return True
+        if len(loop._scheduled) == 0: return False
+        timeout = loop._scheduled[0]._when
+        timeout -= loop.time()
+        return timeout <= 0
+    try:
+        timeout_fut =loop.create_task(asyncio.sleep(timeout))
+        done = False
+        while not done:
+            loop.call_soon(loop.stop)
+            loop.run_forever()
+            if timeout_fut.done(): break
+            done = not loop_busy(loop)
+        #after loop
+        if timeout_fut.done():
+            raise AssertionError("Loop failed to settle in {} seconds".format(timeout))
+    finally:
+        timeout_fut.cancel()
+        
+
+@contextmanager
+def transitions_tracked_as(manager):
+    old_dict = transition.transition_objects
+    if not hasattr(manager, 'transition_objects'):
+        manager.transition_objects = weakref.WeakKeyDictionary()
+    transition.transition_objects = manager.transition_objects
+    try:
+        yield
+    finally:
+        transition.transition_objects = old_dict
+
+@contextmanager
+def transitions_partitioned():
+    old_receive = SyncManager._sync_receive
+    def receive_wrap(manager, *args, **kwargs):
+        with transitions_tracked_as(manager):
+            res = old_receive(manager, *args, **kwargs)
+        return res
+    with mock.patch.object(SyncManager, '_sync_receive',
+                           new = receive_wrap):
+        yield
+        
+
+__all__ = "wait_for_call SqlFixture settle_loop transitions_tracked_as transitions_partitioned".split(' ')

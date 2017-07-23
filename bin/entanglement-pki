@@ -14,10 +14,20 @@ if os.path.exists(_hadron):
 
 
 from hadron.entanglement.pki import host_cert
+from hadron.entanglement.util import certhash_from_file, CertHash
 
 parser = argparse.ArgumentParser()
+
 parser.add_argument('--pki-dir', '-d', default = '/etc/photon/pki')
-parser.add_argument('hosts', nargs = '+')
+
+parser.add_argument('hosts', nargs = '*')
+parser.add_argument('--hash', nargs = '+')
+
 args = parser.parse_args()
-for h in args.hosts:
+
+for h in args.hash or []:
+    ch = certhash_from_file(h)
+    print(ch)
+
+for h in args.hosts or []:
     host_cert(args.pki_dir, h)

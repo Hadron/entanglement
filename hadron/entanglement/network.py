@@ -9,7 +9,7 @@
 
 
 
-import asyncio, logging, ssl, time
+import asyncio, logging, ssl, time, weakref
 from . import protocol
 from .util import CertHash, certhash_from_file
 from .bandwidth import BwLimitProtocol
@@ -81,7 +81,28 @@ class SyncManager:
                     destinations = None,
                     exclude = [],
                     operation = 'sync',
-                    attributes_to_sync = None):
+                    attributes_to_sync = None,
+                    response = False,
+                    response_for = None):
+        '''The primary interface for synchronizing an object.  Destinations
+        must be destinations in self.destinations; exclude is a set of
+        destinations to exclude.  If attributes is set only these
+        attributes are included in outgoing messages.  If response is
+        True, returns a future that will receive the response from
+        this message.  Response may also be a future to associate with the object.  Response_for should be passed the response
+        object from the context when responding to a message in a
+        flood
+
+        '''
+        future = None
+        if response and response_for:
+            raise ValueError('Response and response_for cannot both be true')
+        if response:
+            if isinstance(response, asyncio.Future): future = response
+            else: future = self.loop.create_future()
+            response_for = protocol.ResponseReceiver()
+            response_for.add_future(future)
+            
         if isinstance(obj, interface.Synchronizable) and (obj.sync_receive.__func__ is not interface.Synchronizable.sync_receive.__func__):
             raise SyntaxError('Must not override sync_receive in {}'.format(obj.__class__.__name__))
         if destinations is None:
@@ -91,21 +112,27 @@ class SyncManager:
         should_send_destinations = set()
         info = {}
         info['manager'] = self
+        info['response_for'] = response_for
         info['sync_type'] = obj.__class__
         cls, registry = self._find_registered_class( obj.sync_type)
         info['registry'] = registry
         info['operation'] = operation
+        if response_for:
+            destinations = list(destinations)
+            response_for.sending_to(filter(lambda d: not d in exclude, destinations))
         for d in destinations:
             if d in exclude: continue
-            if d.cert_hash not in valid_cert_hashes:
-                raise SyncNotConnected(dest = d)
             if self.should_send( obj, destination = d, **info):
+                if d.cert_hash not in valid_cert_hashes:
+                    raise SyncNotConnected(dest = d)
                 should_send_destinations.add( d)
         for d in should_send_destinations:
             con = d.protocol
             con._synchronize_object(obj,
             attributes = attributes_to_sync,
-            operation = operation)
+                                    operation = operation,
+                                    response_for = response_for)
+        return future
 
 
     async     def _create_connection(self, dest):
@@ -181,6 +208,7 @@ class SyncManager:
         dest = protocol.dest
         if self.cert_hash == dest.cert_hash:
             logger.debug("Self connection to {}".format(dest.cert_hash))
+            self.incoming_self_protocol = weakref.ref(protocol)
             return
         if dest.cert_hash in self._connections:
             logger.warning("Replacing existing connection to {}".format(dest))
@@ -240,9 +268,10 @@ class SyncManager:
     def run_until_complete(self, *args):
         return self.loop.run_until_complete(*args)
 
-    def _sync_receive(self, msg, protocol):
+    def _sync_receive(self, msg, protocol, response_for):
         info = {'protocol': protocol,
-                'manager': self}
+                'manager': self,
+                'response_for': response_for}
         if protocol.dest: info['sender'] = protocol.dest
         self._validate_message(msg)
         cls, registry = self._find_registered_class(msg['_sync_type'])
@@ -267,9 +296,18 @@ class SyncManager:
                 raise SyntaxError("should_listen_constructed must either return True or raise")
             obj.sync_receive_constructed(msg, **info)
             registry.sync_receive(obj, **info)
+            if response_for:
+                response_for(obj)
         except Exception as e:
             logger.exception("Error receiving a {}".format(cls.__name__),
 exc_info = e)
+            if isinstance(e,interface.SyncError) and not '_sync_is_error' in msg:
+                if not e.network_msg: e.network_msg = msg
+                self.synchronize(e,
+                                          destinations = [protocol.dest],
+                                          response_for = response_for,
+                                          operation = 'error')
+
         finally:
             if 'context' in info: del info['context']
 

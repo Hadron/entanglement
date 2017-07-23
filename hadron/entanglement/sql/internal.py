@@ -25,7 +25,7 @@ class _SqlMetaRegistry(SyncRegistry):
         super().__init__()
         self.register_operation('sync', operations.sync_operation)
         self.register_operation('forward', operations.forward_operation)
-        
+
     def sync_context(self, manager, **info):
         class context:
 
@@ -43,7 +43,7 @@ class _SqlMetaRegistry(SyncRegistry):
 
     def incoming_forward(self, obj, **info):
         return self.incoming_sync(obj, **info)
-    
+
     def incoming_sync(self, obj, sender, manager, context, **info):
         try:
             # remember to handle subclasses first
@@ -72,7 +72,7 @@ class _SqlMetaRegistry(SyncRegistry):
         manager.synchronize(i_have, destinations = [sender],
                             operation = 'forward')
 
-        
+
     @asyncio.coroutine
     def handle_i_have(self, obj, sender, manager):
         from .base import SqlSynchronizable, SyncDeleted
@@ -84,13 +84,18 @@ class _SqlMetaRegistry(SyncRegistry):
                 outgoing_epoch = owner.outgoing_epoch.replace(tzinfo = datetime.timezone.utc)
             else: outgoing_epoch = owner.outgoing_epoch
             if outgoing_epoch != obj.epoch:
-                logger.info("{} had wrong epoch; asking to delete all objects and perform full synchronization".format( owner))
+                logger.info("{} had wrong epoch for {}; asking to delete all objects and perform full synchronization".format( sender, owner))
                 return manager.synchronize( WrongEpoch(owner, owner.outgoing_epoch),
                                             destinations = [sender])
             max_serial = obj.serial
-            logger.info("{} has serial {}; synchronizing changes since then".format( owner, max_serial))
+            logger.info("{s} has serial {n} for {o}; synchronizing changes since then".format( o = owner,
+                                                                                                  n = max_serial,
+                                                                                                  s = sender))
+            owner_condition = base.SyncOwner.id == owner.id
+            if owner.id == sender.first_local_owner:
+                owner_condition = owner_condition | (base.SyncOwner.id == None)
             if obj.serial > 0:
-                for d in session.query(SyncDeleted).filter(SyncDeleted.sync_serial > max_serial):
+                for d in session.query(SyncDeleted).filter(SyncDeleted.sync_serial > max_serial, owner_condition):
                     try: cls, registry  = manager._find_registered_class(d.sync_type)
                     except UnregisteredSyncClass:
                         logger.error("{} is not a registered sync class for this manager, but deletes are recorded for it; forcing full resync of {}".format(
@@ -101,13 +106,10 @@ class _SqlMetaRegistry(SyncRegistry):
                     d.registry = registry
                     manager.synchronize(d, operation = 'delete',
                                         destinations = [sender],
-                                        attributes_to_sync = d.sync_primary_keys)
+                                        attributes_to_sync = (set(d.sync_primary_keys) | {'sync_serial'}))
                     max_serial = max(max_serial, d.sync_serial)
 
             for c in classes_in_registries(manager.registries):
-                owner_condition = base.SyncOwner.id == owner.id
-                if owner.id == sender.first_local_owner:
-                    owner_condition = owner_condition | (base.SyncOwner.id == None)
                 try:
                     if c is base.SyncOwner or issubclass(c, base.SyncOwner): continue
                     if self.yield_between_classes: yield
@@ -122,6 +124,9 @@ class _SqlMetaRegistry(SyncRegistry):
                     manager.synchronize(o,
                                         destinations = [sender])
             yield from sender.protocol.sync_drain()
+            sender.received_i_have.add(owner.id)
+            if not owner.sync_is_local:
+                max_serial = owner.incoming_serial
             if max_serial <= obj.serial: return
             you_have = YouHave()
             you_have.serial =max_serial
@@ -139,7 +144,7 @@ class _SqlMetaRegistry(SyncRegistry):
         owner = manager.session.merge(owner)
         if owner.incoming_serial > obj.serial:
             logger.error("{d} claims we have serial {obj} but we already have {ours}".format(
-                ours = sender.incoming_serial,
+                ours = owner.incoming_serial,
                 d = owner,
                 obj = obj.serial))
         owner.incoming_serial = max(owner.incoming_serial, obj.serial)
@@ -147,7 +152,13 @@ class _SqlMetaRegistry(SyncRegistry):
         logger.debug("We have serial {s} from {d}".format(
             s = obj.serial,
             d = owner))
+        for c in manager.connections:
+            if c.dest == sender: continue
+            if owner.id in c.dest.received_i_have:
+                c.dest.send_you_have.add(owner)
+                schedule_you_have(c.dest, manager)
         manager.session.commit()
+            
 
     def handle_wrong_epoch(self, obj,  sender, manager):
         manager.session.rollback()
@@ -169,16 +180,17 @@ class _SqlMetaRegistry(SyncRegistry):
     def handle_my_owners(self, obj, manager, sender):
         session = manager.session
         session.rollback()
+        sender.first_owner = obj.owners[0]
         old_owners = session.query(base.SyncOwner).filter(base.SyncOwner.destination == sender, base.SyncOwner.id.notin_(obj.owners))
         for o in old_owners:
             o.clear_all_objects(manager = manager, session = session)
             session.delete(o)
             session.commit()
             yield
-            
-            
-        
-    
+
+
+
+
 
 sql_meta_messages = _SqlMetaRegistry()
 
@@ -192,7 +204,7 @@ def populate_owner_from_msg(msg, obj, session):
     if not obj.sync_owner:
         raise SyncBadEncodingError("You must synchronize the sync_owner, then drain before synchronizing IHave", msg = msg)
     session.expunge(obj.sync_owner)
-    
+
 
 class IHave(Synchronizable):
     sync_primary_keys = ('serial','epoch', '_sync_owner')
@@ -207,27 +219,22 @@ class IHave(Synchronizable):
     generated_locally = True
     def sync_should_send(self, destination, operation, **info):
         # An IHave is forwarded towards the owner.  We don't want it flooded past the first hop.
-        return self.generated_locally
         # that because this is only for the owner.  We also want to stop flooding at the first hop.
+        return self.generated_locally
 
 
     @classmethod
     def sync_construct(cls, msg, context, **info):
         obj = cls()
         obj.generated_locally = False
-        try:
-                    populate_owner_from_msg(msg, obj, context.session)
-        except (KeyError, AttributeError): pass
+        populate_owner_from_msg(msg, obj, context.session)
         return obj
-        
+
 class YouHave(IHave):
     "Same structure as IHave message; sent to update someone's idea of their serial number"
 
-    def sync_should_send(self, destination, **info):
-        # Do not permit flooding.  That is, only send in if our owner is local
-        return self.sync_is_local
 
-    
+
 
 class WrongEpoch(SyncError):
     sync_registry = sql_meta_messages
@@ -237,7 +244,7 @@ class WrongEpoch(SyncError):
     _sync_owner = sync_property(
         constructor = 1, encoder = encoders.uuid_encoder,
         decoder = encoders.uuid_decoder)
-    
+
 
     def __init__(self, owner, newepoch, **args):
         self.new_epoch = newepoch
@@ -255,6 +262,8 @@ class WrongEpoch(SyncError):
         # different attribute
         self.owner = self.sync_owner
         self.sync_owner = interface.EphemeralUnflooded
+        if self.owner.sync_is_local:
+            raise interface.SyncBadOwner("{} flooded a WrongEpoch for our own owner to us".format(info['sender']))
         return self
 
 class MyOwners(Synchronizable):
@@ -270,20 +279,23 @@ class MyOwners(Synchronizable):
     @owners.decoder
     def owners(instance, propname, value):
         return [uuid.UUID(x) for x in value]
-    
+
 
 you_have_timeout = 0.5
 
+def schedule_you_have(dest, manager):
+                    if not dest.you_have_task:
+                        dest.you_have_task = manager.loop.create_task(gen_you_have_task(dest, manager))
+                        dest.you_have_task._log_destroy_pending = False
+
 async def gen_you_have_task(sender, manager):
     await asyncio.sleep(you_have_timeout)
-    try:
-        if not sender.protocol and not sender.protocol.loop: return
-    except: return #loop or connection closed
+    if (not hasattr(sender,'protocol') ) or (not hasattr (sender.protocol, 'loop')): return
     you_haves = []
     for o in sender.send_you_have:
         you_have = YouHave()
         you_have.epoch = o.outgoing_epoch
-        you_have.serial = o.outgoing_serial
+        you_have.serial = o.outgoing_serial if o.sync_is_local else o.incoming_serial
         you_have._sync_owner = o.id
         you_have.sync_owner = o
         you_haves.append(you_have)
@@ -294,6 +306,9 @@ async def gen_you_have_task(sender, manager):
                         destinations = [sender])
 
     sender.you_have_task = None
+    if len(sender.send_you_have) > 0:
+        schedule_you_have(sender, manager)
+        
 
 def process_column(name, col, wraps = True):
     d = {}
@@ -313,7 +328,7 @@ def classes_in_registries(registries):
             if m.concrete or (not m.inherits) :
                 return c
             c = m.inherits.class_
-            
+
     classes = set()
     for reg in registries:
         for c in reg.registry.values(): #enumerate all classes
@@ -326,7 +341,7 @@ async def handle_connected(destination, manager, session):
     from .base import SyncOwner, SqlSyncDestination
     get_or_create(session, SyncOwner, {'destination': None})
     session.commit()
-    my_owners = session.query(SyncOwner).filter((SyncOwner.destination == None)|(SyncOwner.destination != destination)).all()
+    my_owners = session.query(SyncOwner).outerjoin(SqlSyncDestination).filter((SyncOwner.destination == None)|(SqlSyncDestination.cert_hash != destination.cert_hash)).all()
     for o in my_owners:
         manager.synchronize(o, destinations = [destination])
     my_owner = MyOwners()
@@ -337,6 +352,14 @@ async def handle_connected(destination, manager, session):
     # for IHave handling.
     await destination.protocol.sync_drain()
     manager.synchronize(my_owner, destinations = [destination])
+
+def trigger_you_haves(manager, serial):
+    for c in manager.connections:
+        for o in manager.session.query(base.SyncOwner).filter((base.SyncOwner.destination == None)):
+            o.outgoing_serial = max(o.outgoing_serial, serial)
+            if o.id in c.dest.received_i_have:
+                c.dest.send_you_have.add(o)
+                schedule_you_have(c.dest, manager)
 
 
 from . import base

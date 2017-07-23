@@ -12,7 +12,7 @@ import asyncio, contextlib, types
 
 def default_encoder(obj, propname):
     "Default function used when encoding a sync_property; retrieves the property from an object"
-    val = getattr(obj, propname, None)
+    val = getattr(obj, propname, NotPresent)
     if hasattr(val,'sync_encode_value'): val = val.sync_encode_value()
     return val
 
@@ -27,6 +27,10 @@ class EphemeralUnflooded:
     destination = NotImplemented
     @classmethod
     def __str__(self): return "EphemeralUnflooded"
+
+    @classmethod
+    def sync_encode_value(cls): return None
+    
 
 class SynchronizableMeta(type):
     '''A metaclass for capturing Synchronizable classes.  In python3.6, no metaclass will be needed; __init__subclass will be sufficient.'''
@@ -151,12 +155,14 @@ class Synchronizable( metaclass = SynchronizableMeta):
     def to_sync(self, attributes = None):
         '''Return a dictionary containing the attributes of self that should be synchronized.  Attributes can be passed in; if so, then the list of attributes will be limited to tohse passed in.'''
         d = {}
+        if hasattr(self, 'sync_owner') and self.sync_owner is not None:
+            d['_sync_owner'] = self.sync_owner.sync_encode_value()
         for k,v in self.__class__._sync_properties.items():
             if attributes and k not in attributes: continue
             try: val = v.encoderfn(self, k)
             except BaseException as e:
                 raise ValueError("Failed encoding {} using encoder from class {}".format(k, v.declaring_class)) from e
-            if val is not None: d[k] = val
+            if val is not NotPresent: d[k] = val
         return d
 
     @classmethod
@@ -270,7 +276,15 @@ class Synchronizable( metaclass = SynchronizableMeta):
     del _Sync_type
 
 Unique = "Unique" #Constant indicating that a synchronizable is not combinable with any other instance
-    
+class NotPresent:
+
+    def __repr__(self):
+        return "NotPresent"
+
+    def __str__(self):
+        return "NotPresent"
+
+NotPresent  = NotPresent()
 
 
 class SyncRegistry:
@@ -345,27 +359,42 @@ error_registry = SyncRegistry()
 class SyncError(RuntimeError, Synchronizable):
 
     args = sync_property()
+    network_msg = sync_property()
     context = sync_property()
     @context.encoder
     def context(obj, propname):
-        if obj.__context__: return str(obj.__context__)
-    @context.decoder
-    def context(obj, propname, value): pass
+        if obj.__context__ and not obj.__cause__: return str(obj.__context__)
+        else: return default_encoder(obj, propname)
 
     cause = sync_property()
     @cause.encoder
     def cause(obj, propname):
         if obj.__cause__: return str(obj.__cause__)
-    @cause.decoder
-    def cause(obj, propname, value): pass
+        else: return default_encoder(obj, propname)
 
     sync_registry = error_registry
     sync_primary_keys = Unique
+
+    def __init__(self, *args, network_msg = None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.network_msg = network_msg
+
+    def __str__(self):
+        s = super().__str__()
+        if self.network_msg is not None:
+            s = s + "(in response to )"+str(self.network_msg)+")"
+        try:
+            if self.cause is not None:
+                s = s + ":"+ self.cause
+        except AttributeError: pass
+        return s
 
     def to_sync(selff, **kwargs):
         d = super().to_sync(**kwargs)
         d['_sync_is_error'] = True
         return d
+
+class SyncUnauthorized(SyncError): pass
 
 class UnregisteredSyncClass(SyncError): pass
 
@@ -380,11 +409,11 @@ class WrongSyncDestination(SyncError):
 
 class SyncBadEncodingError(SyncError):
 
-    msg = sync_property(constructor =True)
+
 
     def __init__(self, *args, msg = None, **kwargs):
         super().__init__(*args, **kwargs)
-        self.msg = msg
+        self.network_msg = msg
 
 class SyncInvalidOperation(SyncError): pass
 
@@ -398,3 +427,6 @@ class SyncNotConnected(SyncError):
         if dest and not msg:
             msg = "Not currently connected to {}".format(dest)
             super().__init__( msg, dest)
+
+from . import operations
+error_registry.register_operation('error', operations.error_operation)

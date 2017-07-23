@@ -21,6 +21,6 @@ setup(
     scripts = ['bin/entanglement-cli',
                'bin/entanglement-pki'],
     test_suite = "tests",
-    version = 0.6,
+    version = 0.8,
 )
 
