@@ -31,6 +31,7 @@ class SqlSyncSession(sqlalchemy.orm.Session):
         @sqlalchemy.events.event.listens_for(self, 'before_commit')
         def receive_before_commit(session):
             for s in self.sync_dirty |self.sync_deleted:
+                if isinstance(s, tuple): s = s[0]
                 if s.sync_owner is not None: s.sync_owner.destination
                 
         @sqlalchemy.events.event.listens_for(self, "after_commit")

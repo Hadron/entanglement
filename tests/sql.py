@@ -16,9 +16,9 @@ from hadron.entanglement.network import  SyncServer,  SyncManager
 from hadron.entanglement.util import certhash_from_file, CertHash, SqlCertHash, get_or_create, entanglement_logs_disabled
 from sqlalchemy import create_engine, Column, Integer, inspect, String, ForeignKey
 from sqlalchemy.orm import sessionmaker
-from hadron.entanglement.sql import SqlSynchronizable,  sync_session_maker, sql_sync_declarative_base, SqlSyncDestination, SqlSyncRegistry, sync_manager_destinations
+from hadron.entanglement.sql import SqlSynchronizable,  sync_session_maker, sql_sync_declarative_base, SqlSyncDestination, SqlSyncRegistry, sync_manager_destinations, SyncOwner
 import hadron.entanglement.sql as sql
-from .utils import wait_for_call, SqlFixture
+from .utils import wait_for_call, SqlFixture, settle_loop
 
 
 # SQL declaration
@@ -345,6 +345,21 @@ class TestSql(SqlFixture, unittest.TestCase):
         t1.cancel()
         res = self.loop.run_until_complete(t2)
         self.assertEqual(res, True)
+
+    def testLocalOwner(self):
+        owner = SyncOwner()
+        manager_session = manager_registry.sessionmaker()
+        manager_session.manager = self.manager
+        manager_session.add(owner)
+        manager_session.commit()
+        settle_loop(self.loop)
+        t = TableInherits(info2 = "blah", sync_owner = owner)
+        manager_session.add(t)
+        manager_session.commit()
+        settle_loop(self.loop)
+        t2 = self.server.session.query(TableInherits).get(t.id)
+        self.assertEqual(t.sync_owner_id, t2.sync_owner_id)
+        
         
             
         
