@@ -30,9 +30,11 @@ class SqlSyncSession(sqlalchemy.orm.Session):
 
         @sqlalchemy.events.event.listens_for(self, "after_commit")
         def receive_after_commit(session):
-            if self.manager:
-                for x , attrs in self.sync_dirty: assert not self.is_modified(x)
+            try:
+                if self.manager:
+                    for x , attrs in self.sync_dirty: assert not self.is_modified(x)
                 self.sync_commit( expunge_nonlocal = False)
+            except Exception: logger.exception("after_commit fails")
 
         @sqlalchemy.events.event.listens_for(self, 'after_rollback')
         def after_rollback(session):
