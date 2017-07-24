@@ -28,6 +28,11 @@ class SqlSyncSession(sqlalchemy.orm.Session):
         self.sync_deleted = set()
         sqlalchemy.events.event.listens_for(self, "before_flush")(self._handle_dirty)
 
+        @sqlalchemy.events.event.listens_for(self, 'before_commit')
+        def receive_before_commit(session):
+            for s in self.sync_dirty |self.sync_deleted:
+                if s.sync_owner is not None: s.sync_owner.destination
+                
         @sqlalchemy.events.event.listens_for(self, "after_commit")
         def receive_after_commit(session):
             try:
@@ -52,16 +57,16 @@ class SqlSyncSession(sqlalchemy.orm.Session):
                 inspect_inst = inspect(inst)
                 modified_attrs = frozenset(inst.__class__._sync_properties.keys()) - frozenset(inspect_inst.unmodified)
                 session.sync_dirty.add((inst, modified_attrs))
-                if inst.sync_owner is not None: inst.sync_owner.destination # get while we can
                 if (inst.sync_owner_id is None and inst.sync_owner is None) or inst.sync_is_local:
                     if not serial_flushed:
                         new_serial = session.execute(serial_insert).lastrowid
                         serial_flushed = True
                         inst.sync_serial = new_serial
                 else:
-                        if expunge_nonlocal:
-                            session.expunge(inst)
-                        elif session.manager:
+                    if inst.sync_owner is not None: inst.sync_owner.destination # get while we can
+                    if expunge_nonlocal:
+                        session.expunge(inst)
+                    elif session.manager:
                             raise NotImplementedError('The semantics of a local commit of nonlocal objects are undefined and unimplemented')
                             
         for inst in session.deleted:
@@ -81,7 +86,6 @@ class SqlSyncSession(sqlalchemy.orm.Session):
                     deleted.primary_key = json.dumps(inst.to_sync(attributes = inst.sync_primary_keys))
                     session.add(deleted)
                 else:
-                    inst.sync_owner #grab while we can issue sql
                     if expunge_nonlocal:
                         session.expunge(inst)
                     elif session.manager:
