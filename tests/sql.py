@@ -352,8 +352,10 @@ class TestSql(SqlFixture, unittest.TestCase):
         manager_session.manager = self.manager
         manager_session.add(owner)
         manager_session.commit()
+        owner_id = owner.id
+        manager_session.expire(owner)
         settle_loop(self.loop)
-        t = TableInherits(info2 = "blah", sync_owner = owner)
+        t = TableInherits(info2 = "blah", sync_owner_id = owner_id)
         manager_session.add(t)
         manager_session.commit()
         settle_loop(self.loop)

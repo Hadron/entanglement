@@ -28,11 +28,24 @@ class SqlSyncSession(sqlalchemy.orm.Session):
         self.sync_deleted = set()
         sqlalchemy.events.event.listens_for(self, "before_flush")(self._handle_dirty)
 
-        @sqlalchemy.events.event.listens_for(self, 'before_commit')
-        def receive_before_commit(session):
+        @sqlalchemy.events.event.listens_for(self, 'after_flush')
+        def receive_after_flush(session, flush_context):
+            # This is a bit of a mess.  When a new object is created,
+            # we need to make sure that we have the SyncOwner
+            # relation.  If we trigger in the before_commit event, we
+            # trigger before the commit's flush so sync_dirty is not
+            # populated (and nor would the relationships we're looking
+            # for).  In the after_flush event, the object hasn't been
+            # persisted in the session, so lazy loads and refreshes
+            # don't work.  However, things seem to work if we get a
+            # SyncOwner by hand with the right ID and associate it
+            # with the object.
             for s in self.sync_dirty |self.sync_deleted:
                 if isinstance(s, tuple): s = s[0]
-                if s.sync_owner is not None: s.sync_owner.destination
+                if s.sync_owner_id is not None and s.sync_owner is None:
+                    s.sync_owner = self.query(SyncOwner).get(s.sync_owner_id)
+                if s.sync_owner: s.sync_owner.destination
+                
                 
         @sqlalchemy.events.event.listens_for(self, "after_commit")
         def receive_after_commit(session):
