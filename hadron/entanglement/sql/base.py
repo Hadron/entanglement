@@ -33,8 +33,10 @@ class SqlSyncSession(sqlalchemy.orm.Session):
             try:
                 if self.manager:
                     for x , attrs in self.sync_dirty: assert not self.is_modified(x)
-                self.sync_commit( expunge_nonlocal = False)
-            except Exception: logger.exception("after_commit fails")
+                    self.sync_commit( expunge_nonlocal = False)
+            except Exception:
+                logger.exception("after_commit fails")
+                raise
 
         @sqlalchemy.events.event.listens_for(self, 'after_rollback')
         def after_rollback(session):
@@ -50,13 +52,13 @@ class SqlSyncSession(sqlalchemy.orm.Session):
                 inspect_inst = inspect(inst)
                 modified_attrs = frozenset(inst.__class__._sync_properties.keys()) - frozenset(inspect_inst.unmodified)
                 session.sync_dirty.add((inst, modified_attrs))
+                if inst.sync_owner is not None: inst.sync_owner.destination # get while we can
                 if (inst.sync_owner_id is None and inst.sync_owner is None) or inst.sync_is_local:
                     if not serial_flushed:
                         new_serial = session.execute(serial_insert).lastrowid
                         serial_flushed = True
-                    inst.sync_serial = new_serial
+                        inst.sync_serial = new_serial
                 else:
-                        inst.sync_owner # get while we can
                         if expunge_nonlocal:
                             session.expunge(inst)
                         elif session.manager:
@@ -66,6 +68,7 @@ class SqlSyncSession(sqlalchemy.orm.Session):
             if isinstance( inst, SqlSynchronizable):
                 if inst in session.sync_deleted: continue
                 session.sync_deleted.add(inst)
+                if inst.sync_owner is not None: inst.sync_owner.destination # get while we can
                 if (inst.sync_owner_id is None and inst.sync_owner is None) or inst.sync_is_local:
                     if not serial_flushed:
                         new_serial = session.execute(serial_insert).lastrowid
