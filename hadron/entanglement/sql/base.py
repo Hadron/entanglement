@@ -214,7 +214,7 @@ class SqlSyncMeta(interface.SynchronizableMeta, sqlalchemy.ext.declarative.api.D
         for c in bases:
             registry = getattr(c,'registry', None)
             if registry is not None: break
-        if not 'sync_registry' in ns: ns['sync_registry'] = registry
+        if registry and not 'sync_registry' in ns: ns['sync_registry'] = registry
         for k,v in ns.items():
             if isinstance(v, (Column, )):
                 ns[k] = _internal.process_column(k, v)
