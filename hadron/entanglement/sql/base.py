@@ -520,7 +520,8 @@ class SyncOwner(_internal_base, SqlSynchronizable, metaclass = SqlSyncMeta):
     outgoing_serial = 0
     __mapper_args__ = {
         'polymorphic_on': type,
-        'polymorphic_identity': 'SyncOwner'
+        'polymorphic_identity': 'SyncOwner',
+        'with_polymorphic': '*'
     }
 
     def __repr__(self):
