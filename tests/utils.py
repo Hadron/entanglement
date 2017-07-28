@@ -96,7 +96,7 @@ def settle_loop(loop, timeout = 0.5):
     "Call the loop while it continues to have callbacks, waiting at most timeout seconds"
     def loop_busy(loop):
         if len(loop._ready) > 0: return True
-        event_list = loop._selector.select(0.01)
+        event_list = loop._selector.select(0.03)
         if len(event_list) > 0: return True
         if len(loop._scheduled) == 0: return False
         timeout = loop._scheduled[0]._when
