@@ -75,7 +75,7 @@ class SqlSyncSession(sqlalchemy.orm.Session):
                     if not serial_flushed:
                         new_serial = session.execute(serial_insert).lastrowid
                         serial_flushed = True
-                        inst.sync_serial = new_serial
+                    inst.sync_serial = new_serial
                 else:
                     if inst.sync_owner is not None: inst.sync_owner.destination # get while we can
                     if expunge_nonlocal:
