@@ -81,7 +81,8 @@ class SqlSyncSession(sqlalchemy.orm.Session):
                     if expunge_nonlocal:
                         session.expunge(inst)
                     elif session.manager:
-                            raise NotImplementedError('The semantics of a local commit of nonlocal objects are undefined and unimplemented')
+                        logger.error('Tried to commit non-local object: {}'.format(inst))
+                        raise NotImplementedError('The semantics of a non-local commit of nonlocal objects are undefined and unimplemented')
                             
         for inst in session.deleted:
             if isinstance( inst, SqlSynchronizable):
@@ -103,8 +104,8 @@ class SqlSyncSession(sqlalchemy.orm.Session):
                     if expunge_nonlocal:
                         session.expunge(inst)
                     elif session.manager:
-                        logger.error('Tried to commit nonlocal object: {}'.format(inst))
-                        raise NotImplementedError('Semantics of committing nonlocal objects is undefined and unimplemented')
+                        logger.error('Tried to commit deletion of non-local object: {}'.format(inst))
+                        raise NotImplementedError('Semantics of committing deletion of non-local objects is undefined and unimplemented')
                     
 
     def sync_commit(self, expunge_nonlocal = True, *,
