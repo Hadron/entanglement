@@ -103,6 +103,7 @@ class SqlSyncSession(sqlalchemy.orm.Session):
                     if expunge_nonlocal:
                         session.expunge(inst)
                     elif session.manager:
+                        logger.error('Tried to commit nonlocal object: {}'.format(inst))
                         raise NotImplementedError('Semantics of committing nonlocal objects is undefined and unimplemented')
                     
 
