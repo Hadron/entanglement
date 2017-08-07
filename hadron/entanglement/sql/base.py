@@ -21,6 +21,23 @@ from . import internal as _internal
 
 class SqlSyncSession(sqlalchemy.orm.Session):
 
+    '''SqlSyncSession is an sqlalchemy.orm Session that supports
+    entanglement operations.  Even if you are not using Entanglement,
+    SqlSyncSession should be used with SqlSynchronizables because it
+    has the logic to update the sync_serial columm.  Most
+    functionality is only enabled when the manager property of the
+    session is set to a SyncManager.  In that case, committing objects
+    where sync_is_local returns True will synchronize those objects to
+    all destinations of the associated manager.  If a manager is
+    associated, it is an error to flush a non-local object.  The
+    correct usage pattern is more like:
+
+        session.sync_commit() #flush and send non-local objects
+        session.commit() # commit local objects
+
+    '''
+    
+
     def __init__(self, *args, manager = None, **kwargs):
         super().__init__(*args, **kwargs)
         self.manager = manager
@@ -110,6 +127,22 @@ class SqlSyncSession(sqlalchemy.orm.Session):
 
     def sync_commit(self, expunge_nonlocal = True, *,
                     update_responses = True):
+        '''For any SqlSynchronizable modified in the session, synchronize the
+        object.  If the object is sync_is_local, send a 'sync'
+        operation to all destinations of the manager.  If the object
+        is non-local, send a 'forward' object toward the destination
+        of the object owner, requesting that they update the object.
+        Deleted objects cause a 'delete' operation.  If they are
+        local, the delete is sent to all destinatinos, otherwise it is
+        a request to the owner.  If 'update_responses' is True, then
+        non-local objects have a 'sync_future' set on them.  This
+        future will receive either an error or the updated object when
+        the owner respons to the operation.  If 'expunge_nonlocal' is
+        True, then nonlocal objects are expunged from the session so
+        that a later flush/commit call will not affect them.
+
+        '''
+        
         self._handle_dirty(self, expunge_nonlocal = expunge_nonlocal)
         # Behavior if expunge_nonlocal is false is no not fully
         # implemented; there used to be partial behavior from prior to
@@ -207,6 +240,7 @@ class SqlSyncSession(sqlalchemy.orm.Session):
 
 
 def sync_session_maker(*args, **kwargs):
+    "Like sql.orm.sessionmaker for SqlSyncSessions"
     return sqlalchemy.orm.sessionmaker(class_ = SqlSyncSession, *args, **kwargs)
 
 class SqlSyncMeta(interface.SynchronizableMeta, sqlalchemy.ext.declarative.api.DeclarativeMeta):
@@ -255,7 +289,9 @@ class SqlSyncRegistry(interface.SyncRegistry):
 
     @classmethod
     def create_bookkeeping(self, bind):
+        "Should be called at least once per engine typically before metadata.create_all is called on any sql_sync_declarative_base using the engine."
         _internal_base.metadata.create_all(bind = bind)
+
     def ensure_session(self, manager):
         if not hasattr(manager, 'session'):
             manager.session = self.sessionmaker()
@@ -266,6 +302,8 @@ class SqlSyncRegistry(interface.SyncRegistry):
 
     @contextlib.contextmanager
     def sync_context(self, **info):
+        "Return a context used to receive an incoming object.  This context follows the context manager protocol.  The context will have an attribute 'session' that is an SqlSyncSession into which an object can be constructed"
+        
         session = self.sessionmaker()
         class Context: pass
         ctx = Context()

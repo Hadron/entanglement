@@ -144,6 +144,21 @@ class no_sync_property:
     sync_property for example when the value is always the same for
     some subclass.
 
+
+    Examples:
+
+    class Model(base):A
+        id = Column(GUID, primary_key = True) # Would be a sync_property
+        local_state no_sync_property(Column(String,)) # Not synchronized
+
+    or:
+    class Polygon(Synchronizable):
+
+        sides = sync_property()
+
+    class Triangle(Polygon):
+        sides = no_sync_property(3)
+
     '''
 
     def __init__(self, wraps = None):
@@ -152,7 +167,21 @@ class no_sync_property:
 
 class Synchronizable( metaclass = SynchronizableMeta):
 
+    '''Represents a class that can be synchronized between two
+    Entanglement SyncManagers.  Objects are synchronized by calling
+    the synchronize method on a SyncManager.  Synchronizables have one
+    or more sync_properties.  The sync_properties are packaged up into
+    a serialized representation by the to_sync method and
+    reconstituted into an object by the sync_construct, sync_receive
+    and sync_receive_constructed methods.  Objects may have primary
+    keys set in the sync_primary_keys attribute.  Objects with the
+    same sync_primary_keys may be coalesced during transmission; only
+    the latest synchronized version will be sent.
+
+    '''
+    
     def to_sync(self, attributes = None):
+
         '''Return a dictionary containing the attributes of self that should be synchronized.  Attributes can be passed in; if so, then the list of attributes will be limited to tohse passed in.'''
         d = {}
         if hasattr(self, 'sync_owner') and self.sync_owner is not None:
@@ -180,7 +209,19 @@ class Synchronizable( metaclass = SynchronizableMeta):
     def sync_construct(cls, msg, **kwargs):
         '''Return a new object of cls consistent with msg that can be filled in with the rest of the contents of msg.  Renamed from the previously non-API _sync_construct.
 
-        For many classes, this could simply call the class.  It could also be overridden to look up an existing instance of a class in a database.  The default implementation calls the constructor with sync properties where the constructor argument to the property is set.  If constructor is set to a number, that ordinal index is used.  If True, the property name is used as a constructor keyword.
+        For many classes, this could simply call the class.  It could
+        also be overridden to look up an existing instance of a class
+        in a database.  The default implementation calls the
+        constructor with sync properties where the constructor
+        argument to the property is set.  If constructor is set to a
+        number, that ordinal index is used.  If True, the property
+        name is used as a constructor keyword.
+
+        Subclasses such as SqlSynchronizable that associate
+        Synchronizables with some persistence layer typically override
+        this method and look up objects based on the primary key in
+        the incoming message.
+
         '''
         cprops = dict(filter( lambda x: bool(x[1].constructor), cls._sync_properties.items()))
         maxord = 0
@@ -231,20 +272,20 @@ class Synchronizable( metaclass = SynchronizableMeta):
     
     @classmethod
     def sync_should_listen(self, msg, **info):
-        '''Return True or raise SynchronizationUnauthorized'''
+        '''Return True if the incoming object should be received locally. Raise SynchronizationUnauthorized or some other exception if the incoming message should be ignored.'''
         return True
 
     def sync_should_listen_constructed(self, msg, **info):
-        '''Return True if we should listen to this object else return an exception.  Called after an object is constructed; several checks are easier after construction.  Checks that can be made without construct should be made there to avoid the security exposure of constructing objects.'''
+        '''Return True if we should listen to this object else raise an exception.  Called after an object is constructed; several checks are easier after construction.  Checks that can be made without construct should be made there to avoid the security exposure of constructing objects.'''
         return True
 
     def sync_should_send(self, destination, **info):
-        "Returns True if this object should be ynchronized to the given destination"
+        "Returns True if this object should be synchronized to the given destination"
         return True
 
 
     def sync_hash(self):
-        '''Hash all the primary keys.'''
+        '''Hash all the primary keys.  Any two instances that are sync_compatible must have the same sync_hash.'''
         if self.__class__.sync_primary_keys is Unique:
             return id(self)
         return sum(map(lambda x: getattr(self, x).__hash__(), self.__class__.sync_primary_keys))
@@ -289,14 +330,23 @@ NotPresent  = NotPresent()
 
 class SyncRegistry:
 
-    '''A registry of Syncable classes.  A connection may accept
-    synchronization from one or more registries.  A Syncable typically
+    '''A registry of Synchronizable classes.  A connection may accept
+    synchronization from one or more registries.  A Synchronizable typically
     belongs to one registry.  A registry can be thought of as a schema of
     related objects implementing some related synchronizable interface.
 
     A registry supports one or more operations on its Synchronizables.
     Most registries support the 'sync' operation, which requests the
     full attributes of an object to be flooded to the destinations.
+
+    A SyncRegistry represents one of the common points for an
+    application to override behavior or to be notified of incoming
+    changes.  Overiding should_listen, should_listen_constructed and
+    should_send is a good way to implement access control or
+    filtering.  Overriding sync_receive or the incoming methods
+    associated with an operation provide hooks for an application to
+    be notified of incoming changes.  In general when methods are
+    overridden, allowing the superclass method to run is important.
 
     '''
 
@@ -310,6 +360,7 @@ class SyncRegistry:
         pass
 
     def register_syncable(self, type_name, cls):
+        "Called to add a Synchronizable to this registry"
         if type_name in self.registry:
             raise ValueError("`{} is already registered in this registry.".format(type_name))
         self.registry[type_name] = cls
@@ -339,13 +390,40 @@ class SyncRegistry:
         return True
 
     def sync_receive(self, object, operation, **kwargs):
-        "Called after the object is constructed. May do nothing, may arrange to merge into a database, etc."
+        '''Responsible for registry-specific processing of received objects.
+        Called after should_listen and should_listen_constructed have
+        returned True, and after the class's sync_receive_constructed
+        has filled in the class state.
+
+        Typically the specific processing is dependent on the
+        operation, so a method incoming_operation_name (for example
+        incoming_sync) is called.  Overriding either sync_receive or
+        incoming_operation_name for application-specific processing is
+        a reasonable choice.
+
+
+        Typically a registry represents a schema of related objects in
+        some application domain.  Depending on the nature of a schema,
+        the application logic may vary.  If the schema represents a
+        database schema, then incoming_sync may commit the objects to
+        a database while incoming_delete requests deletion.  If the
+        schema represents graphical objects to be displayed in a GUI,
+        incoming_sync may draw/redraw an object.  In such a case it
+        would be better to have a draw method on all objects in the
+        registry called by incoming_sync than to have the draw
+        operation be triggered by the class's sync_receive method.
+        The class's sync_receive would need to duplicate any
+        registry-global logic before deciding to draw.
+
+'''
+
         return operation.incoming(object, operation = operation, **kwargs)
 
 
 
     @contextlib.contextmanager
     def sync_context(self, **info):
+
         '''Create a context in which the sync_receive call can be run.
         Permits exceptions to be trapped and isolation of objects like
         SQL sessions.  At least for now, no need to call the
