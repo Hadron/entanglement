@@ -194,7 +194,17 @@ class SqlSyncSession(sqlalchemy.orm.Session):
                 if update_responses and forward_dest:
                     future = self.manager.loop.create_future()
                     o.sync_future = future
-                o = s_new.merge(o)
+                o_new = s_new.merge(o)
+                # Now preserve any non-sqlalchemy attributes
+                ins_new = inspect(o_new)
+                attributes = set(o.__class__._sync_properties.keys())- set(ins_new.attrs.keys())
+                if attributes:
+                    sd = o.to_sync(
+                        attributes = attributes)
+                    try: del sd['_sync_owner']
+                    except KeyError: pass
+                    o_new.sync_receive_constructed(sd, operation = 'sync')
+                o = o_new
                 sqlalchemy.orm.session.make_transient(o)
                 sqlalchemy.orm.session.make_transient_to_detached(o)
                 o.sync_future = future #new object after merge
