@@ -15,8 +15,30 @@ import sqlalchemy.exc
 
 class SqlTransitionTrackerMixin(TransitionTrackerMixin, SqlSynchronizable):
 
+    '''
 
-    def store_for_transition(self):
+    A TransitionTrackerMixin for SqlSynchronizables.  Typical usage looks like
+
+        obj = session.query(...).one()
+        result_future = None
+        while desire_to_transition:
+            obj.attr = transitioned_value
+            fut = obj.perform_transition(manager)
+            # now obj is detached from session.  Also, on first perform_transition, fut is set
+            if not result_future: result_future = fut
+            if result_future.done(): break #Transition broken
+            #Loop some more performing more transitions
+        if not result_future.done()
+            # We like the results
+            session.add(obj)
+            session.sync_commit() # if obj is non local
+            session.commit() # in case it is local
+        await result_future
+        # result_future returns None for local objects, the updated object for nonlocal objects, and raises BrokenTransition if our transition is broken.
+
+    '''
+    
+    def _remove_from_session(self):
         if self.sync_owner:
             self.sync_owner.destination # Lazy load so we can check in sync_construct
             ins = inspect(self.sync_owner)
@@ -26,7 +48,15 @@ class SqlTransitionTrackerMixin(TransitionTrackerMixin, SqlSynchronizable):
         ins = inspect(self)
         if ins.session:
             ins.session.expunge(self)
-        return super().store_for_transition()
+
+    def store_for_transition(self, *args, **kwargs):
+        self._remove_from_session()
+        return super().store_for_transition(*args, **kwargs)
+
+    def perform_transition(self, *args):
+        "In an SQL synchronizable, performing transition removes an object from any session."
+        self._remove_from_session()
+        return super().perform_transition(*args)
 
 
 

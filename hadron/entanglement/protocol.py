@@ -52,7 +52,7 @@ class ResponseReceiver:
     def __call__(self, result):
         '''Result is the response received from the message; should be called in the message receive loop'''
         for fut in self.futures:
-            if fut.cancelled(): continue
+            if fut.cancelled() or fut.done(): continue
             if isinstance(result, Exception):
                 fut.set_exception(result)
             else: fut.set_result(result)

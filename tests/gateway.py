@@ -20,6 +20,7 @@ import hadron.entanglement.sql as sql
 from .utils import *
 import hadron.entanglement.protocol, hadron.entanglement.operations
 from hadron.entanglement.sql.transition import SqlTransitionTrackerMixin
+from hadron.entanglement.transition import BrokenTransition
 
 # SQL declaration
 Base = sql_sync_declarative_base()
@@ -369,7 +370,6 @@ class TestGateway(SqlFixture, unittest.TestCase):
             t.perform_transition(self.client)
             #logging.getLogger('hadron.entanglement.protocol').setLevel(10)
             self.assertIsNone(inspect(t).session)
-            self.assertIs(t, TableTransition.get_from_transition(t.transition_key()))
         with transitions_partitioned():
             settle_loop(self.loop)
             with transitions_tracked_as(self.manager):
@@ -413,6 +413,74 @@ class TestGateway(SqlFixture, unittest.TestCase):
             self.assertEqual(t.x, 8192)
             self.assertEqual(t.y, -30, msg = "Transition updates were incorrectly folded into other changes")
 
+    def testTransitionResponses(self):
+        "Test transition updates and responses"
+        for r in (Base.registry, manager_registry, client_registry):
+            r.register_operation('transition', hadron.entanglement.operations.transition_operation)
+        server_session = Base.registry.sessionmaker()
+        server_session.manager = self.server
+        manager_session = manager_registry.sessionmaker()
+        manager_session.manager = self.manager
+        t = TableTransition(id = 30)
+        owner = SyncOwner(destination_id = None)
+        server_session.add(owner)
+        server_session.commit()
+        settle_loop(self.loop)
+        t.sync_owner = owner
+        t.x = 9218
+        server_session.add(t)
+        server_session.commit()
+        settle_loop(self.loop)
+        t.x = 30
+        with transitions_partitioned():
+            with transitions_tracked_as(self.server): fut = t.perform_transition(self.server)
+            self.assertIsNotNone(t.transition_id)
+            t.y = 20
+            with transitions_tracked_as(self.server): t.perform_transition(self.server)
+            self.assertIsNotNone(t.transition_id)
+            settle_loop(self.loop)
+            with transitions_tracked_as(self.client):
+                t_client = TableTransition.get_from_transition(t.id)
+            self.assertIsInstance(t_client, TableTransition)
+            self.assertEqual(t.to_sync(), t_client.to_sync())
+            t_client = self.client_session.merge(t)
+            self.client_session.refresh(t_client)
+            t_client.x = -2095
+            # Break the transition with an update
+            self.client_session.sync_commit()
+            self.loop.run_until_complete(asyncio.wait([t_client.sync_future], timeout = 0.6))
+            self.assertIsInstance(fut.exception(), BrokenTransition)
+            self.assertIsInstance(t_client.sync_future.result(), TableTransition)
+            t_client = self.client_session.merge(t_client.sync_future.result())
+            t.x = 9219
+            with transitions_tracked_as(self.client):
+                fut = t_client.perform_transition(self.client)
+            settle_loop(self.loop)
+            self.assertFalse(fut.done())
+            t = server_session.merge(t)
+            server_session.refresh(t)
+            t.y = 919
+            #break transition with transition
+            with transitions_tracked_as(self.server):
+                fut_server = t.perform_transition(self.server)
+                #logging.getLogger('hadron.entanglement.protocol').setLevel(10)
+            self.loop.run_until_complete(asyncio.wait(
+                map(lambda c: c.sync_drain(), self.server.connections), timeout = 0.5))
+            server_session.add(t)
+            # end transition with sync
+            self.assertIsNotNone(t.transition_id)
+            server_session.commit()
+            settle_loop(self.loop)
+            gc.collect()
+            settle_loop(self.loop)
+            self.assertIsInstance(fut.exception(), BrokenTransition)
+            self.assertIsNone(fut_server.result())
+                                             
+                
+                                                 
+            
+
+            
     def testCreate(self):
         "Confirm that the create operation works"
         t = TableInherits(info2 = "blah baz")

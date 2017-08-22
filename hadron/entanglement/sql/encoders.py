@@ -48,7 +48,7 @@ def uuid_encoder(obj, propname):
     if val is not None: return str(val)
 
 def uuid_decoder(obj, propname, val):
-    return uuid.UUID(val)
+    if val: return uuid.UUID(val)
 
 
 register_type(DateTime, datetime_encoder, datetime_decoder)

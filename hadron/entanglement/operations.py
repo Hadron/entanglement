@@ -147,7 +147,14 @@ class transition_operation(SyncOperation):
     name = 'transition'
 
     def incoming(self, obj, **info):
-        obj.store_for_transition()
+        response_for = info.get('response_for', None)
+        manager = info['manager']
+        if response_for:
+            future = manager.loop.create_future()
+            future.add_done_callback(obj._remove_from_transition_cb)
+            response_for.add_future(future)
+        obj.store_for_transition(response_for = response_for,
+                                 sender = info.get('sender'))
         return super().incoming(obj, **info)
     
     
