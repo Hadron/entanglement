@@ -244,15 +244,17 @@ class SyncProtocol(asyncio.Protocol):
             sync_rep = {}
         new_flags = self._handle_meta_out(flags, sync_rep)
         if len(sync_rep) == 0: return
+        self._send_json(sync_rep, new_flags)
+        self._out_counter += 1
+
+    def _send_json(self, sync_rep, flags):
         js = bytes(json.dumps(sync_rep), 'utf-8')
         protocol_logger.debug("#{c}: Sending `{js}' to {d} (flags {f})".format(
             js = js, d = self.dest,
             c = self._out_counter, f = flags))
-
         assert len(js) <= 65536
         header = struct.pack(_msg_header, len(js), flags)
         self.transport.write(header + js)
-        self._out_counter += 1
 
     async def _read_task(self):
         while True:
@@ -269,24 +271,7 @@ class SyncProtocol(asyncio.Protocol):
                 js = js, d = self.dest))
             try:
                 sync_repr = json.loads(str(js, 'utf-8'))
-                self._handle_meta(sync_repr, flags)
-                if '_sync_type' not in sync_repr: # metadata only
-                    continue
-                response_for = None
-                if flags&_MSG_FLAG_RESPONSE_NEEDED:
-                    response_for = ResponseReceiver()
-                    response_for.add_forward(self, self._in_counter)
-                if '_resp_for' in sync_repr:
-                    if response_for is not None:
-                        raise SyncBadEncodingError('A message cannot both be a response and require a response')
-                    for msgnum in sync_repr['_resp_for']:
-                        msgnum = int(msgnum)
-                        new_resp = self._expected.pop(msgnum, None)
-                        if not response_for:
-                            response_for = new_resp
-                        else: response_for.merge(new_resp)
-                    del sync_repr['_resp_for']
-                self._manager._sync_receive(sync_repr, self, response_for = response_for)
+                self._handle_receive(sync_repr, flags)
             except Exception as e:
                 logger.exception("Error receiving {}".format(sync_repr))
                 if isinstance(e,SyncError) and not '_sync_is_error' in sync_repr:
@@ -297,6 +282,26 @@ class SyncProtocol(asyncio.Protocol):
             finally:
                 self._in_counter += 1
                 response_for = None
+
+    def _handle_receive(self, sync_repr, flags):
+        self._handle_meta(sync_repr, flags)
+        if '_sync_type' not in sync_repr: # metadata only
+            return
+        response_for = None
+        if flags&_MSG_FLAG_RESPONSE_NEEDED:
+            response_for = ResponseReceiver()
+            response_for.add_forward(self, self._in_counter)
+        if '_resp_for' in sync_repr:
+            if response_for is not None:
+                raise SyncBadEncodingError('A message cannot both be a response and require a response')
+            for msgnum in sync_repr['_resp_for']:
+                msgnum = int(msgnum)
+                new_resp = self._expected.pop(msgnum, None)
+                if not response_for:
+                    response_for = new_resp
+                else: response_for.merge(new_resp)
+            del sync_repr['_resp_for']
+        self._manager._sync_receive(sync_repr, self, response_for = response_for)
 
     def _handle_meta(self, sync_repr, flags):
         if '_no_resp_for' in sync_repr:
