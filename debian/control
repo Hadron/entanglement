@@ -1,5 +1,5 @@
 Source: hadron-entanglement
-Section: devel
+Section: proprietary/devel
 Priority: optional
 Maintainer: Sam Hartman <sam.hartman@hadronindustries.com>
 Build-Depends: debhelper (>= 9), dh-python, python3-all (>= 3.5), python3-openssl, python3-sqlalchemy, python3-setuptools, python3-iso8601, 
@@ -15,6 +15,7 @@ Description: Hadron State Synchronization Framework
  This is the python3 library
 
 Package: hadron-entanglement-cli
+Section: proprietary/net
 Architecture: all
 Multi-Arch: foreign
 Depends: python3-hadron-entanglement(= ${binary:Version}), ${python3:Depends}
