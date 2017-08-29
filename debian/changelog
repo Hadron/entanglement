@@ -1,3 +1,9 @@
+hadron-entanglement (0.8.1) unstable; urgency=medium
+
+  * Rebuild with fix for parallel tests
+
+ -- Sam Hartman <hartmans@debian.org>  Tue, 29 Aug 2017 13:42:09 -0400
+
 hadron-entanglement (0.8) unstable; urgency=medium
 
   * Support multiple owners
