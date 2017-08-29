@@ -162,7 +162,7 @@ class TransitionTrackerMixin (interface.Synchronizable):
             fut.add_done_callback(self._remove_from_transition_cb)
         self._transition_operation_count = 1+getattr(self, '_transition_operation_count', 0)
         self.store_for_transition(manager = manager)
-        return fut
+        return self._transition_future
         
     def store_for_transition(self, response_for = None, sender = None, manager = None):
         key = self.transition_key()
@@ -174,7 +174,7 @@ class TransitionTrackerMixin (interface.Synchronizable):
         else: obj = None
         if obj and obj.transition_id != self.transition_id:
             if manager: obj._broken_transition(manager)
-            obj.remove_from_transition
+            obj.remove_from_transition()
             obj = None
         if not obj:
             logger.debug("Starting transition for {}".format(self))
@@ -219,7 +219,9 @@ class TransitionTrackerMixin (interface.Synchronizable):
         return None
 
     def _remove_from_transition_cb(self, future):
-        future.exception()
+        if future.exception() is None:
+            # If we're local then it's expected that we get no response.
+            if self.sync_is_local and future.result() is None: return
         return self.remove_from_transition()
 
 class BrokenTransition(interface.SyncError):
