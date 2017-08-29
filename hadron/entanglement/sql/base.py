@@ -342,9 +342,10 @@ class SqlSyncRegistry(interface.SyncRegistry):
         if obj.sync_is_local:
             _internal.trigger_you_haves(manager, obj.sync_serial)
             
-    def incoming_forward(self, obj, context, sender, manager, **info):
+    def incoming_forward(self, obj, context, sender, manager, operation, **info):
         assert obj in context.session
         if obj.sync_is_local:
+            if operation == 'forward' and obj in context.session.new: raise interface.SyncNotFound()
             try:
                 context.session.commit()
             except sqlalchemy.exc.StatementError as e:

@@ -497,6 +497,9 @@ class SyncInvalidOperation(SyncError): pass
 
 class SyncBadOwner(SyncError): pass
 
+class SyncNotFound(SyncError): pass
+
+
 class SyncNotConnected(SyncError):
 
     dest = sync_property( constructor = True)

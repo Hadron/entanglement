@@ -10,7 +10,7 @@ import asyncio, copy, datetime, gc, json, logging, ssl, unittest, uuid, warnings
 from contextlib import contextmanager
 from unittest import mock
 
-from hadron.entanglement.interface import Synchronizable, sync_property, SyncRegistry, SyncUnauthorized
+from hadron.entanglement.interface import Synchronizable, sync_property, SyncRegistry, SyncUnauthorized, SyncError
 from hadron.entanglement.network import  SyncServer,  SyncManager
 from hadron.entanglement.util import certhash_from_file, CertHash, SqlCertHash, get_or_create, entanglement_logs_disabled, GUID
 from sqlalchemy import create_engine, Column, Integer, inspect, String, ForeignKey
@@ -511,6 +511,20 @@ class TestGateway(SqlFixture, unittest.TestCase):
         self.assertTrue(fut.done())
         self.assertRaises(SyncUnauthorized, fut.result)
 
+    def testNoCreateForward(self):
+        "Confirm that forward cannot be used to create a remote object"
+        sess = self.client_session
+        owners = sess.query(SyncOwner).filter(SyncOwner.destination != None).all()
+        assert len(owners) >= 1
+        owner = owners[0]
+        obj = TableInherits()
+        obj.sync_owner_id = owner.id
+        sess.add(obj)
+        sess.commit()
+        with entanglement_logs_disabled():
+            self.loop.run_until_complete(asyncio.wait([obj.sync_future], timeout = 0.5))
+        with self.assertRaises(SyncError):
+            obj.sync_future.result()
 
 
 if __name__ == '__main__':
