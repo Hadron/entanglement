@@ -125,7 +125,7 @@ def get_or_create(session, model, filter_by, defaults = {}):
 
 @contextlib.contextmanager
 def entanglement_logs_disabled():
-    l = logging.getLogger('hadron.entanglement')
+    l = logging.getLogger('entanglement')
     oldlevel = l.level
     l.setLevel(logging.CRITICAL+1)
     yield

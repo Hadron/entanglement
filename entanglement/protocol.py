@@ -10,8 +10,8 @@ import asyncio, json, logging, struct, weakref
 from .util import CertHash
 from .interface import SyncError, SyncBadEncodingError
 
-logger = logging.getLogger("hadron.entanglement")
-protocol_logger = logging.getLogger('hadron.entanglement.protocol')
+logger = logging.getLogger("entanglement")
+protocol_logger = logging.getLogger('entanglement.protocol')
 #protocol_logger.setLevel('DEBUG')
 protocol_logger.setLevel('ERROR')
 

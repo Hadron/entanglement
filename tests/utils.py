@@ -10,11 +10,11 @@
 from contextlib import contextmanager
 import asyncio, gc, unittest, random, warnings, weakref
 from sqlalchemy import create_engine
-from hadron.entanglement import SyncManager, SyncServer, certhash_from_file, interface
-import hadron.entanglement.sql as sql
-from hadron.entanglement.sql import SqlSyncDestination, sync_session_maker
+from entanglement import SyncManager, SyncServer, certhash_from_file, interface
+import entanglement.sql as sql
+from entanglement.sql import SqlSyncDestination, sync_session_maker
 from unittest import mock
-from hadron.entanglement import transition
+from entanglement import transition
 
 @contextmanager
 def wait_for_call(loop, obj, method, calls = 1):

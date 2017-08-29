@@ -11,13 +11,13 @@ import asyncio, datetime, gc, json, ssl, unittest, uuid, warnings
 from contextlib import contextmanager
 from unittest import mock
 
-from hadron.entanglement.interface import Synchronizable, sync_property, SyncRegistry
-from hadron.entanglement.network import  SyncServer,  SyncManager
-from hadron.entanglement.util import certhash_from_file, CertHash, SqlCertHash, get_or_create, entanglement_logs_disabled
+from entanglement.interface import Synchronizable, sync_property, SyncRegistry
+from entanglement.network import  SyncServer,  SyncManager
+from entanglement.util import certhash_from_file, CertHash, SqlCertHash, get_or_create, entanglement_logs_disabled
 from sqlalchemy import create_engine, Column, Integer, inspect, String, ForeignKey
 from sqlalchemy.orm import sessionmaker
-from hadron.entanglement.sql import SqlSynchronizable,  sync_session_maker, sql_sync_declarative_base, SqlSyncDestination, SqlSyncRegistry, sync_manager_destinations, SyncOwner
-import hadron.entanglement.sql as sql
+from entanglement.sql import SqlSynchronizable,  sync_session_maker, sql_sync_declarative_base, SqlSyncDestination, SqlSyncRegistry, sync_manager_destinations, SyncOwner
+import entanglement.sql as sql
 from .utils import wait_for_call, SqlFixture, settle_loop, test_port 
 
 

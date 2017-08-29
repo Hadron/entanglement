@@ -480,7 +480,7 @@ class SqlSynchronizable(interface.Synchronizable):
     A SQLAlchemy mapped class that can be synchronized.  By default
     every column becomes e sync_property.  You can explicitly set
     sync_property around a Column if you need to override the encoder
-    or decoder, although see hadron.entanglement.sql.encoder for a
+    or decoder, although see entanglement.sql.encoder for a
     type map that can be used in most cases.  The sync_should_send
     method on this class and should_send on any containing registries
     must be able to make a decision about whether to send a deleted

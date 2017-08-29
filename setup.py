@@ -11,16 +11,16 @@
 from setuptools import setup
 
 setup(
-    name = "hadron.entanglement",
+    name = "entanglement",
     license = "proprietary",
     maintainer = "Sam Hartman",
     maintainer_email = "sam.hartman@hadronindustries.com",
     url = "http://www.hadronindustries.com/",
-    packages = ["hadron.entanglement", "hadron.entanglement.sql"],
+    packages = ["entanglement", "entanglement.sql"],
     install_requires = ['SQLAlchemy', 'pyOpenSSL', 'iso8601'],
     scripts = ['bin/entanglement-cli',
                'bin/entanglement-pki'],
     test_suite = "tests",
-    version = 0.8,
+    version = 0.9,
 )
 

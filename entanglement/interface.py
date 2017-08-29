@@ -298,7 +298,7 @@ class Synchronizable( metaclass = SynchronizableMeta):
         return all(map(lambda k: getattr(self,k).__eq__(getattr(other,k)), self.__class__.sync_primary_keys))
 
     class _sync_primary_keys:
-        "A tuple of primary keys or the value hadron.entanglement.interface.Unique meaning that no instances of this class represent the same object"
+        "A tuple of primary keys or the value entanglement.interface.Unique meaning that no instances of this class represent the same object"
 
         def __get__(self, obj, owner):
             raise NotImplementedError("sync_primary_keys must be set on Synchronizable classes")

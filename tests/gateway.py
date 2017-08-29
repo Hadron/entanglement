@@ -10,17 +10,17 @@ import asyncio, copy, datetime, gc, json, logging, ssl, unittest, uuid, warnings
 from contextlib import contextmanager
 from unittest import mock
 
-from hadron.entanglement.interface import Synchronizable, sync_property, SyncRegistry, SyncUnauthorized, SyncError
-from hadron.entanglement.network import  SyncServer,  SyncManager
-from hadron.entanglement.util import certhash_from_file, CertHash, SqlCertHash, get_or_create, entanglement_logs_disabled, GUID
+from entanglement.interface import Synchronizable, sync_property, SyncRegistry, SyncUnauthorized, SyncError
+from entanglement.network import  SyncServer,  SyncManager
+from entanglement.util import certhash_from_file, CertHash, SqlCertHash, get_or_create, entanglement_logs_disabled, GUID
 from sqlalchemy import create_engine, Column, Integer, inspect, String, ForeignKey
 from sqlalchemy.orm import sessionmaker
-from hadron.entanglement.sql import SqlSynchronizable,  sync_session_maker, sql_sync_declarative_base, SqlSyncDestination, SqlSyncRegistry, sync_manager_destinations, SyncOwner, SqlSyncError
-import hadron.entanglement.sql as sql
+from entanglement.sql import SqlSynchronizable,  sync_session_maker, sql_sync_declarative_base, SqlSyncDestination, SqlSyncRegistry, sync_manager_destinations, SyncOwner, SqlSyncError
+import entanglement.sql as sql
 from .utils import *
-import hadron.entanglement.protocol, hadron.entanglement.operations
-from hadron.entanglement.sql.transition import SqlTransitionTrackerMixin
-from hadron.entanglement.transition import BrokenTransition
+import entanglement.protocol, entanglement.operations
+from entanglement.sql.transition import SqlTransitionTrackerMixin
+from entanglement.transition import BrokenTransition
 
 # SQL declaration
 Base = sql_sync_declarative_base()
@@ -321,14 +321,14 @@ class TestGateway(SqlFixture, unittest.TestCase):
 
     def testNoResponse(self):
         "Test the full no response logic.  This test confirms that no responses can be piggybacked; entanglement.py:TestSynchronization.testNoResponseMetaOnly tests the other path."
-        handle_meta = hadron.entanglement.protocol.SyncProtocol._handle_meta
+        handle_meta = entanglement.protocol.SyncProtocol._handle_meta
         mock_called = False
         def mock_handle_meta(protocol,sync_repr, flags):
             nonlocal mock_called
             mock_called = True
             self.assertIn('_sync_type', sync_repr)
             return handle_meta(protocol, sync_repr, flags)
-        with mock.patch.object(hadron.entanglement.protocol.SyncProtocol,
+        with mock.patch.object(entanglement.protocol.SyncProtocol,
                                '_handle_meta', new = mock_handle_meta):
             nrh = NoResponseHelper("flood")
             fut = self.client.synchronize(nrh, response = True)
@@ -360,7 +360,7 @@ class TestGateway(SqlFixture, unittest.TestCase):
     def  testTransition(self):
         " Test TransitionTrackerMixin"
         for r in (Base.registry, manager_registry, client_registry):
-            r.register_operation('transition', hadron.entanglement.operations.transition_operation)
+            r.register_operation('transition', entanglement.operations.transition_operation)
         t = TableTransition(x = 10, id = 20, y = -30)
         self.client_session.add(t)
         self.client_session.commit()
@@ -368,7 +368,7 @@ class TestGateway(SqlFixture, unittest.TestCase):
         t.x = 99
         with transitions_tracked_as(self.client):
             t.perform_transition(self.client)
-            #logging.getLogger('hadron.entanglement.protocol').setLevel(10)
+            #logging.getLogger('entanglement.protocol').setLevel(10)
             self.assertIsNone(inspect(t).session)
         with transitions_partitioned():
             settle_loop(self.loop)
@@ -416,7 +416,7 @@ class TestGateway(SqlFixture, unittest.TestCase):
     def testTransitionResponses(self):
         "Test transition updates and responses"
         for r in (Base.registry, manager_registry, client_registry):
-            r.register_operation('transition', hadron.entanglement.operations.transition_operation)
+            r.register_operation('transition', entanglement.operations.transition_operation)
         server_session = Base.registry.sessionmaker()
         server_session.manager = self.server
         manager_session = manager_registry.sessionmaker()
@@ -463,7 +463,7 @@ class TestGateway(SqlFixture, unittest.TestCase):
             #break transition with transition
             with transitions_tracked_as(self.server):
                 fut_server = t.perform_transition(self.server)
-                #logging.getLogger('hadron.entanglement.protocol').setLevel(10)
+                #logging.getLogger('entanglement.protocol').setLevel(10)
             self.loop.run_until_complete(asyncio.wait(
                 map(lambda c: c.sync_drain(), self.server.connections), timeout = 0.5))
             server_session.add(t)
@@ -488,7 +488,7 @@ class TestGateway(SqlFixture, unittest.TestCase):
         manager_session.manager = self.manager
         manager_owner = manager_session.query(SyncOwner).filter_by(destination = None).one()
         t.sync_owner = self.client_session.query(SyncOwner).get(manager_owner.id)
-        #logging.getLogger('hadron.entanglement.protocol').setLevel(10)
+        #logging.getLogger('entanglement.protocol').setLevel(10)
         fut = t.sync_create(self.client, t.sync_owner)
         self.loop.run_until_complete(asyncio.wait([fut], timeout = 0.6))
         self.assertTrue(fut.done())
@@ -504,7 +504,7 @@ class TestGateway(SqlFixture, unittest.TestCase):
         manager_owner = manager_session.query(SyncOwner).filter_by(destination = None).one()
         t.sync_owner = self.client_session.query(SyncOwner).get(manager_owner.id)
         t.id = t.sync_owner.id # Will cause an error
-        #logging.getLogger('hadron.entanglement.protocol').setLevel(10)
+        #logging.getLogger('entanglement.protocol').setLevel(10)
         fut = t.sync_create(self.client, t.sync_owner)
         with entanglement_logs_disabled():
             self.loop.run_until_complete(asyncio.wait([fut], timeout = 0.6))
@@ -531,5 +531,5 @@ if __name__ == '__main__':
     import logging, unittest, unittest.main
 #    logging.basicConfig(level = 'ERROR')
     logging.basicConfig(level = 10)
-    hadron.entanglement.protocol.protocol_logger.setLevel(10)
+    entanglement.protocol.protocol_logger.setLevel(10)
     unittest.main(module = "tests.gateway")

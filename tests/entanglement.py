@@ -11,10 +11,10 @@ from unittest import mock
 from asyncio.test_utils import disable_logger, TestLoop, run_once
 
 
-from hadron.entanglement import bandwidth, protocol
-from hadron.entanglement.interface import Synchronizable, sync_property, SyncRegistry
-from hadron.entanglement.network import  SyncServer, SyncDestination
-from hadron.entanglement.util import certhash_from_file, CertHash, SqlCertHash, entanglement_logs_disabled
+from entanglement import bandwidth, protocol
+from entanglement.interface import Synchronizable, sync_property, SyncRegistry
+from entanglement.network import  SyncServer, SyncDestination
+from entanglement.util import certhash_from_file, CertHash, SqlCertHash, entanglement_logs_disabled
 
 from .utils import settle_loop, test_port
 
@@ -386,7 +386,7 @@ if __name__ == '__main__':
     import logging, unittest, unittest.main
     #logging.basicConfig(level = 'ERROR')
     logging.basicConfig(level = 10)
-    logging.getLogger('hadron.entanglement.protocol').setLevel(10)
+    logging.getLogger('entanglement.protocol').setLevel(10)
     unittest.main(module = "tests.entanglement")
     
     
