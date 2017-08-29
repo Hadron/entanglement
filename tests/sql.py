@@ -18,7 +18,7 @@ from sqlalchemy import create_engine, Column, Integer, inspect, String, ForeignK
 from sqlalchemy.orm import sessionmaker
 from hadron.entanglement.sql import SqlSynchronizable,  sync_session_maker, sql_sync_declarative_base, SqlSyncDestination, SqlSyncRegistry, sync_manager_destinations, SyncOwner
 import hadron.entanglement.sql as sql
-from .utils import wait_for_call, SqlFixture, settle_loop
+from .utils import wait_for_call, SqlFixture, settle_loop, test_port 
 
 
 # SQL declaration

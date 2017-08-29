@@ -8,7 +8,7 @@
 # LICENSE for details.
 
 from contextlib import contextmanager
-import asyncio, gc, unittest, warnings, weakref
+import asyncio, gc, unittest, random, warnings, weakref
 from sqlalchemy import create_engine
 from hadron.entanglement import SyncManager, SyncServer, certhash_from_file, interface
 import hadron.entanglement.sql as sql
@@ -57,14 +57,14 @@ class SqlFixture(unittest.TestCase):
         self.base.registry.create_bookkeeping(self.e2)
         self.server = SyncServer(cafile = "ca.pem",
                                  cert = "host1.pem", key = "host1.key",
-                                 port = 9120,
+                                 port = test_port,
                                  registries = [self.base.registry] + self.other_registries)
         self.manager = SyncManager(cafile = "ca.pem",
                                    cert = "host2.pem",
                                    key = "host2.key",
                                    loop = self.server.loop,
                                    registries = [self.manager_registry] + self.other_registries,
-                                   port = 9120)
+                                   port = test_port)
         self.loop = self.server.loop
         self.d1 = self.to_server = SqlSyncDestination(certhash_from_file("host1.pem"),
                                   "server", host = "127.0.0.1",
@@ -140,4 +140,9 @@ def transitions_partitioned():
         yield
         
 
-__all__ = "wait_for_call SqlFixture settle_loop transitions_tracked_as transitions_partitioned".split(' ')
+def random_port():
+    return random.randrange(10000,60000)
+
+test_port = random_port()
+__all__ = "wait_for_call SqlFixture settle_loop transitions_tracked_as transitions_partitioned test_port".split(' ')
+

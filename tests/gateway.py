@@ -108,7 +108,7 @@ class TestGateway(SqlFixture, unittest.TestCase):
         Base.metadata.create_all(self.client_engine)
         self.client = SyncManager(cafile = "ca.pem",
                                  cert = "host3.pem", key = "host3.key",
-                                 port = 9120,
+                                 port = test_port,
                                  registries = [client_registry] + self.other_registries,
                                  loop = self.loop)
         self.to_client = SqlSyncDestination(certhash_from_file("host3.pem"), 'client',
