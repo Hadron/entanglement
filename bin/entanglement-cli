@@ -9,16 +9,16 @@
 
 
 import argparse, asyncio, importlib, logging, sys, os.path
-_hadron = os.path.join(os.path.dirname(__file__), '../hadron')
-if os.path.exists(_hadron):
-    sys.path.append(os.path.join(_hadron,'..'))
+_entanglement = os.path.join(os.path.dirname(__file__), '../entanglement')
+if os.path.exists(_entanglement):
+    sys.path.append(os.path.join(_entanglement,'..'))
 
 from sqlalchemy import create_engine
-from hadron.entanglement  import SyncServer, SqlSyncDestination, sync_session_maker,  SqlSynchronizable, sync_manager_destinations
-from hadron.entanglement.sql import reflect
-from hadron.entanglement.sql.internal import sql_meta_messages, IHave
-from hadron.entanglement.util import certhash_from_file, CertHash
-import hadron.entanglement.sql
+from entanglement  import SyncServer, SqlSyncDestination, sync_session_maker,  SqlSynchronizable, sync_manager_destinations
+from entanglement.sql import reflect
+from entanglement.sql.internal import sql_meta_messages, IHave
+from entanglement.util import certhash_from_file, CertHash
+import entanglement.sql
 
 async def monitor_task():
     while True:
@@ -64,7 +64,7 @@ parser.add_argument('--cert',
 
 parser.add_argument('--key',
                     help = "Key file for certificate if not included in the certificate file")
-parser.add_argument('--cert-hash',
+parser.add_argument('--cert-hash --dest-hash --dest_hash --cert_hash',
                     type = CertHash,
                     help = "URL-safe Base 64 encoding of sha-256 hash of the DER encoded certificate")
 parser.add_argument('--host',
@@ -100,14 +100,14 @@ if args.mode == "server" and not args.cert:
     parser.error("Certificate required when starting a server")
 registries = []
 engine = create_engine(args.db, echo = args.sql_verbose)
-hadron.entanglement.sql.SqlSyncRegistry.create_bookkeeping(engine)
+entanglement.sql.SqlSyncRegistry.create_bookkeeping(engine)
 
 logging.basicConfig(level = 'ERROR')
 
 if args.verbose:
-    logging.getLogger('hadron.entanglement').setLevel('DEBUG')
+    logging.getLogger('entanglement').setLevel('DEBUG')
 if args.protocol_verbose:
-    logging.getLogger('hadron.entanglement.protocol').setLevel('DEBUG')
+    logging.getLogger('entanglement.protocol').setLevel('DEBUG')
 if args.reflect:
     base = reflect.sync_map_base(bind = engine)
     reflect.reflect_and_prepare(base, bind = engine)
@@ -132,7 +132,7 @@ if args.mode == "add_destination":
     session.commit()
 
 elif args.mode == "remove_destination":
-    dest = session.query(SqlSyncDestination).filter_by(cert_hash = args.cert_hash).first()
+    dest = session.query(SqlSyncDestination).filter_by(dest_hash = args.cert_hash).first()
     if dest is None: parser.error("Unable to find destination with cert_hash {}".format(args.cert_hash))
     session.delete(dest)
     session.commit()

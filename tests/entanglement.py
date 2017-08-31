@@ -14,7 +14,7 @@ from asyncio.test_utils import disable_logger, TestLoop, run_once
 from entanglement import bandwidth, protocol
 from entanglement.interface import Synchronizable, sync_property, SyncRegistry
 from entanglement.network import  SyncServer, SyncDestination
-from entanglement.util import certhash_from_file, CertHash, SqlCertHash, entanglement_logs_disabled
+from entanglement.util import certhash_from_file, DestHash, SqlDestHash, entanglement_logs_disabled
 
 from .utils import settle_loop, test_port
 

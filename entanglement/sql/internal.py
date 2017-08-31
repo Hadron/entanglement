@@ -78,7 +78,7 @@ class _SqlMetaRegistry(SyncRegistry):
         from .base import SqlSynchronizable, SyncDeleted
         try:
             session = manager.session
-            if sender.cert_hash not in manager._connections: return
+            if sender.dest_hash not in manager._connections: return
             owner = obj.sync_owner
             if owner.outgoing_epoch.tzinfo is None:
                 outgoing_epoch = owner.outgoing_epoch.replace(tzinfo = datetime.timezone.utc)
@@ -341,7 +341,7 @@ async def handle_connected(destination, manager, session):
     from .base import SyncOwner, SqlSyncDestination
     get_or_create(session, SyncOwner, {'destination': None})
     session.commit()
-    my_owners = session.query(SyncOwner).outerjoin(SqlSyncDestination).filter((SyncOwner.destination == None)|(SqlSyncDestination.cert_hash != destination.cert_hash)).all()
+    my_owners = session.query(SyncOwner).outerjoin(SqlSyncDestination).filter((SyncOwner.destination == None)|(SqlSyncDestination.dest_hash != destination.dest_hash)).all()
     for o in my_owners:
         manager.synchronize(o, destinations = [destination])
     my_owner = MyOwners()

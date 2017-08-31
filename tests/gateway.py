@@ -12,7 +12,7 @@ from unittest import mock
 
 from entanglement.interface import Synchronizable, sync_property, SyncRegistry, SyncUnauthorized, SyncError
 from entanglement.network import  SyncServer,  SyncManager
-from entanglement.util import certhash_from_file, CertHash, SqlCertHash, get_or_create, entanglement_logs_disabled, GUID
+from entanglement.util import certhash_from_file, DestHash, SqlDestHash, get_or_create, entanglement_logs_disabled, GUID
 from sqlalchemy import create_engine, Column, Integer, inspect, String, ForeignKey
 from sqlalchemy.orm import sessionmaker
 from entanglement.sql import SqlSynchronizable,  sync_session_maker, sql_sync_declarative_base, SqlSyncDestination, SqlSyncRegistry, sync_manager_destinations, SyncOwner, SqlSyncError

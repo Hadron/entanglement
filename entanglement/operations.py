@@ -104,7 +104,7 @@ class forward_operation(SyncOperation):
         if obj.sync_is_local:
             manager.synchronize(obj, operation = 'sync', response_for = response_for)
         else:
-            dest = manager.dest_by_cert_hash(obj.sync_owner.destination.cert_hash)
+            dest = manager.dest_by_hash(obj.sync_owner.destination.dest_hash)
             manager.synchronize(obj, destinations = [dest], operation = 'forward',
                                 attributes_to_sync = info.get('attributes'),
                                 response_for = response_for)
@@ -133,7 +133,7 @@ class delete_operation(SyncOperation):
                                     exclude = [sender],
                                     response_for = response_for)
             else: #not from direction of object owner, so forward there
-                dest = manager.dest_by_cert_hash(obj.sync_owner.destination.cert_hash)
+                dest = manager.dest_by_hash(obj.sync_owner.destination.dest_hash)
                 manager.synchronize(obj, operation = 'delete',
                                     attributes_to_sync = obj.sync_primary_keys,
                                     destinations = [dest],
@@ -173,7 +173,7 @@ class transition_operation(SyncOperation):
         # response_fonr so that the initial sender can get an error
         # response if they like
         if not obj.sync_is_local:
-            owner_dest = manager.dest_by_cert_hash(obj.sync_owner.destination.cert_hash)
+            owner_dest = manager.dest_by_hash(obj.sync_owner.destination.dest_hash)
         if owner_dest:
             manager.synchronize(obj,
                                 operation = str(self),
@@ -217,7 +217,7 @@ class create_operation(SyncOperation):
         else:
             manager.synchronize(obj,
                                 operation = str(self),
-                                destinations = [manager.dest_by_cert_hash(context.owner.destination.cert_hash)],
+                                destinations = [manager.dest_by_hash(context.owner.destination.dest_hash)],
                                 response_for = response_for,
                                 attributes_to_sync = info.get('attributes', None))
 
@@ -238,7 +238,7 @@ class ResponseOperation(SyncOperation):
         if response_for is None: return
         for p in list(response_for.forwards.keys()):
             try:
-                dest = manager.dest_by_cert_hash(p.dest.cert_hash)
+                dest = manager.dest_by_hash(p.dest.dest_hash)
                 if dest:
                     manager.synchronize(obj,
                                         operation = str(operation),

@@ -8,13 +8,13 @@
 # LICENSE for details.
 
 import argparse, os, os.path, sys
-_hadron = os.path.join(os.path.dirname(__file__), '../hadron')
-if os.path.exists(_hadron):
-    sys.path.append(os.path.join(_hadron,'..'))
+_entanglement = os.path.join(os.path.dirname(__file__), '../entanglement')
+if os.path.exists(_entanglement):
+    sys.path.append(os.path.join(_entanglement,'..'))
 
 
-from hadron.entanglement.pki import host_cert
-from hadron.entanglement.util import certhash_from_file, CertHash
+from entanglement.pki import host_cert
+from entanglement.util import certhash_from_file, CertHash
 
 parser = argparse.ArgumentParser()
 

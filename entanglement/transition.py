@@ -145,8 +145,8 @@ class TransitionTrackerMixin (interface.Synchronizable):
         if self.sync_is_local :
             destinations = None
         else:
-            cert_hash = self.sync_owner.destination.cert_hash
-            destinations = [manager.dest_by_cert_hash(cert_hash)]
+            dest_hash = self.sync_owner.destination.dest_hash
+            destinations = [manager.dest_by_hash(dest_hash)]
         attrs =self.transition_modified_attrs()
         if attrs is not None:
             attrs = frozenset(self.sync_primary_keys) | attrs

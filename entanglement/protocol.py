@@ -367,7 +367,7 @@ class SyncProtocol(asyncio.Protocol):
 
 
     @property
-    def cert_hash(self):
+    def dest_hash(self):
         if  not self.transport: return None
         return CertHash.from_der_cert(self.transport.get_extra_info('ssl_object').getpeercert(True))
 

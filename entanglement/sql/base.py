@@ -14,7 +14,7 @@ from sqlalchemy import Column, Table, String, Integer, DateTime, ForeignKey, ins
 from sqlalchemy.orm import load_only
 import sqlalchemy.exc
 import sqlalchemy.orm, sqlalchemy.ext.declarative, sqlalchemy.ext.declarative.api
-from ..util import CertHash, SqlCertHash, get_or_create, GUID
+from ..util import DestHash, SqlDestHash, get_or_create, GUID
 from .. import interface, network, operations
 from ..protocol import logger
 from . import internal as _internal
@@ -169,7 +169,7 @@ class SqlSyncSession(sqlalchemy.orm.Session):
                     # SqlSyncDestination that is loaded and almost
                     # certainly has a different session, so we want
                     # their destination object.
-                    forward_dest = self.manager.dest_by_cert_hash(o.sync_owner.destination.cert_hash)
+                    forward_dest = self.manager.dest_by_hash(o.sync_owner.destination.dest_hash)
                     if not forward_dest:
                         logger.error("Requested forward to owner of {}, but manager doesn't recognize {} as a destination".format(
                             o, o.sync_owner.destination))
@@ -215,7 +215,7 @@ class SqlSyncSession(sqlalchemy.orm.Session):
                 if o.sync_is_local:
                     deleted_objects.append((o, None))
                 else:
-                    delete_dest = self.manager.dest_by_cert_hash(o.sync_owner.destination.cert_hash)
+                    delete_dest = self.manager.dest_by_hash(o.sync_owner.destination.dest_hash)
                     if not delete_dest:
                         logger.error("Requested delete to owner of {}, but manager doesn't recognize {} as a destination".format(
                             o, o.sync_owner.destination))
@@ -379,7 +379,7 @@ class Serial(_internal_base):
 class  SqlSyncDestination(_internal_base, network.SyncDestination):
     __tablename__ = "sync_destinations"
     id = Column(Integer, primary_key = True)
-    cert_hash = Column(SqlCertHash, unique = True, nullable = False)
+    dest_hash = Column(SqlDestHash, unique = True, nullable = False)
     name = Column(String(64), nullable = False)
     host = Column(String(128))
 
@@ -387,11 +387,11 @@ class  SqlSyncDestination(_internal_base, network.SyncDestination):
                         nullable = False)
 
     def __hash__(self):
-        return hash(self.cert_hash)
+        return hash(self.dest_hash)
 
     def __eq__(self, other):
         if isinstance(other,SqlSyncDestination):
-            return other.cert_hash == self.cert_hash
+            return other.dest_hash == self.dest_hash
         else: return super().__eq__(other)
     def __init__(self, *args, **kwargs):
         network.SyncDestination.__init__(self, *args, **kwargs)
@@ -547,7 +547,7 @@ class SqlSynchronizable(interface.Synchronizable):
         return manager.synchronize(self,
                             operation = 'create',
                             attributes_to_sync = attrs,
-                            destinations = [manager.dest_by_cert_hash(owner.destination.cert_hash)],
+                            destinations = [manager.dest_by_hash(owner.destination.dest_hash)],
                             response = True)
         
 
@@ -664,7 +664,7 @@ def sync_manager_destinations(manager, session = None,
         except AttributeError: pass
         manager.add_destination(d)
         if force_resync:
-            for o in session.query(SyncOwner).join(cls).filter(cls.cert_hash == d.cert_hash):
+            for o in session.query(SyncOwner).join(cls).filter(cls.dest_hash == d.dest_hash):
                 o.incoming_epoch = datetime.datetime.now(datetime.timezone.utc)
     if hasattr(manager, 'session'):
         manager.session.commit()

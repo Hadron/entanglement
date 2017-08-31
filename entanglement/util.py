@@ -20,8 +20,8 @@ try:
 except ImportError:
     TypeDecorator = None
     
-class CertHash(bytes):
-    "represents a hash of a certificate"
+class DestHash(bytes):
+    "represents a hash of a value that uniquely identifies a destination.  The most common DestHash is a CertHash (hash of a DER-encoded X.509 certificate)."
 
     def __new__(self,hash):
         "Construct from a RFC 6920 URI, the base64 of a SHa256sum"
@@ -50,12 +50,14 @@ class CertHash(bytes):
         if res == True: return True
         if isinstance(other, str):
             try:
-                return self.__eq__(CertHash(other))
+                return self.__eq__(DestHash(other))
             except: return res
             
 
     def __hash__(self): return hash(str(self))
 
+class CertHash(DestHash):
+    
     @classmethod
     def from_der_cert(cls, cert):
         if isinstance(cert, _crypto.X509):
@@ -73,14 +75,14 @@ def certhash_from_file(fn):
 
 
 if TypeDecorator:
-    class SqlCertHash(TypeDecorator):
+    class SqlDestHash(TypeDecorator):
         impl = String(60)
 
         def process_bind_param(self, value, dialect):
-            return str(CertHash(value))
+            return str(DestHash(value))
 
         def process_result_value(self, value, dialect):
-            return CertHash(value)
+            return DestHash(value)
 
         def __init__(self, *args, **kwargs):
             super().__init__(50, *args, **kwargs)

@@ -13,7 +13,7 @@ from unittest import mock
 
 from entanglement.interface import Synchronizable, sync_property, SyncRegistry
 from entanglement.network import  SyncServer,  SyncManager
-from entanglement.util import certhash_from_file, CertHash, SqlCertHash, get_or_create, entanglement_logs_disabled
+from entanglement.util import certhash_from_file, DestHash, SqlDestHash, get_or_create, entanglement_logs_disabled
 from sqlalchemy import create_engine, Column, Integer, inspect, String, ForeignKey
 from sqlalchemy.orm import sessionmaker
 from entanglement.sql import SqlSynchronizable,  sync_session_maker, sql_sync_declarative_base, SqlSyncDestination, SqlSyncRegistry, sync_manager_destinations, SyncOwner
@@ -27,7 +27,7 @@ Base = sql_sync_declarative_base()
 class Table1(Base, SqlSynchronizable):
     __tablename__ = 'test_table'
     id = Column(Integer, primary_key = True)
-    ch = Column(SqlCertHash)
+    ch = Column(SqlDestHash)
 
 
 class TableBase(Base):
@@ -68,26 +68,26 @@ class TestSql(SqlFixture, unittest.TestCase):
 
     def testCertHash(self):
         t = Table1()
-        t.ch = CertHash(b'o' *32)
+        t.ch = DestHash(b'o' *32)
         self.session.add(t)
         self.session.commit()
         #That will expire t.ch
-        self.assertEqual(t.ch, CertHash(b'o' *32))
+        self.assertEqual(t.ch, DestHash(b'o' *32))
         as_sync = t.to_sync()
         self.assertEqual(set(as_sync.keys()),
                          {'id', 'ch', 'sync_serial'})
 
     def testSendObject(self):
         self.session.manager = self.manager
-        t = Table1(ch = self.d1.cert_hash)
+        t = Table1(ch = self.d1.dest_hash)
         with wait_for_call(self.loop, Base.registry, 'sync_receive'):
             self.session.add(t)
             self.session.commit()
             #While we're add it make sure that post-commit changes are not sent
-            t.ch = CertHash(b'o' *32)
+            t.ch = DestHash(b'o' *32)
         t2 = self.server.session.query(Table1).get(t.id)
         assert t2 is not None
-        assert t2.sync_owner.destination.cert_hash is not None
+        assert t2.sync_owner.destination.dest_hash is not None
         self.session.refresh(t)
         self.assertEqual(t2.ch, t.ch)
 
@@ -95,17 +95,17 @@ class TestSql(SqlFixture, unittest.TestCase):
         "test our get or create method"
         session = self.session
         session.autoflush = False
-        t1 = Table1(ch = self.d2.cert_hash)
+        t1 = Table1(ch = self.d2.dest_hash)
         session.add(t1)
         session.commit()
         t2 = get_or_create(session, Table1, {'id' : t1.id})
         self.assertIs(t1,t2)
         dest = get_or_create(session, sql.SqlSyncDestination,
-                             {'cert_hash': self.d1.cert_hash},
+                             {'dest_hash': self.d1.dest_hash},
                              {'name' : "blah", 'host': "127.0.0.1"})
         session.commit()
         dest2 = get_or_create(session, sql.SqlSyncDestination,
-                              {'cert_hash' : dest.cert_hash})
+                              {'dest_hash' : dest.dest_hash})
         self.assertEqual(dest.id, dest2.id)
 
     def testYouHave(self):
@@ -122,7 +122,7 @@ class TestSql(SqlFixture, unittest.TestCase):
             self.manager.loop.call_soon(self.manager.loop.stop)
             self.manager.loop.run_forever()
             session = self.session
-            t1 = Table1(ch = self.d2.cert_hash)
+            t1 = Table1(ch = self.d2.dest_hash)
             session.add(t1)
             session.commit()
             self.d1.connect_at = 0
@@ -216,7 +216,7 @@ class TestSql(SqlFixture, unittest.TestCase):
         s = self.manager_registry.sessionmaker()
         s.manager = self.manager
         t = Table1()
-        t.ch = self.d1.cert_hash
+        t.ch = self.d1.dest_hash
         s.add(t)
         with wait_for_call(self.loop, sql.internal.sql_meta_messages, 'handle_you_have'):
             s.commit()
@@ -239,7 +239,7 @@ class TestSql(SqlFixture, unittest.TestCase):
 
     def testDeleteIHave(self):
         "Test that at connection start up, IHave handling will delete objects"
-        t = Table1(ch = self.d2.cert_hash)
+        t = Table1(ch = self.d2.dest_hash)
         s = self.manager_registry.sessionmaker()
         s.manager = self.manager
         s.add(t)
