@@ -142,7 +142,7 @@ class DirtyMember:
         else: self.attrs = None
         self.response_for = response_for
 
-class SyncProtocol(asyncio.Protocol):
+class SyncProtocolBase:
 
     def __init__(self, manager, incoming = False,
                  dest = None,
@@ -163,8 +163,6 @@ class SyncProtocol(asyncio.Protocol):
         self.drain_future = None
         self.waiter = None
         self.task = None
-        self.transport = None
-        self.reader = asyncio.StreamReader(loop = self.loop)
         self.dest = dest
         self._incoming = incoming
 
@@ -247,61 +245,38 @@ class SyncProtocol(asyncio.Protocol):
         self._send_json(sync_rep, new_flags)
         self._out_counter += 1
 
-    def _send_json(self, sync_rep, flags):
-        js = bytes(json.dumps(sync_rep), 'utf-8')
-        protocol_logger.debug("#{c}: Sending `{js}' to {d} (flags {f})".format(
-            js = js, d = self.dest,
-            c = self._out_counter, f = flags))
-        assert len(js) <= 65536
-        header = struct.pack(_msg_header, len(js), flags)
-        self.transport.write(header + js)
 
-    async def _read_task(self):
-        while True:
-            header = await self.reader.readexactly(_msg_header_size)
-            jslen, flags = struct.unpack(_msg_header, header)
-            assert jslen <= 65536
-            if flags&(_MSG_FLAGS_CRITICAL&(~_MSG_FLAGS_UNDERSTOOD)) != 0:
-                self.close()
-                raise ValueError("Flags contained unknown critical option")
-
-            js = await self.reader.readexactly(jslen)
-            protocol_logger.debug("#{c}: Receiving {js} from {d} (flags {f})".format(
-                f = flags, c = self._in_counter,
-                js = js, d = self.dest))
-            try:
-                sync_repr = json.loads(str(js, 'utf-8'))
-                self._handle_receive(sync_repr, flags)
-            except Exception as e:
-                logger.exception("Error receiving {}".format(sync_repr))
-                if isinstance(e,SyncError) and not '_sync_is_error' in sync_repr:
-                    self._manager.synchronize(e,
-                                              destinations = [self.dest],
-                                              response_for = response_for,
-                                              operation = 'error')
-            finally:
-                self._in_counter += 1
-                response_for = None
 
     def _handle_receive(self, sync_repr, flags):
-        self._handle_meta(sync_repr, flags)
-        if '_sync_type' not in sync_repr: # metadata only
-            return
-        response_for = None
-        if flags&_MSG_FLAG_RESPONSE_NEEDED:
-            response_for = ResponseReceiver()
-            response_for.add_forward(self, self._in_counter)
-        if '_resp_for' in sync_repr:
-            if response_for is not None:
-                raise SyncBadEncodingError('A message cannot both be a response and require a response')
-            for msgnum in sync_repr['_resp_for']:
-                msgnum = int(msgnum)
-                new_resp = self._expected.pop(msgnum, None)
-                if not response_for:
-                    response_for = new_resp
-                else: response_for.merge(new_resp)
-            del sync_repr['_resp_for']
-        self._manager._sync_receive(sync_repr, self, response_for = response_for)
+        try:
+            self._handle_meta(sync_repr, flags)
+            if '_sync_type' not in sync_repr: # metadata only
+                return
+            response_for = None
+            if flags&_MSG_FLAG_RESPONSE_NEEDED:
+                response_for = ResponseReceiver()
+                response_for.add_forward(self, self._in_counter)
+            if '_resp_for' in sync_repr:
+                if response_for is not None:
+                    raise SyncBadEncodingError('A message cannot both be a response and require a response')
+                for msgnum in sync_repr['_resp_for']:
+                    msgnum = int(msgnum)
+                    new_resp = self._expected.pop(msgnum, None)
+                    if not response_for:
+                        response_for = new_resp
+                    else: response_for.merge(new_resp)
+                del sync_repr['_resp_for']
+            self._manager._sync_receive(sync_repr, self, response_for = response_for)
+        except Exception as e:
+            logger.exception("Error receiving {}".format(sync_repr))
+            if isinstance(e,SyncError) and not '_sync_is_error' in sync_repr:
+                self._manager.synchronize(e,
+                                          destinations = [self.dest],
+                                          response_for = response_for,
+                                          operation = 'error')
+        finally:
+            self._in_counter += 1
+            response_for = None
 
     def _handle_meta(self, sync_repr, flags):
         if '_no_resp_for' in sync_repr:
@@ -324,37 +299,20 @@ class SyncProtocol(asyncio.Protocol):
 
     def eof_received(self): return False
 
-    def connection_lost(self, exc):
-        if not hasattr(self, 'loop'): return
-        if not self.loop.is_closed():
-            self.reader.feed_eof()
-            if self.task: self.task.cancel()
-            if self.reader_task: self.reader_task.cancel()
-            if self.waiter: self.waiter.cancel()
-            if self.dest:
-                self.loop.create_task(self._manager._connection_lost(self, exc))
-        del self.transport
-        del self.loop
-        del self._manager
-        del self._expected
 
-    def close(self):
-        if not (hasattr(self, 'loop') and hasattr(self, 'transport')): return
-        self.transport.close()
-        self.connection_lost(None)
+    def connection_lost(self, exc):
+        if getattr(self, 'loop', None) is None: return
+        if self.loop.is_closed(): return
+        if self.task: self.task.cancel()
+        if self.waiter: self.waiter.cancel()
+        if self.dest:
+            self._manager._connection_lost(self, exc)
+        self.loop = None
+        self._manager = None
 
     def __del__(self):
         self.close()
 
-    def connection_made(self, transport, bwprotocol):
-        self.transport = transport
-        self.bwprotocol = bwprotocol
-        self.reader.set_transport(transport)
-        self.reader_task = self.loop.create_task(self._read_task())
-        self.reader_task._log_destroy_pending = False
-        self._manager._transports.append(weakref.ref(self.transport))
-        if self._incoming:
-            self.loop.create_task(self._manager._incoming_connection(self))
 
     def pause_writing(self):
         if self.waiter: return
@@ -366,13 +324,72 @@ class SyncProtocol(asyncio.Protocol):
         self.waiter = None
 
 
-    @property
-    def dest_hash(self):
-        if  not self.transport: return None
-        return CertHash.from_der_cert(self.transport.get_extra_info('ssl_object').getpeercert(True))
 
 
 sync_magic_attributes = ('_sync_type', '_sync_is_error',
                          '_resp_for', '_no_resp',
                          '_sync_operation',
                          '_sync_owner')
+
+
+class SyncProtocol(SyncProtocolBase, asyncio.Protocol):
+
+    def __init__(self, manager, incoming = False,  dest = None, **kwargs):
+        super().__init__(manager, incoming, dest, **kwargs)
+        self.transport = None
+        self.reader = asyncio.StreamReader(loop = self.loop)
+
+    def _send_json(self, sync_rep, flags):
+        js = bytes(json.dumps(sync_rep), 'utf-8')
+        protocol_logger.debug("#{c}: Sending `{js}' to {d} (flags {f})".format(
+            js = js, d = self.dest,
+            c = self._out_counter, f = flags))
+        assert len(js) <= 65536
+        header = struct.pack(_msg_header, len(js), flags)
+        self.transport.write(header + js)
+
+    async def _read_task(self):
+        while True:
+            header = await self.reader.readexactly(_msg_header_size)
+            jslen, flags = struct.unpack(_msg_header, header)
+            assert jslen <= 65536
+            if flags&(_MSG_FLAGS_CRITICAL&(~_MSG_FLAGS_UNDERSTOOD)) != 0:
+                self.close()
+                raise ValueError("Flags contained unknown critical option")
+
+            js = await self.reader.readexactly(jslen)
+            protocol_logger.debug("#{c}: Receiving {js} from {d} (flags {f})".format(
+                f = flags, c = self._in_counter,
+                js = js, d = self.dest))
+            sync_repr = json.loads(str(js, 'utf-8'))
+            self._handle_receive(sync_repr, flags)
+
+    def connection_lost(self, exc):
+        if getattr(self, 'loop', None) is None: return
+        if not self.loop.is_closed():
+            self.reader.feed_eof()
+            if self.reader_task: self.reader_task.cancel()
+            super().connection_lost(exc)
+        del self.transport
+        del self._manager
+        del self._expected
+
+    def close(self):
+        if not (getattr(self, 'loop', None) and hasattr(self, 'transport')): return
+        self.transport.close()
+        self.connection_lost(None)
+
+    def connection_made(self, transport, bwprotocol):
+        self.transport = transport
+        self.bwprotocol = bwprotocol
+        self.reader.set_transport(transport)
+        self.reader_task = self.loop.create_task(self._read_task())
+        self.reader_task._log_destroy_pending = False
+        self._manager._transports.append(weakref.ref(self.transport))
+        if self._incoming:
+            self.loop.create_task(self._manager._incoming_connection(self))
+
+    @property
+    def dest_hash(self):
+        if  not self.transport: return None
+        return CertHash.from_der_cert(self.transport.get_extra_info('ssl_object').getpeercert(True))

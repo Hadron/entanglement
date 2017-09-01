@@ -58,7 +58,8 @@ class SqlFixture(unittest.TestCase):
         self.server = SyncServer(cafile = "ca.pem",
                                  cert = "host1.pem", key = "host1.key",
                                  port = test_port,
-                                 registries = [self.base.registry] + self.other_registries)
+                                 registries = [self.base.registry] + self.other_registries,
+                                 loop = asyncio.get_event_loop())
         self.manager = SyncManager(cafile = "ca.pem",
                                    cert = "host2.pem",
                                    key = "host2.key",

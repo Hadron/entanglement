@@ -11,13 +11,12 @@
 
 import asyncio
 
-class BwLimitProtocol(asyncio.protocols.Protocol):
+class BwLimitMonitor:
 
-    '''A protocol that calls pause_writing when more than the allocated bandwidth is used.'''
+    '''A monitor that calls pause_writing when more than the allocated bandwidth is used.'''
 
-    def __init__(self, *, loop, chars_per_sec, bw_quantum, upper_protocol):
+    def __init__(self, *, loop, chars_per_sec, bw_quantum):
         self.loop = loop
-        self.protocol = upper_protocol
         self.bw_per_quantum = chars_per_sec*bw_quantum
         self.bw_quantum  = bw_quantum
         self._quantum_start = loop.time()
@@ -25,30 +24,7 @@ class BwLimitProtocol(asyncio.protocols.Protocol):
         self.used = 0
         self._paused = False
         self._transport_paused = False
-        
 
-    def data_received(self, data):
-        return self.protocol.data_received(data)
-
-    def connection_made(self, transport):
-        orig_write = transport.write
-        def bwlimit_write(data):
-            res = orig_write(data)
-            self.bw_used(len(data))
-            return res
-
-        transport.write = bwlimit_write
-        self.transport = transport
-        try: res =  self.protocol.connection_made(self.transport, bwprotocol = self)
-        except TypeError: res = self.protocol.connection_made(self.transport)
-        return res
-
-    def connection_lost(self, exc):
-        if hasattr(self.protocol, 'connection_lost'):
-            return self.protocol.connection_lost(exc)
-
-    def eof_received(self):
-        return self.protocol.eof_received()
     def pause_writing(self):
         self._transport_paused = True
         return self._maybe_pause()
@@ -56,6 +32,8 @@ class BwLimitProtocol(asyncio.protocols.Protocol):
     def resume_writing(self):
         self._transport_paused = False
         return self._maybe_resume()
+
+
 
     def _maybe_pause(self):
         if self._paused: return
@@ -92,3 +70,32 @@ class BwLimitProtocol(asyncio.protocols.Protocol):
             self._maybe_pause()
 
 
+
+class BwLimitProtocol(BwLimitMonitor, asyncio.Protocol):
+
+    def __init__(self, *, upper_protocol, **kwargs):
+        BwLimitMonitor.__init__(self, **kwargs)
+        self.protocol = upper_protocol
+
+    def data_received(self, data):
+        return self.protocol.data_received(data)
+
+    def connection_made(self, transport):
+        orig_write = transport.write
+        def bwlimit_write(data):
+            res = orig_write(data)
+            self.bw_used(len(data))
+            return res
+
+        transport.write = bwlimit_write
+        self.transport = transport
+        try: res =  self.protocol.connection_made(self.transport, bwprotocol = self)
+        except TypeError: res = self.protocol.connection_made(self.transport)
+        return res
+
+    def connection_lost(self, exc):
+        if hasattr(self.protocol, 'connection_lost'):
+            return self.protocol.connection_lost(exc)
+
+    def eof_received(self):
+        return self.protocol.eof_received()
