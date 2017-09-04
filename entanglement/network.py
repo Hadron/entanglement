@@ -257,10 +257,11 @@ class SyncManager:
     def remove_destination(self, dest):
         assert dest.dest_hash in self._destinations
         logger.info("Removing destination {}".format(dest))
-        if dest.dest_hash in self._connections:
-            self._connections[dest.dest_hash].close()
-            dest.protocol = None
+        p = self._connections.get(dest.dest_hash, None)
+        if p:
             del self._connections[dest.dest_hash]
+            p.close()
+            dest.protocol = None
         if dest.dest_hash in self._connecting:
             self._connecting[dest.dest_hash].cancel()
             del self._connecting[dest.dest_hash]
@@ -358,11 +359,13 @@ exc_info = e)
 
     def close(self):
         if not hasattr(self,'_transports'): return
-        for c in list(self._connections.values()):
-            c.close()
+        connections = list(self._connections.values())
         self._connections = {}
-        for c in self._connecting.values(): c.cancel()
+        for c in connections:
+            c.close()
+        connecting = list(self._connecting.values())
         self._connecting = {}
+        for c in connecting: c.cancel()
         for t in self._transports:
             if t(): t().close()
         if self.loop_allocated:

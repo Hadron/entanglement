@@ -309,7 +309,7 @@ class TestSynchronization(unittest.TestCase):
             self.assertTrue(self.bwprotocol._paused)
             assert self.cprotocol.waiter is not None
             task.cancel()
-            self.cprotocol.connection_lost(None)
+            with entanglement_logs_disabled(): self.cprotocol.connection_lost(None)
 
     def testReconnect(self):
         "After connection lost, reconnect"

@@ -166,6 +166,9 @@ class SyncProtocolBase:
         self.dest = dest
         self._incoming = incoming
 
+    def is_closed(self):
+        return self.loop is None
+    
     def _synchronize_object(self,obj,
                             operation, attributes, response_for):
         """Send obj out to be synchronized; this is an internal interface that should only be called by SyncManager.synchronize"""
@@ -200,7 +203,7 @@ class SyncProtocolBase:
 
     def _schedule_meta(self):
         if self.task is not None: return
-        if not hasattr(self, 'loop'): return
+        if self.is_closed(): return
         self.task = self.loop.create_task(self._run_sync())
 
     async def _run_sync(self):

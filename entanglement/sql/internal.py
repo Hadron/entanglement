@@ -290,7 +290,7 @@ def schedule_you_have(dest, manager):
 
 async def gen_you_have_task(sender, manager):
     await asyncio.sleep(you_have_timeout)
-    if (not hasattr(sender,'protocol') ) or (not hasattr (sender.protocol, 'loop')): return
+    if (not hasattr(sender,'protocol') ) or sender.protocol.is_closed(): return
     you_haves = []
     for o in sender.send_you_have:
         you_have = YouHave()
