@@ -8,7 +8,7 @@
 
 import sys, os.path
 sys.path = list(filter(lambda p: p != os.path.abspath(os.path.dirname(__file__)), sys.path))
-import asyncio, json, unittest, uuid
+import asyncio, concurrent.futures, glob, json, threading, subprocess, unittest, uuid
 from tornado.platform.asyncio import AsyncIOMainLoop
 
 try: AsyncIOMainLoop().install()
@@ -47,6 +47,44 @@ class TableInherits(TableBase):
 
 manager_registry = SqlSyncRegistry()
 manager_registry.registry = Base.registry.registry
+
+class JsTest(threading.Thread):
+
+    def __init__(self, testname, uri, owner):
+        super().__init__()
+        self.testname = testname
+        self.uri = uri
+        self.owner = owner
+        self.future = concurrent.futures.Future()
+        
+
+    def run(self):
+        try:
+            output = subprocess.check_output(['nodejs', self.testname,
+                                                   self.uri, self.owner],
+                                                  timeout = 0.7,
+                                                  cwd = os.path.dirname(self.testname))
+            self.future.set_result(output)
+        except subprocess.CalledProcessError:
+            self.future.set_exception(AssertionError())
+        except Exception as e:
+            self.future.set_exception(e)
+
+
+def javascriptTest(test_name):
+    def testMethod(self):
+        with entanglement_logs_disabled():
+            self.client.close()
+            settle_loop(self.loop)
+        uri = "ws://localhost:{}/ws".format(test_port+2)
+        sess = Base.registry.sessionmaker()
+        q = sess.query(SyncOwner).all()
+        owner = str(q[0].id)
+        t = JsTest(test_name, uri, owner)
+        t.start()
+        self.loop.run_until_complete(asyncio.futures.wrap_future(t.future))
+    return testMethod
+    
 
 class TestWebsockets(SqlFixture, unittest.TestCase):
 
@@ -107,17 +145,9 @@ class TestWebsockets(SqlFixture, unittest.TestCase):
         self.assertEqual(m['_sync_type'], 'TableInherits')
         self.assertEqual(m['id'], str(t.id))
 
-    def testJavascript(self):
-        self.client.close()
-        print('ws://localhost:{}/ws'.format(test_port+2))
-        q = self.session.query(SyncOwner).all()
-        print(str(q[0].id))
-        self.loop.run_forever()
 
-        
-if __name__ == '__main__':
-    import logging, unittest, unittest.main
-#    logging.basicConfig(level = 'ERROR')
-    logging.basicConfig(level = 10)
-    entanglement.protocol.protocol_logger.setLevel(10)
-    unittest.main(module = "tests.websocket")
+    js_test_path = os.path.abspath(os.path.dirname(__file__))
+    for t in glob.glob(js_test_path+"/test*.js"):
+        test_method_name = t[len(js_test_path)+1:-3]
+        locals()[test_method_name] = javascriptTest(t)
+
