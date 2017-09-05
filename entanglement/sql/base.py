@@ -409,6 +409,7 @@ class  SqlSyncDestination(_internal_base, network.SyncDestination):
         self.i_have_task = None
         self.send_you_have = set()
         self.received_i_have = set()
+        self._on_connected_cbs = []
 
 
     async def connected(self, manager, *args, **kwargs):

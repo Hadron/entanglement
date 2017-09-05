@@ -439,12 +439,17 @@ class SyncDestination:
         self.bw_per_sec = bw_per_sec
         self.protocol = None
         self.connect_at = 0
+        self._on_connected_cbs = []
 
     def __repr__(self):
         return "<SyncDestination {{name: '{name}', hash: {hash}}}".format(
             name = self.name,
             hash = self.dest_hash)
 
+    def on_connect(self, callback):
+        "call callback on connection"
+        self._on_connected_cbs.append(callback)
+        
     def should_send(self, obj, manager , **kwargs):
         return True
 
@@ -468,4 +473,7 @@ class SyncDestination:
         self.protocol = protocol
         self.bwprotocol = bwprotocol
         bwprotocol.bw_per_quantum = self.bw_per_sec*bwprotocol.bw_quantum
+        for cb in self._on_connected_cbs:
+            manager.loop.call_soon(cb)
+            
         return

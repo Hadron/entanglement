@@ -18,6 +18,7 @@ import entanglement.protocol
 from entanglement import SyncServer, SyncDestination
 from entanglement.util import entanglement_logs_disabled
 from entanglement.sql import sql_sync_declarative_base, SqlSyncRegistry, SyncOwner
+from entanglement.sql.transition import SqlTransitionTrackerMixin
 from entanglement.websocket import SyncWsHandler
 from sqlalchemy import Column, String, ForeignKey
 from entanglement.util import GUID
@@ -45,6 +46,11 @@ class TableInherits(TableBase):
     info2 = Column(String(30))
     __mapper_args__ = {'polymorphic_identity': "inherits"}
 
+class TableTransition(TableInherits, SqlTransitionTrackerMixin):
+    __mapper_args__ = {
+        'polymorphic_identity': 'transition'
+        }
+    
 manager_registry = SqlSyncRegistry()
 manager_registry.registry = Base.registry.registry
 
@@ -71,17 +77,18 @@ class JsTest(threading.Thread):
             self.future.set_exception(e)
 
 
-def javascriptTest(test_name):
+def javascriptTest(test_name, method_name):
     def testMethod(self):
-        with entanglement_logs_disabled():
-            self.client.close()
-            settle_loop(self.loop)
         uri = "ws://localhost:{}/ws".format(test_port+2)
         sess = Base.registry.sessionmaker()
         q = sess.query(SyncOwner).all()
         owner = str(q[0].id)
         t = JsTest(test_name, uri, owner)
         t.start()
+        helper_method = getattr(self, 'helper_'+method_name, None)
+        if helper_method:
+            ioloop.add_callback(helper_method)
+        
         self.loop.run_until_complete(asyncio.futures.wrap_future(t.future))
     return testMethod
     
@@ -95,35 +102,41 @@ class TestWebsockets(SqlFixture, unittest.TestCase):
 
     def setUp(self):
         def find_sync_destination( request, *args, **kwargs):
-            return SyncDestination(b'n' * 32, 'websocket')
+            return self.client_destination
+        self.client_destination = SyncDestination(b'n' * 32, 'websocket')
         super().setUp()
+        self.client_destination.connected_future = self.loop.create_future()
+        self.client_destination.on_connect(lambda: self.client_destination.connected_future.set_result(True))
         self.app = tornado.web.Application([(r'/ws', SyncWsHandler)])
         self.http_server = tornado.httpserver.HTTPServer(self.app)
         self.http_server.listen(test_port+2)
         self.app.sync_manager = self.manager
         self.app.find_sync_destination = find_sync_destination
-        self.client = tornado.websocket.websocket_connect(
-            'ws://localhost:{}/ws'.format(test_port+2))
-        ioloop.run_sync(self.wait_for_client)
         self.io_loop = ioloop
         settle_loop(self.loop)
 
     async def wait_for_client(self):
+        self.client = tornado.websocket.websocket_connect(
+            'ws://localhost:{}/ws'.format(test_port+2))
         self.client = await self.client
 
     def tearDown(self):
         with entanglement_logs_disabled():
-            self.client.close()
+            try:
+                self.client.close()
+            except AttributeError: pass
             self.http_server.stop()
             settle_loop(self.loop)
         super().tearDown()
 
     def testInit(self):
         "Confirm setUp at least works"
-        pass
+        ioloop.run_sync(self.wait_for_client)
+
 
     @tornado.testing.gen_test
     async def testSendMessage(self):
+        await self.wait_for_client()
         self.client.write_message(json.dumps(
             {'_sync_type': 'TableInherits',
              'info': 'foobaz',
@@ -135,6 +148,7 @@ class TestWebsockets(SqlFixture, unittest.TestCase):
 
     @tornado.testing.gen_test
     async def testReceive(self):
+        await self.wait_for_client()
         t = TableInherits(info = "baz")
         sess = Base.registry.sessionmaker()
         sess.manager = self.server
@@ -145,9 +159,16 @@ class TestWebsockets(SqlFixture, unittest.TestCase):
         self.assertEqual(m['_sync_type'], 'TableInherits')
         self.assertEqual(m['id'], str(t.id))
 
+    async def helper_testTransition(self):
+        await self.client_destination.connected_future
+        t = TableTransition(info = "test")
+        self.session.manager = self.manager
+        self.session.add(t)
+        self.session.commit()
+        
 
     js_test_path = os.path.abspath(os.path.dirname(__file__))
     for t in glob.glob(js_test_path+"/test*.js"):
         test_method_name = t[len(js_test_path)+1:-3]
-        locals()[test_method_name] = javascriptTest(t)
+        locals()[test_method_name] = javascriptTest(t, test_method_name)
 

@@ -1,6 +1,6 @@
 "use strict";
 
-if (!('WebSocket' in global)) {
+if (!('WebSocket' in this)) {
     var WebSocket =require('websocket').w3cwebsocket;
 }
 
@@ -10,7 +10,6 @@ class  SyncManager {
 	this.socket.addEventListener('message', event => {
 	    this._in_counter++;
 	    var message = JSON.parse(event.data);
-	    console.log(message);
 	    if (!(message._resp_for === undefined)) {
 		message._resp_for.forEach( r => {
 		    if( Number(r) in this.expected) {
@@ -22,10 +21,14 @@ class  SyncManager {
 		    }
 		} );
 	    }
+	    if (message['_sync_type'] in this.receivers) {
+		this.receivers[message._sync_type].forEach( r => r(message));
+	    }
 	});
 	this._out_counter = 0;
 	    this._in_counter = 0;
-	    this.expected = {}
+	this.expected = {}
+	this.receivers = {}
 	this.addEventListener = this.socket.addEventListener.bind(this.socket);
     }
 
@@ -44,10 +47,29 @@ class  SyncManager {
 	}
 	this.socket.send(JSON.stringify(obj2));
 	this._out_counter++;
-	return res
+	return res;
     }
+
+    on_receive(type, handler) {
+	var handlers = this.receivers[type];
+	if (handlers === undefined) {
+	    this.receivers[type] = handlers = [];
+	}
+	if (handlers.indexOf(handler) != -1) { return;}
+	handlers.push(handler);
+    }
+
+    remove_on_receive(type, handler) {
+	var handlers = this.receivers[type];
+	this.receivers[type] = handlers.filter(h => h === handler);
+    }
+
+    close() { this.socket.close();}
+    
 }
 
-module.exports = {
-    SyncManager: SyncManager,
-    }
+try {
+    module.exports = {        SyncManager: SyncManager,
+		     }
+} catch (err) { }
+
