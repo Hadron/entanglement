@@ -6,6 +6,8 @@
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the file
 # LICENSE for details.
 
+import sys, os.path
+sys.path = list(filter(lambda p: p != os.path.abspath(os.path.dirname(__file__)), sys.path))
 import asyncio, copy, datetime, gc, json, logging, ssl, unittest, uuid, warnings
 from contextlib import contextmanager
 from unittest import mock
@@ -17,7 +19,7 @@ from sqlalchemy import create_engine, Column, Integer, inspect, String, ForeignK
 from sqlalchemy.orm import sessionmaker
 from entanglement.sql import SqlSynchronizable,  sync_session_maker, sql_sync_declarative_base, SqlSyncDestination, SqlSyncRegistry, sync_manager_destinations, SyncOwner, SqlSyncError
 import entanglement.sql as sql
-from .utils import *
+from tests.utils import *
 import entanglement.protocol, entanglement.operations
 from entanglement.sql.transition import SqlTransitionTrackerMixin
 from entanglement.transition import BrokenTransition
@@ -531,5 +533,5 @@ if __name__ == '__main__':
     import logging, unittest, unittest.main
 #    logging.basicConfig(level = 'ERROR')
     logging.basicConfig(level = 10)
-    entanglement.protocol.protocol_logger.setLevel(10)
+#    entanglement.protocol.protocol_logger.setLevel(10)
     unittest.main(module = "tests.gateway")
