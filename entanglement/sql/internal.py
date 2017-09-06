@@ -154,7 +154,7 @@ class _SqlMetaRegistry(SyncRegistry):
             d = owner))
         for c in manager.connections:
             if c.dest == sender: continue
-            if owner.id in c.dest.received_i_have:
+            if owner.id in getattr(c.dest, 'received_i_have', []):
                 c.dest.send_you_have.add(owner)
                 schedule_you_have(c.dest, manager)
         manager.session.commit()
@@ -357,7 +357,7 @@ def trigger_you_haves(manager, serial):
     for c in manager.connections:
         for o in manager.session.query(base.SyncOwner).filter((base.SyncOwner.destination == None)):
             o.outgoing_serial = max(o.outgoing_serial, serial)
-            if o.id in c.dest.received_i_have:
+            if o.id in getattr(c.dest, 'received_i_have', []):
                 c.dest.send_you_have.add(o)
                 schedule_you_have(c.dest, manager)
 
