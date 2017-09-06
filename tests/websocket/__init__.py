@@ -15,7 +15,7 @@ try: AsyncIOMainLoop().install()
 except: pass
 import tornado.web, tornado.websocket, tornado.ioloop, tornado.testing, tornado.httpserver
 import entanglement.protocol
-from entanglement import SyncServer, SyncDestination
+from entanglement import SyncServer, SyncDestination, operations
 from entanglement.util import entanglement_logs_disabled
 from entanglement.sql import sql_sync_declarative_base, SqlSyncRegistry, SyncOwner
 from entanglement.sql.transition import SqlTransitionTrackerMixin
@@ -160,9 +160,15 @@ class TestWebsockets(SqlFixture, unittest.TestCase):
         self.assertEqual(m['id'], str(t.id))
 
     async def helper_testTransition(self):
+        tp = transitions_partitioned()
+        tp.__enter__()
+        self.addCleanup(tp.__exit__, None, None, None)
+        Base.registry.register_operation('transition', operations.transition_operation)
+        manager_registry.register_operation('transition', operations.transition_operation)
         await self.client_destination.connected_future
         t = TableTransition(info = "test")
         self.session.manager = self.manager
+        t.sync_owner = self.session.query(SyncOwner).filter_by(destination_id = None).one()
         self.session.add(t)
         self.session.commit()
         
