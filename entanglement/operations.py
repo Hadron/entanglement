@@ -170,7 +170,7 @@ class transition_operation(SyncOperation):
         exclude = [sender]
         # We flood to everyone except the sender.  However, when
         # flooding toward the owner, we'd prefer to preserve the
-        # response_fonr so that the initial sender can get an error
+        # response_for so that the initial sender can get an error
         # response if they like
         if not obj.sync_is_local:
             owner_dest = manager.dest_by_hash(obj.sync_owner.destination.dest_hash)
