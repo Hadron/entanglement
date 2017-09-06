@@ -54,6 +54,9 @@ class SyncWsHandler(tornado.websocket.WebSocketHandler):
     def on_message(self, message):
         js = json.loads(message)
         flags = js.pop('_flags', 0)
+        protocol_logger.debug("#{c}: Receiving {js} from {d} (flags {f})".format(
+                f = flags, c = self.dest.protocol._in_counter,
+                js = message, d = self.dest))
         self.dest.protocol._handle_receive(js, flags)
 
     def find_sync_destination(self, *get_args, **get_kwargs):
