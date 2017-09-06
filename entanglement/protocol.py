@@ -90,7 +90,8 @@ class ResponseReceiver:
         for k, v in other.forwards.items():
             l = self.forwards.setdefault(k, [])
             l.extend(v)
-
+        other.forwards = {}
+        other.futures = []
     def responses_to(self, protocol):
         "Returns the set of messages that are being responded to when responding out the given protocol"
         try:
