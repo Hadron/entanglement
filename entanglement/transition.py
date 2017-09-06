@@ -116,7 +116,12 @@ class TransitionTrackerMixin (interface.Synchronizable):
             if same_transition:
                 # Exit transition via operation from transition initiator
                 if response_for: response_for.merge(obj._transition_response_for)
-            elif obj._transition_response_for: #Not same operation
+                # If we've made it to object owner, drop the
+                # transition_id so it's not present in a sync
+                if obj.sync_is_local:
+                    try: del msg['transition_id']
+                    except KeyError: pass
+            elif obj._transition_response_for: #Not same transition
                 obj._broken_transition(manager)
             obj.remove_from_transition()
             return super().sync_construct(msg, **info)
