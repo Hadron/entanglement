@@ -15,10 +15,10 @@ class  SyncManager {
 	    var message = JSON.parse(event.data);
 	    if ( '_no_resp_for' in message) {
 		message._no_resp_for.forEach( n => {
-		    var ex = this.expected[number(n)];
+		    var ex = this.expected[Number(n)];
 		    if (ex) {
-			ex.forEach( p => p.resolved(null));
-			delete this.expected[number(n)];
+			ex.resolved(null);
+			delete this.expected[Number(n)];
 		    }
 		});
 	    }
@@ -50,6 +50,9 @@ class  SyncManager {
 	attributes.forEach( attr => obj2[attr] = obj[attr]);
 	obj2['_sync_operation'] = operation;
 	obj2._sync_owner = obj._sync_owner;
+	if (obj.transition_id) {
+	    obj2.transition_id = obj.transition_id
+	}
 	if (response === true) {
 	    obj2['_flags'] = 1;
 	    res = new Promise((resolved, rejected) => {
@@ -74,7 +77,7 @@ class  SyncManager {
 
     remove_on_receive(type, handler) {
 	var handlers = this.receivers[type];
-	this.receivers[type] = handlers.filter(h => h === handler);
+	this.receivers[type] = handlers.filter(h => h != handler);
     }
 
     perform_transition(obj, attributes) {
@@ -86,9 +89,7 @@ class  SyncManager {
 	} else {
 	    result = obj.transition_promise;
 	}
-	var full_attrs = Array.from(attributes);
-	full_attrs.push('transition_id');
-	var sync_result = this.synchronize(obj, full_attrs, 'transition', first_transition);
+	var sync_result = this.synchronize(obj, attributes, 'transition', first_transition);
     if (first_transition) {
 	obj.transition_promise = sync_result;
 	result = sync_result;
