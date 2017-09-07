@@ -171,7 +171,14 @@ class TestWebsockets(SqlFixture, unittest.TestCase):
         t.sync_owner = self.session.query(SyncOwner).filter_by(destination_id = None).one()
         self.session.add(t)
         self.session.commit()
-        
+
+    async def  helper_testBrokenTransition(self):
+        tp = transitions_partitioned()
+        tp.__enter__()
+        self.addCleanup(tp.__exit__, None, None, None)
+        Base.registry.register_operation('transition', operations.transition_operation)
+        manager_registry.register_operation('transition', operations.transition_operation)
+
 
     js_test_path = os.path.abspath(os.path.dirname(__file__))
     for t in glob.glob(js_test_path+"/test*.js"):
