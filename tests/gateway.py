@@ -528,6 +528,8 @@ class TestGateway(SqlFixture, unittest.TestCase):
         with self.assertRaises(SyncError):
             obj.sync_future.result()
 
+        
+
 
 if __name__ == '__main__':
     import logging, unittest, unittest.main

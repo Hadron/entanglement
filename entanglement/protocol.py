@@ -15,7 +15,7 @@ protocol_logger = logging.getLogger('entanglement.protocol')
 #protocol_logger.setLevel('DEBUG')
 protocol_logger.setLevel('ERROR')
 
-_msg_header = ">II" # A 4-byte big-endien size
+_msg_header = ">II" # A 4-byte big-endien size and four byte flags
 _msg_header_size = struct.calcsize(_msg_header)
 assert _msg_header_size == 8
 _MSG_FLAG_RESPONSE_NEEDED = 1
@@ -51,6 +51,13 @@ class ResponseReceiver:
 
     def __call__(self, result):
         '''Result is the response received from the message; should be called in the message receive loop'''
+        # If an incoming operation method adds a future, we don't want
+        # the sync_receive that called that incoming method to count
+        # as a local response.  We need to have either sent towards a
+        # destination in our forwards, or to have hit the resp_for
+        # handler before a future should be called.
+        if self.no_response_yet: return
+
         for fut in self.futures:
             if fut.cancelled() or fut.done(): continue
             if isinstance(result, Exception):
@@ -71,6 +78,7 @@ class ResponseReceiver:
             except KeyError: pass
 
     def no_response(self):
+        self.no_response_yet = False
         self(None)
         for p, l in self.forwards.items():
             p._no_response(l)
@@ -268,7 +276,10 @@ class SyncProtocolBase:
                     new_resp = self._expected.pop(msgnum, None)
                     if not response_for:
                         response_for = new_resp
-                    else: response_for.merge(new_resp)
+                        response_for.no_response_yet = False
+                    else:
+                        response_for.merge(new_resp)
+                        response_for.no_response_yet = False
                 del sync_repr['_resp_for']
             self._manager._sync_receive(sync_repr, self, response_for = response_for)
         except Exception as e:
