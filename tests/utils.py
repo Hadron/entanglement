@@ -132,8 +132,15 @@ def transitions_tracked_as(manager):
 @contextmanager
 def transitions_partitioned():
     old_receive = SyncManager._sync_receive
+    old_sft = transition.TransitionTrackerMixin.store_for_transition
     def receive_wrap(manager, *args, **kwargs):
-        with transitions_tracked_as(manager):
+        def wrap_sft(obj, *args, **kwargs):
+            res = old_sft(obj, *args, **kwargs)
+            obj.transition_tracked_objects = obj.transition_tracked_objects #Collapse the memoization so that this dictionary is always used for this instance
+            return res
+        with transitions_tracked_as(manager), \
+             mock.patch.object(transition.TransitionTrackerMixin, 'store_for_transition',
+                               new = wrap_sft):
             res = old_receive(manager, *args, **kwargs)
         return res
     with mock.patch.object(SyncManager, '_sync_receive',
