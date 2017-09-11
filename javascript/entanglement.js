@@ -123,7 +123,10 @@ class  SyncManager {
 	}
 	var sync_result = this.synchronize(obj, attributes, 'transition', first_transition);
     if (first_transition) {
-	obj.transition_promise = sync_result;
+	Object.defineProperty(obj, 'transition_promise', {
+	    config: true,
+	    enumerable: false,
+	    value: sync_result});
 	result = sync_result;
     }
     return result;
