@@ -6,7 +6,7 @@ var test_obj = {'_sync_type': 'TableInherits',
 	    '_sync_owner': process.argv[3]
 	   };
 sm.onopen( event => {
-var res = sm.synchronize(test_obj, Object.keys(test_obj), 'create', true);
+    var res = sm.synchronize(test_obj, Object.keys(test_obj), 'create', true);
 
 
     res.then(m => {

@@ -9,15 +9,18 @@ try {
 
 class  SyncManager {
     constructor(url) {
+
 	this.receivers = {}
 	this._open = false;
 	this._backoff = 256;
+	this.url = url;
+	this._connect();
     }
 
     _connect() {
 		this.socket = new WebSocket(this.url);
 	this.socket.addEventListener('open', event => {
-	    if (this._onopen) this.onopen(this);
+	    if (this._onopen) this._onopen(this);
 	    this._open = true;
 	    setTimeout(() => {
 		if (this._open) this._backoff = 256;
