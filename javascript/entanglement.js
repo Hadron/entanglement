@@ -9,7 +9,23 @@ try {
 
 class  SyncManager {
     constructor(url) {
-	this.socket = new WebSocket(url);
+	this.receivers = {}
+	this._open = false;
+	this._backoff = 256;
+    }
+
+    _connect() {
+		this.socket = new WebSocket(this.url);
+	this.socket.addEventListener('open', event => {
+	    if (this._onopen) this.onopen(this);
+	    this._open = true;
+	    setTimeout(() => {
+		if (this._open) this._backoff = 256;
+	    }, this._backoff);
+	    
+	});
+	this.socket.addEventListener('close', this._disconnect.bind(this));
+	this.socket.addEventListener('error', this._disconnect.bind(this));
 	this.socket.addEventListener('message', event => {
 	    this._in_counter++;
 	    var message = JSON.parse(event.data);
@@ -40,9 +56,22 @@ class  SyncManager {
 	this._out_counter = 0;
 	    this._in_counter = 0;
 	this.expected = {}
-	this.receivers = {}
-	this.addEventListener = this.socket.addEventListener.bind(this.socket);
     }
+
+    _disconnect() {
+	if (this._open) {
+	    this._open = false;
+	    if (this._onclose) this._onclose(this);
+	}
+	delete this.socket;
+	setTimeout(this._connect, this._backoff);
+	this._backoff = this._backoff*2;
+	if (this._backoff > 32768)
+	    this._backoff = 32768;
+    }
+
+    onclose(fn) {this._onclose = fn;}
+    onopen(fn) {this._onopen = fn;}
 
     synchronize(obj, attributes, operation, response) {
 	var res;
@@ -100,6 +129,16 @@ class  SyncManager {
 
     close() { this.socket.close();}
     
+
+    close() {
+	if (this._open) {
+	    this.socket.close();
+	    delete this.socket;
+	}
+	delete this.url; // Will break any attempt to reconnect
+    }
+
+	
 }
 
 try {

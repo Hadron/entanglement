@@ -5,7 +5,7 @@ var test_obj = {'_sync_type': 'TableInherits',
 	    info: "33",
 	    '_sync_owner': process.argv[3]
 	   };
-sm.addEventListener('open', event => {
+sm.onopen( event => {
 var res = sm.synchronize(test_obj, Object.keys(test_obj), 'create', true);
 
 

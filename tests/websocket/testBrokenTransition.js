@@ -6,7 +6,7 @@ var test_obj = {'_sync_type': 'TableTransition',
 	    info: "33",
 	    '_sync_owner': process.argv[3]
 	   };
-sm.addEventListener('open', event => {
+sm.onopen( event => {
     var res = sm.synchronize(test_obj, Object.keys(test_obj), 'create', true);
     res.then(on_create_response, m => process.exit(1));
 });
@@ -26,12 +26,14 @@ function on_create_response(m) {
     var res = sm.perform_transition(m2, Object.keys(m2));
     m.info2 = 3;
     m2 = prep_transition(m);
-    sm.perform_transition(m2, Object.keys(m2));
-    res.then( m => process.exit(2),
-	      m => {
-		  if (m._sync_type != 'BrokenTransition') {
-		      process.exit(3);
-		  }
-		  process.exit(0);
-	      });
-}
+    setTimeout(() => {
+	sm.perform_transition(m2, Object.keys(m2));
+	res.then( m => process.exit(2),
+		  m => {
+		      if (m._sync_type != 'BrokenTransition') {
+			  process.exit(3);
+		      }
+		      process.exit(0);
+		  });
+    }, 250);
+    }
