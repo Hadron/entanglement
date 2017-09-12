@@ -70,8 +70,12 @@ class  SyncManager {
 	    this._open = false;
 	    if (this._onclose) this._onclose(this);
 	}
-	delete this.socket;
-	setTimeout(this._connect, this._backoff);
+	try {
+	    this.socket.close();
+	    delete this.socket;
+	} catch(e) {}
+	
+	setTimeout(this._connect.bind(this), this._backoff);
 	this._backoff = this._backoff*2;
 	if (this._backoff > 32768)
 	    this._backoff = 32768;
