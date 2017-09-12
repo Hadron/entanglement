@@ -213,7 +213,6 @@ class SyncManager:
         if dest.dest_hash in self._connections:
             logger.warning("Replacing existing connection to {}".format(dest))
             self._connections[dest.dest_hash].close()
-            del self._connections[dest.dest_hash]
         if dest.dest_hash in self._connecting:
             logger.info("Replacing existing connection in progress to {}".format(dest))
             old = self._connecting[dest.dest_hash]
@@ -230,12 +229,12 @@ class SyncManager:
                 del self._connecting[dest.dest_hash]
 
     def _connection_lost(self, protocol, exc):
-        if exc is None:
-            exc = EOFError()
         if self._connections.get(protocol.dest.dest_hash,None)  == protocol:
             del self._connections[protocol.dest.dest_hash]
-            logger.exception("Connection to {} lost:".format(protocol.dest),
-                             exc_info = exc)
+            msg = "Connection to {} lost:".format(protocol.dest)
+            if exc is None:
+                logger.info(msg)
+            else: logger.exception(msg, exc_info = exc)
             if protocol.dest.host: 
                 self._connecting[protocol.dest.dest_hash] = self.loop.create_task(self._create_connection(protocol.dest))
         protocol.dest = None
