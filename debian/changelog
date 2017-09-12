@@ -1,3 +1,12 @@
+hadron-entanglement (0.9) UNRELEASED; urgency=medium
+
+  * Support for websockets
+  * hadron.entanglement becomes entanglement
+  * Destinations are generalized; cert_hash becomes dest_hash 
+    
+
+ -- Sam Hartman <hartmans@debian.org>  Tue, 12 Sep 2017 09:58:30 -0400
+
 hadron-entanglement (0.8.1) unstable; urgency=medium
 
   * Rebuild with fix for parallel tests
