@@ -1,4 +1,8 @@
 "use strict";
+/*
+*  Copyright (C) 2017 by Hadron Industries
+* All rights Reserved; distributed under license
+*/
 
 if (!('WebSocket' in this)) {
     var WebSocket =require('websocket').w3cwebsocket;
