@@ -22,6 +22,7 @@ class  SyncManager {
     }
 
     _connect() {
+	console.log(`Entanglement connecting to ${this.url}`);
 		this.socket = new WebSocket(this.url);
 	this.socket.addEventListener('open', event => {
 	    if (this._onopen) this._onopen(this);
@@ -66,15 +67,15 @@ class  SyncManager {
     }
 
     _disconnect() {
+	if (this.socket === undefined) return;
 	if (this._open) {
 	    this._open = false;
 	    if (this._onclose) this._onclose(this);
 	}
 	try {
 	    this.socket.close();
-	    delete this.socket;
 	} catch(e) {}
-	
+	this.socket = undefined;
 	setTimeout(this._connect.bind(this), this._backoff);
 	this._backoff = this._backoff*2;
 	if (this._backoff > 32768)
