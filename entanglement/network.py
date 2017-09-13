@@ -279,8 +279,7 @@ class SyncManager:
         info['operation'] = registry.get_operation(msg['_sync_operation'])
         info['registry'] = registry
         info['attributes'] = frozenset(filter(lambda a: not a.startswith('_'), msg.keys()))
-        if self.should_listen(msg, cls, registry,
-                              sender = info.get('sender', None)) is not True:
+        if self.should_listen(msg, cls, **info) is not True:
             # Failure should raise because ignoring an exception takes
             # active work, leading to a small probability of errors.
             # However, active authorization should be an explicit true
@@ -332,13 +331,15 @@ exc_info = e)
             return False
         return True
     
-    def should_listen(self, msg, cls, registry, sender):
+    def should_listen(self, msg, cls, **info):
+        sender = info['sender']
+        registry = info['registry']
         msg['_sync_authorized'] = self #To confirm we've been called.
-        if sender.should_listen(msg, cls, registry = registry, manager = self) is not True:
+        if sender.should_listen(msg, cls, **info) is not True:
                         raise SyntaxError('should_listen must return True or raise')
-        if registry.should_listen(msg, cls, sender = sender)is not True:
+        if registry.should_listen(msg, cls, **info)is not True:
             raise SyntaxError('should_listen must return True or raise')
-        if cls.sync_should_listen(msg, registry = registry, sender = sender) is not True:
+        if cls.sync_should_listen(msg, **info) is not True:
             raise SyntaxError('sync_should_listen must return True or raise')
         return True
 
