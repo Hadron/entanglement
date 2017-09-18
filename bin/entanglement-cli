@@ -64,7 +64,7 @@ parser.add_argument('--cert',
 
 parser.add_argument('--key',
                     help = "Key file for certificate if not included in the certificate file")
-parser.add_argument('--cert-hash --dest-hash --dest_hash --cert_hash',
+parser.add_argument('--cert-hash','--dest-hash','--dest_hash','--cert_hash',
                     type = CertHash,
                     help = "URL-safe Base 64 encoding of sha-256 hash of the DER encoded certificate")
 parser.add_argument('--host',
@@ -125,7 +125,7 @@ for b in (args.bases or []):
 
 session = sync_session_maker(bind = engine)()
 if args.mode == "add_destination":
-    dest = SqlSyncDestination(cert_hash = args.cert_hash,
+    dest = SqlSyncDestination(dest_hash = args.cert_hash,
                               name = args.host or "incoming",
                               host = args.host)
     session.add(dest)
