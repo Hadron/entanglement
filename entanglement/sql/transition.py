@@ -69,7 +69,7 @@ class SqlTransitionTrackerMixin(TransitionTrackerMixin, SqlSynchronizable):
     def _invalidate_composits(self):
         "Invalidate any CompositProperties.  This breaks the abstractions somewhat because outside of a session there's no good way to do this."
         ins = inspect(self)
-        for a in ins.attrs.values():
+        for a in ins.mapper.attrs.values():
             if isinstance(a, CompositeProperty):
                 try: del self.__dict__[a.key]
                 except KeyError: pass
