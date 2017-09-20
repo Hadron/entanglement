@@ -203,10 +203,16 @@ class SyncManager:
         old = None
         task = None
         if protocol.dest_hash not in self._destinations:
+            dest = await self.unknown_destination(protocol)
+            if dest and dest not in self.destinations:
+                self.add_destination(dest)
+        else:
+            dest = self._destinations[protocol.dest_hash]
+        if dest is None:
             logger.error("Unexpected connection from {}".format(protocol.dest_hash))
             protocol.close()
-        protocol.dest = self._destinations[protocol.dest_hash]
-        dest = protocol.dest
+            return
+        protocol.dest = dest
         protocol._enable_reading()
         if self.cert_hash == dest.dest_hash:
             logger.debug("Self connection to {}".format(dest.dest_hash))
@@ -241,6 +247,10 @@ class SyncManager:
                 self._connecting[protocol.dest.dest_hash] = self.loop.create_task(self._create_connection(protocol.dest))
         protocol.dest = None
 
+    async def unknown_destination(self, protocol):
+        "Called when protocol.dest_hash is not in the local set of destinations.  Can return a new destination which will be added to the set of destinations or None, in which case an error is raised and the protocol disconnected.  This method is an extension point; by default it returns None"
+        return None
+    
 
 
     def add_destination(self, dest):

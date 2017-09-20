@@ -353,6 +353,7 @@ class SyncProtocol(SyncProtocolBase, asyncio.Protocol):
         super().__init__(manager, incoming, dest, **kwargs)
         self.transport = None
         self.reader = asyncio.StreamReader(loop = self.loop)
+        self.reader_task = None
 
     def _send_json(self, sync_rep, flags):
         js = bytes(json.dumps(sync_rep), 'utf-8')

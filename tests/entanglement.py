@@ -11,7 +11,7 @@ from unittest import mock
 from asyncio.test_utils import disable_logger, TestLoop, run_once
 
 
-from entanglement import bandwidth, protocol
+from entanglement import bandwidth, protocol, SyncManager
 from entanglement.interface import Synchronizable, sync_property, SyncRegistry
 from entanglement.network import  SyncServer, SyncDestination
 from entanglement.util import certhash_from_file, DestHash, SqlDestHash, entanglement_logs_disabled
@@ -378,6 +378,27 @@ class TestSynchronization(unittest.TestCase):
         self.assertTrue(fut.done())
         self.assertIsNone(fut.result())
 
+    def testtestUnknownDestination(self):
+        "Confirm unknown destination logic"
+        async def unknown_destination(protocol):
+            return SyncDestination(other_manager.cert_hash,
+                                   "our manager")
+        
+        other_manager = SyncManager(cert = "host2.pem",
+                                    key = "host2.key",
+                                    cafile = "ca.pem",
+                                    port = test_port,
+                                    registries = [reg],
+                                    loop = self.manager.loop)
+        other_manager.add_destination(SyncDestination(dest_hash = self.cert_hash,
+                                                      name = "localhost",
+                                                      host = "localhost",
+                                                      server_hostname = "host1"))
+        self.manager.unknown_destination = unknown_destination
+        settle_loop(self.loop)
+        self.assertIn(other_manager.cert_hash, self.manager._connections.keys())
+        
+        
        
 
 
