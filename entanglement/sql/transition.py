@@ -12,7 +12,7 @@ from ..transition import TransitionTrackerMixin
 from . import SqlSynchronizable
 from sqlalchemy import inspect
 import sqlalchemy.exc
-
+from sqlalchemy.orm import CompositeProperty
 class SqlTransitionTrackerMixin(TransitionTrackerMixin, SqlSynchronizable):
 
     '''
@@ -51,6 +51,8 @@ class SqlTransitionTrackerMixin(TransitionTrackerMixin, SqlSynchronizable):
 
     def store_for_transition(self, *args, **kwargs):
         self._remove_from_session()
+        #Invalidate any composits so they can be recreated
+        self._invalidate_composits()
         return super().store_for_transition(*args, **kwargs)
 
     def perform_transition(self, *args):
@@ -63,3 +65,12 @@ class SqlTransitionTrackerMixin(TransitionTrackerMixin, SqlSynchronizable):
     def transition_modified_attrs(self):
         inspect_inst = inspect(self)
         return frozenset(self.__class__._sync_properties.keys()) - frozenset(inspect_inst.unmodified)
+
+    def _invalidate_composits(self):
+        "Invalidate any CompositProperties.  This breaks the abstractions somewhat because outside of a session there's no good way to do this."
+        ins = inspect(self)
+        for a in ins.attrs.values():
+            if isinstance(a, CompositeProperty):
+                try: del self.__dict__[a.key]
+                except KeyError: pass
+                
