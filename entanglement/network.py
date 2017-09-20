@@ -203,7 +203,11 @@ class SyncManager:
         old = None
         task = None
         if protocol.dest_hash not in self._destinations:
-            dest = await self.unknown_destination(protocol)
+            try: dest = await self.unknown_destination(protocol)
+            except Exception as e:
+                dest = None
+                logger.exception("Error handling unknown_destination:", exc_info = e)
+                
             if dest and dest not in self.destinations:
                 self.add_destination(dest)
         else:
