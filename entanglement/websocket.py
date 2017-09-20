@@ -81,6 +81,8 @@ class SyncWsProtocol(SyncProtocolBase):
             manager.add_destination(dest)
         self.ws_handler = None
 
+    def _enable_reading(self): pass
+    
     def web_socket_connected(self, ws_handler):
         self.ws_handler = ws_handler
         if getattr(self, '_manager', None):

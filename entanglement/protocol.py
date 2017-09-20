@@ -398,11 +398,14 @@ class SyncProtocol(SyncProtocolBase, asyncio.Protocol):
         self.transport = transport
         self.bwprotocol = bwprotocol
         self.reader.set_transport(transport)
-        self.reader_task = self.loop.create_task(self._read_task())
-        self.reader_task._log_destroy_pending = False
         self._manager._transports.append(weakref.ref(self.transport))
         if self._incoming:
             self.loop.create_task(self._manager._incoming_connection(self))
+
+    def _enable_reading(self):
+        "Callback from manager to enable reading after any authentication"
+        self.reader_task = self.loop.create_task(self._read_task())
+        self.reader_task._log_destroy_pending = False
 
     @property
     def dest_hash(self):

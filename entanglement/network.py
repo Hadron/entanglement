@@ -168,6 +168,7 @@ class SyncManager:
                     protocol = bwprotocol.protocol
                     if protocol.dest_hash != dest.dest_hash:
                         raise WrongSyncDestination(dest = dest, got_hash = protocol.dest_hash)
+                    protocol._enable_reading()
 
                     await dest.connected(self, protocol, bwprotocol = bwprotocol)
                     self._connections[dest.dest_hash] = protocol
@@ -206,6 +207,7 @@ class SyncManager:
             protocol.close()
         protocol.dest = self._destinations[protocol.dest_hash]
         dest = protocol.dest
+        protocol._enable_reading()
         if self.cert_hash == dest.dest_hash:
             logger.debug("Self connection to {}".format(dest.dest_hash))
             self.incoming_self_protocol = weakref.ref(protocol)
