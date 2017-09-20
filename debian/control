@@ -20,4 +20,13 @@ Section: proprietary/net
 Architecture: all
 Multi-Arch: foreign
 Depends: python3-entanglement(= ${binary:Version}), ${python3:Depends}
+Conflicts: python3-hadron-entanglement
 Description: CLI scripts for entanglement
+
+Package: libjs-entanglement
+Section: proprietary/libs
+Architecture: all
+Multi-Arch: foreign
+Suggests: python3-entanglement
+Description: Entanglement Javascript Libraries
+
