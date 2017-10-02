@@ -1,3 +1,9 @@
+hadron-entanglement (0.9+aces-unstable+1) unstable-aces-unstable; urgency=medium
+
+  * Force explicit upload to unstable to avoid sid breakage of the moment
+
+ -- Sam Hartman <hartmans@debian.org>  Mon, 02 Oct 2017 16:20:01 -0400
+
 hadron-entanglement (0.9) unstable; urgency=medium
 
   * Support for websockets
