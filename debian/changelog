@@ -1,4 +1,4 @@
-hadron-entanglement (0.9+aces+unstable+1) unstable-aces-unstable; urgency=medium
+hadron-entanglement (0.9+aces+unstable+2) unstable-aces-proposed; urgency=medium
 
   * Force explicit upload to unstable to avoid sid breakage of the moment
 
