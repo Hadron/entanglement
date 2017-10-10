@@ -56,10 +56,9 @@ class SyncManager:
         for r in self.registries: r.associate_with_manager(self)
 
     def _new_ssl(self, cert, key, capath, cafile):
-        sslctx = ssl.create_default_context()
+        sslctx = ssl.create_default_context(cafile = cafile, capath = capath)
         sslctx.load_cert_chain(cert, key)
         self.cert_hash = certhash_from_file(cert)
-        sslctx.load_verify_locations(cafile=cafile, capath = capath)
         return sslctx
 
     def _protocol_factory_client(self, dest):
