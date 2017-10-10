@@ -134,11 +134,18 @@ class DirtyMember:
 
     def update(self, obj, operation, attrs, response_for):
         assert self.obj.sync_compatible(obj)
-        if (attrs or self.attrs) and (self.attrs - set(attrs)): #Removing attributes
-            raise NotImplementedError("Would need merge to handle removing outgoing attributes")
+        if attrs:
+            attrs = frozenset(attrs)
+            if not self.attrs:
+                old_attrs = set(self.obj.to_sync().keys())
+            else: old_attrs = self.attrs
+            for a in old_attrs - attrs:
+                try: setattr(obj, a, getattr(self.obj, a))
+                except AttributeError: pass
+            attrs = attrs | old_attrs
         self.obj = obj
         self.operation = operation
-        self.attrs = frozenset(attrs) if attrs else None
+        self.attrs = attrs if attrs else None
         if self.response_for:
             self.response_for.merge(response_for)
         else: self.response_for = response_for

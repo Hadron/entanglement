@@ -304,7 +304,7 @@ class TestSql(SqlFixture, unittest.TestCase):
         res =  self.session.query(TableInherits).all()
         self.assertEqual(res, [])
 
-    @unittest.expectedFailure
+
     def testRemoteCombinedUpdates(self):
         "Confirm updates with non-overlapping attributes coalesce"
         t = TableInherits(info = "blah")
@@ -322,7 +322,8 @@ class TestSql(SqlFixture, unittest.TestCase):
             t2 = server_session.query(TableInherits).get(t2.id)
             t2.info2 = "quux"
             server_session.sync_commit()
-            self.session.expire(t)
+        self.session.expire(t)
+        t2 = server_session.query(TableInherits).get(t2.id)
         self.assertEqual(t.id, t2.id)
         self.assertEqual(t.info2, t2.info2)
         self.assertEqual(t.info, t2.info)
@@ -361,7 +362,19 @@ class TestSql(SqlFixture, unittest.TestCase):
         settle_loop(self.loop)
         t2 = self.server.session.query(TableInherits).get(t.id)
         self.assertEqual(t.sync_owner_id, t2.sync_owner_id)
-        
+
+    def alternateDestinations(self, to_server, to_manager):
+        "This is the guts of a method to test interactions with destination classes other than SqlSyncDestination.  to_server and to_client are destinations; try using them."
+        with entanglement_logs_disabled():
+            for d in self.server.destinations: self.server.remove_destination(d)
+            for d in self.manager.destinations: self.manager.remove_destination(d)
+            settle_loop(self.loop)
+        self.server.add_destination(to_server(self.manager.cert_hash, "to server"))
+        self.manager.add_destination(to_manager(self.server.cert_hash, "to manager"))
+        for o in self.session.query(SyncOwner).filter(SyncOwner.destination_id == None):
+            self.manager.synchronize(o)
+        for c in self.manager.connections:
+            c.sync_drain()
         
             
         
