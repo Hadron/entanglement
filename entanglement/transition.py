@@ -97,15 +97,16 @@ class TransitionTrackerMixin (interface.Synchronizable):
     
     @classmethod
     def sync_construct(cls, msg, **info):
-        objs = cls.transition_tracked_objects
-        sender = info['sender']
-        response_for = info.get('response_for', None)
-        operation = info['operation']
-        manager = info['manager']
         try:
+            objs = cls.transition_tracked_objects
+            sender = info['sender']
+            response_for = info.get('response_for', None)
+            operation = info['operation']
+            manager = info['manager']
             primary_keys = cls.sync_primary_keys
             pkey_values = tuple(map( lambda x: cls._sync_properties[x].decoderfn(msg, x, msg[x]), primary_keys))
         except KeyError:
+            #Either primary key not found, or one of the info members is not found such as when we're called synthesizing from a SyncDeleted
             return super().sync_construct(msg, **info)
         key = pkey_values
         if key not in objs:
