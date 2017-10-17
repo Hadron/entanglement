@@ -627,9 +627,10 @@ class SyncOwner(_internal_base, SqlSynchronizable, metaclass = SqlSyncMeta):
             session = manager.session
             registries = manager.registries
             assert session and registries
+            assert getattr(session, 'manager', None) is None
             logger.info("Deleting all objects from {}".format(self))
             session.rollback()
-        for c in _internal.classes_in_registries(registries):
+        for c, r  in _internal.classes_in_registries(registries):
             if c is SyncOwner or issubclass(c, SyncOwner): continue
             for o in session.query(c).filter(c.sync_owner_id == self.id):
                 o.sync_owner_id = None

@@ -9,7 +9,7 @@
 
 import asyncio, datetime, iso8601, uuid
 
-from ..interface import Synchronizable, SyncRegistry, SyncError, sync_property, SyncBadEncodingError
+from ..interface import Synchronizable, SyncRegistry, SyncError, sync_property, SyncBadEncodingError, SyncUnauthorized
 from . import encoders
 from .. import interface, operations
 from ..network import logger
@@ -25,6 +25,7 @@ class _SqlMetaRegistry(SyncRegistry):
         super().__init__()
         self.register_operation('sync', operations.sync_operation)
         self.register_operation('forward', operations.forward_operation)
+        self.register_operation('delete', operations.delete_operation)
 
     def sync_context(self, manager, **info):
         class context:
@@ -61,6 +62,16 @@ class _SqlMetaRegistry(SyncRegistry):
         finally:
             manager.session.rollback()
 
+    def incoming_delete(self, obj, sender, context, manager, **info):
+        assert isinstance(obj,base.SyncOwner)
+        assert sender.dest_hash == obj.destination.dest_hash
+        session = context.session
+        obj.clear_all_objects(session = session, manager = manager)
+        session.delete(obj)
+        session.commit()
+        
+        
+        
     def handle_sync_owner_sync(self, obj, manager, sender, context):
         session = context.session
         assert obj in session
@@ -109,7 +120,7 @@ class _SqlMetaRegistry(SyncRegistry):
                                         attributes_to_sync = (set(d.sync_primary_keys) | {'sync_serial'}))
                     max_serial = max(max_serial, d.sync_serial)
 
-            for c in classes_in_registries(manager.registries):
+            for c, r in classes_in_registries(manager.registries):
                 try:
                     if c is base.SyncOwner or issubclass(c, base.SyncOwner): continue
                     if self.yield_between_classes: yield
@@ -184,10 +195,18 @@ class _SqlMetaRegistry(SyncRegistry):
         old_owners = session.query(base.SyncOwner).filter(base.SyncOwner.destination == sender, base.SyncOwner.id.notin_(obj.owners))
         for o in old_owners:
             o.clear_all_objects(manager = manager, session = session)
+            manager.synchronize(o, operation = 'delete', exclude = [sender])
             session.delete(o)
             session.commit()
             yield
 
+    def should_listen(self, msg, cls, operation, **info):
+        if operation == 'delete':
+            if not issubclass(cls, base.SyncOwner):
+                raise SyncUnauthorized('Only SyncOwner supports delete')
+            # SyncOwner.sync_construct confirms it is from the right sender already
+        return super().should_listen(msg, cls, operation = operation, **info)
+    
 
 
 
@@ -320,7 +339,7 @@ def process_column(name, col, wraps = True):
     return sync_property(**d)
 
 def classes_in_registries(registries):
-    "Return the set of SqlSynchronizables that cover a set of registries.  In particular, for joined (and single-table) inheritance, use the most base mapped class with with_polymorphic(*) rather than visiting objects multiple times."
+    "yield  tuples of ( of SqlSynchronizabl, registry) that cover the classes in s that cover a set of registries.  In particular, for joined (and single-table) inheritance, use the most base mapped class with with_polymorphic(*) rather than visiting objects multiple times."
     from .base import SqlSynchronizable
     def chase_down_inheritance(c):
         while True:
@@ -333,8 +352,11 @@ def classes_in_registries(registries):
     for reg in registries:
         for c in reg.registry.values(): #enumerate all classes
             if issubclass(c, SqlSynchronizable):
-                classes.add(chase_down_inheritance(c))
-    return classes
+                c = chase_down_inheritance(c)
+                if c not in classes:
+                    yield c, reg
+                    classes.add(c)
+
 
 
 async def handle_connected(destination, manager, session):

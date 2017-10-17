@@ -528,6 +528,71 @@ class TestGateway(SqlFixture, unittest.TestCase):
         with self.assertRaises(SyncError):
             obj.sync_future.result()
 
+    def testOwnerRemoval(self):
+        "Test that MyOwners removes owners on reconnect"
+        o = SyncOwner()
+        sess = self.client_session
+        sess.add(o)
+        t = TableInherits(info = "mumble")
+        sess.add(t)
+        sess.commit()
+        settle_loop(self.loop, 0.9)
+        for c in self.client.connections:
+            c.dest.connect_at = 0
+            assert c.sync_drain().done() is True
+            c.close()
+        sess.manager = None
+        for old_owner in sess.query(SyncOwner).filter(
+                SyncOwner.destination == None, SyncOwner.id != o.id):
+            sess.delete(old_owner)
+        sess.commit()
+        sess.manager = self.client
+        self.loop.run_until_complete(asyncio.wait(self.client._connecting.values(), timeout = 0.5))
+        self.assertIn(self.server.cert_hash, self.client._connections.keys())
+        settle_loop(self.loop)
+        m_sess = manager_registry.sessionmaker()
+        m_sess.manager = self.manager
+        m_objs = m_sess.query(TableInherits).filter_by(id = t.id).all()
+        # it's OK for m_objs to be empty meaning that t was deleted on
+        # the manager, or for it to contain a version of t with the
+        # new owner meaning that initial sync picked it up.
+        assert len(m_objs) <= 1
+        if m_objs:
+            self.assertEqual(m_objs[0].sync_owner.id, o.id)
+
+    def testOwnerDelete(self):
+        "Test that deleting an owner deletes remote objects"
+        o = SyncOwner()
+        sess = self.client_session
+        sess.add(o)
+        sess.commit()
+        settle_loop(self.loop)
+        t = TableInherits(info = "mumble", sync_owner = o)
+        sess.add(t)
+        sess.commit()
+        settle_loop(self.loop, 0.9)
+        m_sess = manager_registry.sessionmaker()
+        m_t  = m_sess.query(TableInherits).filter_by(id = t.id).one()
+        self.assertEqual(m_t.sync_owner.id, o.id)
+        sess.delete(o)
+        sess.commit()
+        sess.refresh(t)
+        settle_loop(self.loop)
+        m_objs  = m_sess.query(TableInherits).filter_by(id = t.id).all()
+        self.assertEqual(len(m_objs), 0, "Object was not deleted")
+        m_objs = m_sess.query(SyncOwner).filter_by(id = o.id).all()
+        self.assertEqual(len(m_objs), 0, "Owner was not deleted")
+        
+
+    def testNoDeleteNotMyOwner(self):
+        "Confirm we cannot delete someone else's owner"
+        sess = self.client_session
+        o = sess.query(SyncOwner).filter(SyncOwner.destination != None).all()[0]
+        with entanglement_logs_disabled():
+            sess.delete(o)
+            sess.sync_commit()
+            settle_loop(self.loop)
+            self.assertIsInstance(o.sync_future.exception(), SyncError)
         
 
 
