@@ -248,7 +248,8 @@ class Synchronizable( metaclass = SynchronizableMeta):
         '''A convenience method for constructing an object from a json dictionary.  NOTE! Do not override this method: the SyncManager does not call it.  Instead override sync_construct and sync_receive_constructed.'''
         obj = cls.sync_construct(msg, **kwargs)
         assert obj.sync_should_listen_constructed(msg, **kwargs) is True
-        return obj.sync_receive_constructed(msg, **kwargs)
+        obj.sync_receive_constructed(msg, **kwargs)
+        return obj
 
     def sync_receive_constructed(self, msg, **kwargs):
         '''Given a constructed object, fill in the remaining fields from a javascript message'''
