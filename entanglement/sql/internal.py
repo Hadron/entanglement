@@ -1,4 +1,3 @@
-#!/usr/bin/python3
 # Copyright (C) 2017, Hadron Industries, Inc.
 # Entanglement is free software; you can redistribute it and/or modify
 # it under the terms of the GNU Lesser General Public License version 3
@@ -7,6 +6,7 @@
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the file
 # LICENSE for details.
 
+4#!/usr/bin/python3
 import asyncio, datetime, iso8601, uuid
 
 from ..interface import Synchronizable, SyncRegistry, SyncError, sync_property, SyncBadEncodingError, SyncUnauthorized
@@ -146,7 +146,7 @@ class _SqlMetaRegistry(SyncRegistry):
             you_have.sync_owner = owner
             manager.synchronize(you_have,
                                 destinations = [sender])
-            sender.outgoing_serial = max_serial
+            owner.outgoing_serial = max_serial
         finally: sender.i_have_task = None
 
     def handle_you_have(self, obj, sender, manager):
