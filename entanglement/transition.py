@@ -108,6 +108,8 @@ class TransitionTrackerMixin (interface.Synchronizable):
         except KeyError:
             #Either primary key not found, or one of the info members is not found such as when we're called synthesizing from a SyncDeleted
             return super().sync_construct(msg, **info)
+        if operation == 'transition' and msg.get('transition_id', None) is None:
+            raise SyncBadEncodingError("Transitions must have a transition_id; incoming message is {}".format(m))
         key = pkey_values
         if key not in objs:
             return super().sync_construct(msg, **info)
