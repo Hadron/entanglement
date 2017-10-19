@@ -328,7 +328,8 @@ class SqlSyncRegistry(interface.SyncRegistry):
         ins = inspect(obj)
         if not ins.persistent: return
         assert obj in session
-        session.delete(obj)
+        if obj.sync_is_local or obj.sync_owner.destination == sender:
+            session.delete(obj)
         if obj.sync_owner and obj.sync_owner.destination == sender:
             #It's from the sender.
             sd = SyncDeleted(sync_serial = obj.sync_serial,

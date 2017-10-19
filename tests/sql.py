@@ -303,6 +303,8 @@ class TestSql(SqlFixture, unittest.TestCase):
             server_session.commit()
         res =  self.session.query(TableInherits).all()
         self.assertEqual(res, [])
+        res = self.session.query(sql.SyncDeleted).all()
+        self.assertEqual(len(res), 1, "No SyncDeleted record created at object owner")
 
 
     def testRemoteCombinedUpdates(self):
