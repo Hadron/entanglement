@@ -1,3 +1,13 @@
+hadron-entanglement (0.9.1) unstable-aces-proposed; urgency=medium
+
+  * New version
+  * Support limited merging of DirtyElements when attribute lists change
+    in a coalesce
+  * Don't delete on forward of delete, only on the flood back
+  * Deleting a SyncOwner means delete all objects belonging to that owner
+
+ -- Sam Hartman <hartmans@debian.org>  Thu, 19 Oct 2017 11:55:46 -0400
+
 hadron-entanglement (0.9+aces+unstable+2) unstable-aces-proposed; urgency=medium
 
   * Force explicit upload to unstable to avoid sid breakage of the moment
