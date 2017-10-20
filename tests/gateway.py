@@ -593,7 +593,42 @@ class TestGateway(SqlFixture, unittest.TestCase):
             sess.sync_commit()
             settle_loop(self.loop)
             self.assertIsInstance(o.sync_future.exception(), SyncError)
-        
+
+
+    def testSerialIsolation(self):
+        "Test that remote forwards and deletes do not change the local idea of outgoing serial number"
+        def wrap_trigger_you_haves(manager, serial):
+            nonlocal callback_exception
+            try:
+                if serial > 0:
+                    self.assertEqual(manager, client['manager'], "Local serial changed without local operation")
+            except Exception as e:
+                callback_exception = e
+                
+        callback_exception = None
+        l = self.setup_one_obj_layout()
+        l = {x['name']: x for x in l}
+        client = l['client']
+        del l['client']
+        client_session = client['session']
+        with mock.patch('entanglement.sql.internal.trigger_you_haves', new = wrap_trigger_you_haves):
+            for i in range(5):
+                t = TableInherits(info = "object {}".format(i))
+                client_session.add(t)
+                manager_session = l['manager']['session']
+                client_session.commit()
+                settle_loop(self.loop)
+                t2 = manager_session.query(TableInherits).get(t.id)
+                t2.info2 = "baz"
+                manager_session.sync_commit()
+                self.loop.run_until_complete(asyncio.wait([t2.sync_future], timeout=0.5))
+                if callback_exception is not None:
+                    raise callback_exception
+                t2 = manager_session.query(TableInherits).get(t.id)
+                manager_session.delete(t2)
+                manager_session.sync_commit()
+                self.loop.run_until_complete(asyncio.wait([t2.sync_future], timeout = 0.5))
+
 
 
 if __name__ == '__main__':

@@ -230,7 +230,7 @@ class SqlSyncSession(sqlalchemy.orm.Session):
         #This is called in the event loop and thus in the thread of the manager
         if dirty_objects or deleted_objects:
             del_objs = [x[0] for x in deleted_objects]
-            serial = max(map( lambda x: x.sync_serial, dirty_objects + del_objs))
+            serial = max(map( lambda x: x.sync_serial if x.sync_is_local else 0, dirty_objects + del_objs))
             for o in dirty_objects:
                 self.manager.synchronize(o)
             for o, dest in deleted_objects:

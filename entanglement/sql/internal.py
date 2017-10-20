@@ -238,7 +238,6 @@ class IHave(Synchronizable):
     generated_locally = True
     def sync_should_send(self, destination, operation, **info):
         # An IHave is forwarded towards the owner.  We don't want it flooded past the first hop.
-        # that because this is only for the owner.  We also want to stop flooding at the first hop.
         return self.generated_locally
 
 
@@ -376,6 +375,7 @@ async def handle_connected(destination, manager, session):
     manager.synchronize(my_owner, destinations = [destination])
 
 def trigger_you_haves(manager, serial):
+    if serial == 0: return
     for c in manager.connections:
         for o in manager.session.query(base.SyncOwner).filter((base.SyncOwner.destination == None)):
             o.outgoing_serial = max(o.outgoing_serial, serial)
