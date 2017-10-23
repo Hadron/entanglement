@@ -51,6 +51,8 @@ class TableInherits(TableBase):
 
 class AlternateSyncDestination(SqlSyncDestination):
 
+    __mapper_args__ = {'polymorphic_identity': 'AltDestination'
+                       }
 
     def new_method(self): pass
 
@@ -171,6 +173,7 @@ class TestSql(SqlFixture, unittest.TestCase):
 
         assert isinstance(base.registry, NewRegistry)
 
+    @unittest.expectedFailure
     def testAlternativeSyncDestination(self):
         "Confirm that sync_manager_destinations supports the cls parameter"
         self.server.remove_destination(self.d2)

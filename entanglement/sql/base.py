@@ -386,6 +386,13 @@ class  SqlSyncDestination(_internal_base, network.SyncDestination):
 
     bw_per_sec = Column(Integer, default = 10000000,
                         nullable = False)
+    type = Column(String, nullable = False)
+
+    __mapper_args__ = {
+        'polymorphic_on': 'type',
+        'polymorphic_identity': 'SqlSyncDestination',
+        'with_polymorphic': '*',
+    }
 
     def __hash__(self):
         return hash(self.dest_hash)
