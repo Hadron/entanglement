@@ -1,3 +1,9 @@
+hadron-entanglement (0.9.3) unstable-aces-proposed; urgency=medium
+
+  * Include support for empty MyOwners
+
+ -- Sam Hartman <hartmans@debian.org>  Thu, 26 Oct 2017 15:28:56 -0400
+
 hadron-entanglement (0.9.2) unstable-aces-proposed; urgency=medium
 
   * New version that makes SqlSyncDestination polymorphic
