@@ -368,12 +368,15 @@ async def handle_connected(destination, manager, session):
         manager.synchronize(o, destinations = [destination])
     my_owner = MyOwners()
     my_owner.owners = [o.id for o in my_owners]
-    destination.first_local_owner = my_owner.owners[0]
-    # Drain the SyncOwners before sending MyOwners, because if the
-    # owner is not received by MyOwner reception it will be ignored
-    # for IHave handling.
-    await destination.protocol.sync_drain()
-    manager.synchronize(my_owner, destinations = [destination])
+    if len(my_owner.owners) == 0:
+        destination.first_local_owner = None
+    else:
+        destination.first_local_owner = my_owner.owners[0]
+        # Drain the SyncOwners before sending MyOwners, because if the
+        # owner is not received by MyOwner reception it will be ignored
+        # for IHave handling.
+        await destination.protocol.sync_drain()
+        manager.synchronize(my_owner, destinations = [destination])
 
 def trigger_you_haves(manager, serial):
     if serial == 0: return
