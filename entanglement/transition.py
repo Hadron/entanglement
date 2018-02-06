@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-# Copyright (C) 2017, Hadron Industries, Inc.
+# Copyright (C) 2017, 2018, Hadron Industries, Inc.
 # Entanglement is free software; you can redistribute it and/or modify
 # it under the terms of the GNU Lesser General Public License version 3
 # as published by the Free Software Foundation. It is distributed
@@ -109,7 +109,7 @@ class TransitionTrackerMixin (interface.Synchronizable):
             #Either primary key not found, or one of the info members is not found such as when we're called synthesizing from a SyncDeleted
             return super().sync_construct(msg, **info)
         if operation == 'transition' and msg.get('transition_id', None) is None:
-            raise SyncBadEncodingError("Transitions must have a transition_id; incoming message is {}".format(m))
+            raise interface.SyncBadEncodingError("Transitions must have a transition_id; incoming message is {}".format(msg))
         key = pkey_values
         if key not in objs:
             return super().sync_construct(msg, **info)
