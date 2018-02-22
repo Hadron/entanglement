@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-# Copyright (C) 2017, Hadron Industries, Inc.
+# Copyright (C) 2017, 2018, Hadron Industries, Inc.
 # Entanglement is free software; you can redistribute it and/or modify
 # it under the terms of the GNU Lesser General Public License version 3
 # as published by the Free Software Foundation. It is distributed
@@ -243,6 +243,9 @@ class SyncManager:
         if self._connections.get(protocol.dest.dest_hash,None)  == protocol:
             del self._connections[protocol.dest.dest_hash]
             msg = "Connection to {} lost:".format(protocol.dest)
+
+            protocol.dest.connection_lost(self)
+
             if exc is None:
                 logger.info(msg)
             else: logger.exception(msg, exc_info = exc)
@@ -455,6 +458,7 @@ class SyncDestination:
         self.protocol = None
         self.connect_at = 0
         self._on_connected_cbs = []
+        self._on_connection_lost_cbs = []
 
     def __repr__(self):
         return "<SyncDestination {{name: '{name}', hash: {hash}}}".format(
@@ -464,6 +468,9 @@ class SyncDestination:
     def on_connect(self, callback):
         "call callback on connection"
         self._on_connected_cbs.append(callback)
+
+    def on_connection_lost(self, callback):
+        self._on_connection_lost_cbs.append(callback)
         
     def should_send(self, obj, manager , **kwargs):
         return True
@@ -492,3 +499,8 @@ class SyncDestination:
             manager.loop.call_soon(cb)
             
         return
+
+    def connection_lost(self, manager):
+        for cb in self._on_connection_lost_cbs:
+            manager.loop.call_soon(cb)
+
