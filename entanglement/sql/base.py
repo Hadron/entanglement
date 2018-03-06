@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-# Copyright (C) 2017, Hadron Industries, Inc.
+# Copyright (C) 2017, 2018, Hadron Industries, Inc.
 # Entanglement is free software; you can redistribute it and/or modify
 # it under the terms of the GNU Lesser General Public License version 3
 # as published by the Free Software Foundation. It is distributed
@@ -418,6 +418,7 @@ class  SqlSyncDestination(_internal_base, network.SyncDestination):
         self.send_you_have = set()
         self.received_i_have = set()
         self._on_connected_cbs = []
+        self._on_connection_lost_cbs = []
 
 
     async def connected(self, manager, *args, **kwargs):
