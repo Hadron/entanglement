@@ -1,3 +1,9 @@
+hadron-entanglement (0.9.5) unstable-aces-proposed; urgency=medium
+
+  * Adding _on_connection_lost_cbs to the SqlSyncDestination reconstruct method.
+
+ -- Jeff LeBlanc <jeff.leblanc@hadronindustries.com>  Tue, 06 Mar 2018 17:41:51 -0500
+
 hadron-entanglement (0.9.4) unstable-aces-proposed; urgency=medium
 
   *  Adding lost connection callback support to SyncDestination
