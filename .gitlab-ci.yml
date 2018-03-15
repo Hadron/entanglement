@@ -5,8 +5,8 @@ stages:
 
 snapshot_package:
   script:
-    - if [ x$CI_BUILD_TAG != x ]; then hadron-ci-update-changelog --tag $CI_BUILD_TAG; else hadron-ci-update-changelog; fi
-    - gbp buildpackage --git-ignore-new --git-ignore-branch --git-builder=sbuild  -n -c unstable -d sid-hadron-snapshot -A  .
+    - if [ x$CI_BUILD_TAG != x ]; then hadron-ci-update-changelog --tag $CI_BUILD_TAG; else hadron-ci-update-changelog --no-backport --snapshot-distribution=unstable-aces-snapshot; fi
+    - gbp buildpackage --git-ignore-new --git-ignore-branch --git-builder=sbuild  -n --build-dep-resolver=aptitude -c unstable -d sid-hadron-snapshot -A  .
     - dpkg-buildpackage -S -sa -uc -us -d
     - mkdir sbuild_out
     - 'find .. \( ! -path ..  -type d -prune \) -o \( -name  \**.deb -o -name \*tar\* -o -name \*diff\* -o -name \*dsc -o -name \*changes -o -name \*buildinfo \) -print0 |xargs -0 mv --target=sbuild_out'
