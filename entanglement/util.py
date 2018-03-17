@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-# Copyright (C) 2017, Hadron Industries, Inc.
+# Copyright (C) 2017, 2018, Hadron Industries, Inc.
 # Entanglement is free software; you can redistribute it and/or modify
 # it under the terms of the GNU Lesser General Public License version 3
 # as published by the Free Software Foundation. It is distributed
@@ -24,11 +24,11 @@ class DestHash(bytes):
     "represents a hash of a value that uniquely identifies a destination.  The most common DestHash is a CertHash (hash of a DER-encoded X.509 certificate)."
 
     def __new__(self,hash):
-        "Construct from a RFC 6920 URI, the base64 of a SHa256sum"
+        "Construct from a RFC 6920 URI containing a base64-encoded SHA256 checksum"
         if isinstance(hash, str):
             m = re.match( r'(?:ni://[^/]*/sha-256;)?([-a-zA-Z0-9_=]+)', hash)
-            if m:
-                return bytes.__new__(self, base64.urlsafe_b64decode(m.group(1)))
+            if not m: raise ValueError('unable to parse hash string', hash)
+            return bytes.__new__(self, base64.urlsafe_b64decode(m.group(1)))
         return bytes.__new__(self,hash)
 
     def __init__(self, *args):
