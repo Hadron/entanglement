@@ -420,6 +420,19 @@ class  SqlSyncDestination(_internal_base, network.SyncDestination):
         self._on_connected_cbs = []
         self._on_connection_lost_cbs = []
 
+    def clear_all_objects(self, manager=None, *, registries=None, session=None):
+        if manager:
+            session = manager.session
+            registries = manager.registries
+            assert session and registries
+            assert getattr(session, 'manager', None) is None
+            logger.info("Deleting all objects from {}".format(self))
+            session.rollback()
+        q = session.query(SyncOwner).filter_by(destination=self)
+        for o in q.all():
+            o.clear_all_objects(manager=manager, registries=registries, session=session)
+            session.delete(o)
+            session.flush()
 
     async def connected(self, manager, *args, **kwargs):
         self.you_have_task = None
