@@ -1,4 +1,4 @@
-# Copyright (C) 2017, Hadron Industries, Inc.
+# Copyright (C) 2017, 2018, Hadron Industries, Inc.
 # Entanglement is free software; you can redistribute it and/or modify
 # it under the terms of the GNU Lesser General Public License version 3
 # as published by the Free Software Foundation. It is distributed
@@ -363,7 +363,7 @@ async def handle_connected(destination, manager, session):
     get_or_create(session, SyncOwner, {'destination': None})
     session.commit()
     my_owners = session.query(SyncOwner).outerjoin(SqlSyncDestination).filter((SyncOwner.destination == None)|(SqlSyncDestination.dest_hash != destination.dest_hash)).all()
-    my_owners = list(filter( lambda o: manager.should_send(o, o.__class__.sync_registry, destination, o.sync_type, manager = manager), my_owners))
+    my_owners = list(filter( lambda o: manager.should_send(o, registry = o.__class__.sync_registry, destination = destination, sync_type = o.sync_type, manager = manager), my_owners))
     for o in my_owners:
         manager.synchronize(o, destinations = [destination])
     my_owner = MyOwners()
