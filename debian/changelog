@@ -1,3 +1,9 @@
+hadron-entanglement (0.10.1) unstable-aces-proposed; urgency=medium
+
+  * Bug fix in new pki argument
+
+ -- Sam Hartman <hartmans@debian.org>  Thu, 22 Mar 2018 15:15:35 -0400
+
 hadron-entanglement (0.10) unstable-aces-proposed; urgency=medium
 
   * ABI broken because the connection lost callback now includes a manager
