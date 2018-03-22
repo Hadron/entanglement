@@ -502,5 +502,4 @@ class SyncDestination:
 
     def connection_lost(self, manager):
         for cb in self._on_connection_lost_cbs:
-            manager.loop.call_soon(cb)
-
+            manager.loop.call_soon(lambda: cb(manager))
