@@ -1,3 +1,13 @@
+hadron-entanglement (0.10) unstable-aces-proposed; urgency=medium
+
+  * ABI broken because the connection lost callback now includes a manager
+    argument.
+  * Add support for naming a CA and for including OUs and other
+    certificate attributes
+  * Clean up some errors
+
+ -- Sam Hartman <hartmans@debian.org>  Thu, 22 Mar 2018 14:03:28 -0400
+
 hadron-entanglement (0.9.5) unstable-aces-proposed; urgency=medium
 
   * Adding _on_connection_lost_cbs to the SqlSyncDestination reconstruct method.
