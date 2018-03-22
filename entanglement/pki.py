@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-# Copyright (C) 2017, Hadron Industries, Inc.
+# Copyright (C) 2017, 2018, Hadron Industries, Inc.
 # Entanglement is free software; you can redistribute it and/or modify
 # it under the terms of the GNU Lesser General Public License version 3
 # as published by the Free Software Foundation. It is distributed
@@ -10,7 +10,7 @@
 import sh, os, os.path
 from os.path import exists
 
-def gen_site_ca(pki_dir):
+def gen_site_ca(pki_dir, ca_name = "Root CA"):
     ca_key = os.path.join(pki_dir, 'ca.key')
     ca_pem = os.path.join(pki_dir, 'ca.pem')
     os.makedirs(pki_dir, exist_ok = True)
@@ -21,12 +21,12 @@ def gen_site_ca(pki_dir):
     
     if not exists(ca_pem):
         sh.openssl.req('-x509', '-key', ca_key,
-                   '-subj','/CN=Root CA',
+                   '-subj','/CN={}'.format(ca_name),
                    '-days', '400',
                    '-extensions', 'v3_ca',
                    '-out', ca_pem)
 
-def host_cert(pki_dir, hostname):
+def host_cert(pki_dir, hostname, adl_subj):
     ca_key = os.path.join(pki_dir, 'ca.key')
     ca_pem = os.path.join(pki_dir, 'ca.pem')
     gen_site_ca(pki_dir)
@@ -37,7 +37,7 @@ def host_cert(pki_dir, hostname):
                           '2048')
         sh.openssl.x509(
             sh.openssl( 'req',
-                        '-new', '-subj', '/CN={}'.format(hostname),
+                        '-new', '-subj', '{adl_subj}/CN={}'.format(hostname, adl_subj = adl_subj),
                         '-key', '{}.key'.format(hostfile),
             ),
             '-CAkey', ca_key,
@@ -46,5 +46,6 @@ def host_cert(pki_dir, hostname):
             '-out', '{}.pem'.format(hostfile),
             '-days', '400',
             '-extensions', 'usr_cert',
+            "-extfile", "/etc/ssl/openssl.cnf",
             '-req')
 

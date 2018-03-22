@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-# Copyright (C) 2017, Hadron Industries, Inc.
+# Copyright (C) 2017, 2018, Hadron Industries, Inc.
 # Entanglement is free software; you can redistribute it and/or modify
 # it under the terms of the GNU Lesser General Public License version 3
 # as published by the Free Software Foundation. It is distributed
@@ -13,14 +13,21 @@ if os.path.exists(_entanglement):
     sys.path.append(os.path.join(_entanglement,'..'))
 
 
-from entanglement.pki import host_cert
+from entanglement.pki import host_cert, gen_site_ca
+
 from entanglement.util import certhash_from_file, CertHash
 
 parser = argparse.ArgumentParser()
 
 parser.add_argument('--pki-dir', '-d', default = '/etc/photon/pki')
+parser.add_argument('--ca-name',
+                    help = "If the CA does not yet exist create with this CN; can be used to create CA with no host cert.")
+
 
 parser.add_argument('hosts', nargs = '*')
+parser.add_argument('--subj',
+                    help = "Additional parts of Subject to be included with host certs such as an OU")
+
 parser.add_argument('--hash', nargs = '+')
 
 args = parser.parse_args()
@@ -29,5 +36,8 @@ for h in args.hash or []:
     ch = certhash_from_file(h)
     print(ch)
 
+if args.ca_name:
+    gen_site_ca(args.pki_dir, args.ca_name)
+    
 for h in args.hosts or []:
-    host_cert(args.pki_dir, h)
+    host_cert(args.pki_dir, h, adl_subj = args.subj)
