@@ -26,6 +26,7 @@ parser.add_argument('--ca-name',
 
 parser.add_argument('hosts', nargs = '*')
 parser.add_argument('--subj',
+                    default = "",
                     help = "Additional parts of Subject to be included with host certs such as an OU")
 
 parser.add_argument('--hash', nargs = '+')
