@@ -1,3 +1,4 @@
+#!/usr/bin/python3
 # Copyright (C) 2017, 2018, Hadron Industries, Inc.
 # Entanglement is free software; you can redistribute it and/or modify
 # it under the terms of the GNU Lesser General Public License version 3
@@ -6,7 +7,6 @@
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the file
 # LICENSE for details.
 
-4#!/usr/bin/python3
 import asyncio, datetime, iso8601, uuid
 
 from ..interface import Synchronizable, SyncRegistry, SyncError, sync_property, SyncBadEncodingError, SyncUnauthorized
