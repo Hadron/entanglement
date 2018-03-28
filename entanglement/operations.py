@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-# Copyright (C) 2017, Hadron Industries, Inc.
+# Copyright (C) 2017, 2018, Hadron Industries, Inc.
 # Entanglement is free software; you can redistribute it and/or modify
 # it under the terms of the GNU Lesser General Public License version 3
 # as published by the Free Software Foundation. It is distributed
@@ -51,6 +51,8 @@ class SyncOperation:
     def flood(self, obj, **info):
         "Flood an incoming received object.  Not called for outgoing objects."
         raise NotImplementedError
+    def sync_value(self):
+        return self.name
 
 class MethodOperation(SyncOperation):
 

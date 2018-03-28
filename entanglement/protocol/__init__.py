@@ -212,7 +212,7 @@ class SyncProtocolBase:
                 sync_rep['_resp_for'] = responses_to
             sync_rep['_sync_type'] = obj.sync_type
             if elt.operation != 'sync':
-                sync_rep['_sync_operation'] = elt.operation
+                sync_rep['_sync_operation'] = elt.operation.sync_value()
         else:
             sync_rep = {}
         new_flags = self._handle_meta_out(flags, sync_rep)

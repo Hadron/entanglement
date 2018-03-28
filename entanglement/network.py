@@ -15,7 +15,7 @@ from .util import DestHash, certhash_from_file
 from .bandwidth import BwLimitProtocol
 from .interface import WrongSyncDestination, UnregisteredSyncClass, SyncNotConnected
 from . import interface
-
+from .operations import SyncOperation
 logger = protocol.logger
 
 no_traceback_connection_failures = (OSError, EOFError)
@@ -116,7 +116,11 @@ class SyncManager:
         info['sync_type'] = obj.__class__
         cls, registry = self._find_registered_class( obj.sync_type)
         info['registry'] = registry
-        info['operation'] = operation
+        if isinstance(operation, SyncOperation):
+            info['operation'] = operation
+        else:
+            operation = registry.get_operation(operation)
+            info['operation'] = operation
         if response_for:
             destinations = list(destinations)
             response_for.sending_to(filter(lambda d: not d in exclude, destinations))
