@@ -1,4 +1,4 @@
-# Copyright (C) 2017, Hadron Industries, Inc.
+# Copyright (C) 2017, 2018, Hadron Industries, Inc.
 # Entanglement is free software; you can redistribute it and/or modify
 # it under the terms of the GNU Lesser General Public License version 3
 # as published by the Free Software Foundation. It is distributed
@@ -7,8 +7,10 @@
 # LICENSE for details.
 
 import asyncio, json, logging, struct, weakref
-from .util import CertHash
-from .interface import SyncError, SyncBadEncodingError
+from ..util import CertHash
+from ..interface import SyncError, SyncBadEncodingError
+from .dirty import DirtyMember, DirtyQueue
+
 
 logger = logging.getLogger("entanglement")
 protocol_logger = logging.getLogger('entanglement.protocol')
@@ -111,52 +113,6 @@ class ResponseReceiver:
 
 
 
-class DirtyMember:
-
-    __slots__ = ('obj', 'operation', 'attrs', 'response_for')
-
-    def __eq__(self, other):
-        return self.obj.sync_compatible(other.obj)
-
-    def __hash__(self):
-        return self.obj.sync_hash()
-
-    def __repr__(self):
-        keydict = {}
-        try:
-            keys = self.obj.sync_primary_keys
-            for k in keys:
-                keydict[k] = getattr(self.obj, k, None)
-        except Exception: pass
-        return "DirtyElement <keys : {k}, obj: {o}>".format(
-            k = keydict,
-            o = repr(self.obj))
-
-    def update(self, obj, operation, attrs, response_for):
-        assert self.obj.sync_compatible(obj)
-        if attrs:
-            attrs = frozenset(attrs)
-            if not self.attrs:
-                old_attrs = set(self.obj.to_sync().keys())
-            else: old_attrs = self.attrs
-            for a in old_attrs - attrs:
-                try: setattr(obj, a, getattr(self.obj, a))
-                except AttributeError: pass
-            attrs = attrs | old_attrs
-        self.obj = obj
-        self.operation = operation
-        self.attrs = attrs if attrs else None
-        if self.response_for:
-            self.response_for.merge(response_for)
-        else: self.response_for = response_for
-
-    def __init__(self, obj, operation, attrs, response_for):
-        self.obj = obj
-        self.operation = operation
-        if attrs:
-            self.attrs = frozenset(attrs)
-        else: self.attrs = None
-        self.response_for = response_for
 
 class SyncProtocolBase:
 
@@ -174,7 +130,7 @@ class SyncProtocolBase:
         # self.current_dirty is where we send from, which may be self.dirty
         #In a drain, we'll stop adding objects to self.current_dirty (switching the pointers) and wait for the sync to complete
         #Note though that objects equal to something in current_dirty are added there
-        self.dirty = dict()
+        self.dirty = DirtyQueue()
         self.current_dirty = self.dirty
         self.drain_future = None
         self.waiter = None
@@ -186,13 +142,13 @@ class SyncProtocolBase:
         return self.loop is None
     
     def _synchronize_object(self,obj,
-                            operation, attributes, response_for):
+                            operation, attributes, response_for, priority):
         """Send obj out to be synchronized; this is an internal interface that should only be called by SyncManager.synchronize"""
-        elt = DirtyMember(obj, operation, attributes, response_for)
+        elt = DirtyMember(obj, operation, attributes, response_for, priority)
         if elt in self.current_dirty:
-            self.current_dirty[elt].update(obj, operation, attributes, response_for)
+            self.current_dirty.add_or_replace(elt)
         else:
-            self.dirty.setdefault(elt, elt).update(obj, operation, attributes, response_for)
+            self.dirty.add_or_replace(elt)
         if self.task is None:
             self.task = self.loop.create_task(self._run_sync())
 
@@ -200,13 +156,13 @@ class SyncProtocolBase:
         "Returns a future; when this future is done, all objects synchronized before sync_drain is called have been sent.  Note that some objects synchronized after sync_drain is called may have been sent."
         if self.drain_future:
             for elt in self.dirty:
-                self.current_dirty[elt] = elt
-            self.dirty.clear()
+                self.current_dirty.add_or_replace(elt)
+            self.dirty = DirtyQueue()
             return asyncio.shield(self.drain_future)
         else:
             if self.task:
                 self.drain_future = self.loop.create_future()
-                self.dirty = dict()
+                self.dirty = DirtyQueue()
                 return asyncio.shield(self.drain_future)
             else: #We're not currently synchronizing
                 fut = self.loop.create_future()
@@ -226,7 +182,7 @@ class SyncProtocolBase:
         if self.waiter: await self.waiter
         try:
             while True:
-                elt = self.current_dirty.pop(next(iter(self.current_dirty.keys())))
+                elt = self.current_dirty.pop()
                 try:self._send_sync_message(elt)
                 except:
                     logger.exception("Error sending {}".format(repr(elt.obj)))

@@ -82,7 +82,8 @@ class SyncManager:
                     operation = 'sync',
                     attributes_to_sync = None,
                     response = False,
-                    response_for = None):
+                    response_for = None,
+                    priority = 100):
         '''The primary interface for synchronizing an object.  Destinations
         must be destinations in self.destinations; exclude is a set of
         destinations to exclude.  If attributes is set only these
@@ -130,7 +131,7 @@ class SyncManager:
             con._synchronize_object(obj,
             attributes = attributes_to_sync,
                                     operation = operation,
-                                    response_for = response_for)
+                                    response_for = response_for, priority = priority)
         return future
 
 

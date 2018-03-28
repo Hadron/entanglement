@@ -371,7 +371,7 @@ class TestSynchronization(unittest.TestCase):
         r = protocol.ResponseReceiver()
         fut = self.loop.create_future()
         r.add_future(fut)
-        self.assertEqual(self.sprotocol.dirty, {},
+        self.assertEqual(len(self.sprotocol.dirty), 0,
                          msg = "Server protocol has messages to send already")
         self.sprotocol._no_response([count])
         self.cprotocol._expected[count] = r

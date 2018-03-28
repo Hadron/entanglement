@@ -1,4 +1,4 @@
-# Copyright (C) 2017, Hadron Industries, Inc.
+# Copyright (C) 2018, Hadron Industries, Inc.
 # Entanglement is free software; you can redistribute it and/or modify
 # it under the terms of the GNU Lesser General Public License version 3
 # as published by the Free Software Foundation. It is distributed
@@ -281,7 +281,7 @@ class TestGateway(SqlFixture, unittest.TestCase):
         assert hasattr(t2,'sync_future')
         c = next(iter(self.manager.connections))
         found = False
-        for v in c.dirty.values():
+        for v in c.dirty.heap:
             if v.obj.sync_compatible(t2):
                 found = True
                 self.assertIsNotNone(v.response_for)
@@ -308,7 +308,7 @@ class TestGateway(SqlFixture, unittest.TestCase):
         assert hasattr(t2,'sync_future')
         c = next(iter(self.manager.connections))
         found = False
-        for v in c.dirty.values():
+        for v in c.dirty.heap:
             if v.obj.sync_compatible(t2):
                 found = True
                 self.assertIsNotNone(v.response_for)
