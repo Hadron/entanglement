@@ -1,4 +1,4 @@
-# Copyright (C) 2017, Hadron Industries, Inc.
+# Copyright (C) 2018, Hadron Industries, Inc.
 # Entanglement is free software; you can redistribute it and/or modify
 # it under the terms of the GNU Lesser General Public License version 3
 # as published by the Free Software Foundation. It is distributed
@@ -8,7 +8,8 @@
 
 import ssl, asyncio, asyncio.log, json, os, unittest, warnings
 from unittest import mock
-from asyncio.test_utils import disable_logger, TestLoop, run_once
+from asyncio.test_utils import disable_logger,  run_once
+import asyncio.test_utils
 
 
 from entanglement import bandwidth, protocol, SyncManager
@@ -22,9 +23,9 @@ from .utils import settle_loop, test_port
 
 
 
-class TestProto(asyncio.Protocol):
+class MockProto(asyncio.Protocol):
 
-    def __init__(self, fixture):
+    def __init__(self, fixture ):
         self.fixture = fixture
 
     def data_received(self, data):
@@ -40,7 +41,7 @@ class TestProto(asyncio.Protocol):
 
 reg = SyncRegistry()
 
-class TestSyncable(Synchronizable):
+class MockSyncable(Synchronizable):
 
     def __init__(self, id, pos):
         self.id = id
@@ -52,13 +53,13 @@ class TestSyncable(Synchronizable):
     sync_primary_keys = ('id',)
     sync_registry = reg
 
-class TestSyncable2(TestSyncable):
+class MockSyncable2(MockSyncable):
     "This one stores itself"
 
     @classmethod
     def get(cls, id):
         if id not in cls.objects:
-            cls.objects[id] = TestSyncable2(id, 0)
+            cls.objects[id] = MockSyncable2(id, 0)
         return cls.objects[id]
 
     objects = {}
@@ -86,10 +87,10 @@ class LoopFixture:
         self.sslctx_client = ssl.create_default_context()
         self.sslctx_client.load_cert_chain('host1.pem','host1.key')
         self.sslctx_client.load_verify_locations(cafile='ca.pem')
-        self.server= self.loop.run_until_complete(self.loop.create_server(lambda : TestProto(self), port = test_port, reuse_address = True, reuse_port = True, ssl=self.sslctx_server))
+        self.server= self.loop.run_until_complete(self.loop.create_server(lambda : MockProto(self), port = test_port, reuse_address = True, reuse_port = True, ssl=self.sslctx_server))
         self.client = self.loop.create_connection(lambda : bandwidth.BwLimitProtocol(
             chars_per_sec = 200, bw_quantum = 0.1,
-            upper_protocol = TestProto(self), loop = self.loop)
+            upper_protocol = MockProto(self), loop = self.loop)
                                              , port = test_port, host = '127.0.0.1', ssl=self.sslctx_client, server_hostname='host1')
 
     def close(self):
@@ -112,7 +113,7 @@ class TestBwAlgorithm( unittest.TestCase):
     "Test the timing algorithms for bandwidth"
 
     def start(self, gen):
-        self.loop = TestLoop(gen)
+        self.loop = asyncio.test_utils.TestLoop(gen)
         self.protocol = bandwidth.BwLimitProtocol(loop = self.loop,
                                         upper_protocol = mock.MagicMock(),
                                         chars_per_sec = 10000,
@@ -258,7 +259,7 @@ class TestSynchronization(unittest.TestCase):
         self.manager.close()
 
     def testOneSync(self):
-        obj = TestSyncable(1,39)
+        obj = MockSyncable(1,39)
         assert self.cprotocol.task is None
         self.manager.synchronize(obj)
         assert self.cprotocol.task is not None
@@ -272,7 +273,7 @@ class TestSynchronization(unittest.TestCase):
             raise AssertionError("Write called while paused")
         self.transport.write = fail_write
         self.cprotocol.pause_writing()
-        obj = TestSyncable(1,39)
+        obj = MockSyncable(1,39)
         assert self.cprotocol.task is None
         self.manager.synchronize(obj)
         assert self.cprotocol.task is not None
@@ -294,7 +295,7 @@ class TestSynchronization(unittest.TestCase):
             nonlocal send_count
             send_count += 1
         send_count = 0
-        self.obj1 = TestSyncable(1, 5)
+        self.obj1 = MockSyncable(1, 5)
         self.obj1.serial = 1
         approx_len = 4+len(json.dumps(self.obj1.to_sync()))
         with mock.patch.object(self.obj1, 'to_sync',
@@ -330,10 +331,10 @@ class TestSynchronization(unittest.TestCase):
     def testReception(self):
         "Confirm that we can receive an update"
         fut = self.loop.create_future()
-        TestSyncable2.objects = {}
+        MockSyncable2.objects = {}
         def cb(*args, **kwargs): fut.set_result(True)
-        obj_send = TestSyncable2(1,90)
-        obj_receive = TestSyncable2.get(obj_send.id)
+        obj_send = MockSyncable2(1,90)
+        obj_receive = MockSyncable2.get(obj_send.id)
         assert obj_send is not obj_receive # We cheat so this is true
         assert obj_send.pos != obj_receive.pos
         self.manager.synchronize(obj_send)
@@ -347,14 +348,14 @@ class TestSynchronization(unittest.TestCase):
 
     def testSyncDrain(self):
         "Confirm that by the time sync_drain is called objects synchronized before have been drained"
-        TestSyncable2.objects = {}
-        obj_send = TestSyncable2(1,90)
-        obj_receive = TestSyncable2.get(obj_send.id)
+        MockSyncable2.objects = {}
+        obj_send = MockSyncable2(1,90)
+        obj_receive = MockSyncable2.get(obj_send.id)
         assert obj_send is not obj_receive # We cheat so this is true
         obj_send.to_sync = mock.MagicMock( wraps = obj_send.to_sync)
         self.manager.synchronize(obj_send)
         fut = self.cprotocol.sync_drain()
-        obj_send2 = TestSyncable2(2, 20)
+        obj_send2 = MockSyncable2(2, 20)
         obj_send2.to_sync = mock.MagicMock(wraps = obj_send2.to_sync)
         self.assertFalse(obj_send.to_sync.called)
         self.manager.synchronize(obj_send2)
