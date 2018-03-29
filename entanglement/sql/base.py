@@ -300,8 +300,13 @@ class SqlSyncRegistry(interface.SyncRegistry):
     @classmethod
     def create_bookkeeping(self, bind):
         "Should be called at least once per engine typically before metadata.create_all is called on any sql_sync_declarative_base using the engine."
-        _internal_base.metadata.create_all(bind = bind)
-
+        from .upgrader import upgrade_database
+        upgrade_database(bind, _internal_base.metadata,
+                         'entanglement.sql:alembic',
+                         'entanglement_version',
+                         'sync_serial',
+                         "5370406b7505")
+        
     def ensure_session(self, manager):
         if not hasattr(manager, 'session'):
             manager.session = self.sessionmaker()
@@ -670,6 +675,11 @@ def sql_sync_declarative_base(*args, registry = None,
     base =  sqlalchemy.ext.declarative.declarative_base(cls = SqlSynchronizable, metaclass = SqlSyncMeta, *args, **kwargs)
     base.registry = registry or registry_class()
     return base
+
+migration_naming_convention = {
+    "fk":
+    "%(table_name)s_%(column_0_name)s_fkey",
+}
 
 def sync_manager_destinations(manager, session = None,
                               cls = SqlSyncDestination,
