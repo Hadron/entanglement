@@ -19,7 +19,7 @@ setup(
     setup_requires = ['pytest-runner'],
     test_requires = ['pytest'],
     packages = ["entanglement", "entanglement.sql"],
-    install_requires = ['SQLAlchemy', 'pyOpenSSL', 'iso8601'],
+    install_requires = ['alembic', 'SQLAlchemy', 'pyOpenSSL', 'iso8601'],
     scripts = ['bin/entanglement-cli',
                'bin/entanglement-pki'],
     test_suite = "tests",
