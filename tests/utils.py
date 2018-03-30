@@ -12,9 +12,10 @@ import asyncio, gc, unittest, random, warnings, weakref
 from sqlalchemy import create_engine
 from entanglement import SyncManager, SyncServer, certhash_from_file, interface
 import entanglement.sql as sql
-from entanglement.sql import SqlSyncDestination, sync_session_maker
+from entanglement.sql import SqlSyncDestination, sync_session_maker, SqlSyncRegistry, SqlSyncSession
 from unittest import mock
 from entanglement import transition
+import pytest
 
 @contextmanager
 def wait_for_call(loop, obj, method, calls = 1):
@@ -116,7 +117,24 @@ def settle_loop(loop, timeout = 0.5):
             raise AssertionError("Loop failed to settle in {} seconds".format(timeout))
     finally:
         timeout_fut.cancel()
-        
+
+@pytest.fixture()
+def sql_fixture(base_fixture):
+    s = SqlFixture()
+    s.base = base_fixture
+    s.manager_registry = SqlSyncRegistry()
+    s.manager_registry.registry = base_fixture.registry.registry
+    s.setUp()
+    yield s
+    s.tearDown()
+
+@pytest.fixture
+def server_session(sql_fixture):
+    s = SqlSyncSession(sql_fixture.e1)
+    s.manager = sql_fixture.server
+    yield s
+    s.close()
+    
 
 @contextmanager
 def transitions_tracked_as(manager):
@@ -152,5 +170,5 @@ def random_port():
     return random.randrange(10000,60000)
 
 test_port = random_port()
-__all__ = "wait_for_call SqlFixture settle_loop transitions_tracked_as transitions_partitioned test_port".split(' ')
+__all__ = "wait_for_call SqlFixture sql_fixture settle_loop transitions_tracked_as transitions_partitioned test_port".split(' ')
 

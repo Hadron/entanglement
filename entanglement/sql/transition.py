@@ -10,9 +10,11 @@
 
 from ..transition import TransitionTrackerMixin
 from . import SqlSynchronizable
+from ..interface import SyncError
 from sqlalchemy import inspect
 import sqlalchemy.exc
 from sqlalchemy.orm import CompositeProperty
+
 class SqlTransitionTrackerMixin(TransitionTrackerMixin, SqlSynchronizable):
 
     '''
@@ -42,6 +44,8 @@ class SqlTransitionTrackerMixin(TransitionTrackerMixin, SqlSynchronizable):
         state = inspect(self)
         if not state.session:
             return
+        if hasattr(state.session, 'sync_dirty') and self in (x[0] for x in state.session.sync_dirty):
+            raise DirtyTransitionError("You cannot transition a dirty object.  If a flush is not obvious, consider disabling auto_flush")
         with state.session.no_autoflush:
             if self.sync_owner:
                 self.sync_owner.destination # Lazy load so we can check in sync_construct
@@ -76,3 +80,5 @@ class SqlTransitionTrackerMixin(TransitionTrackerMixin, SqlSynchronizable):
                 try: del self.__dict__[a.key]
                 except KeyError: pass
                 
+
+class DirtyTransitionError(SyncError): pass

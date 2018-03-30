@@ -7,18 +7,21 @@
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the file
 # LICENSE for details.
 
-import asyncio, datetime, gc, json, ssl, unittest, uuid, warnings
+import asyncio, datetime, gc, json, pytest, ssl, unittest, uuid, warnings
 from contextlib import contextmanager
 from unittest import mock
 
 from entanglement.interface import Synchronizable, sync_property, SyncRegistry
 from entanglement.network import  SyncServer,  SyncManager
 from entanglement.util import certhash_from_file, DestHash, SqlDestHash, get_or_create, entanglement_logs_disabled
+from entanglement.sql.transition import SqlTransitionTrackerMixin, DirtyTransitionError
+from entanglement.transition import BrokenTransition
+from entanglement import operations
 from sqlalchemy import create_engine, Column, Integer, inspect, String, ForeignKey
 from sqlalchemy.orm import sessionmaker
 from entanglement.sql import SqlSynchronizable,  sync_session_maker, sql_sync_declarative_base, SqlSyncDestination, SqlSyncRegistry, sync_manager_destinations, SyncOwner
 import entanglement.sql as sql
-from .utils import wait_for_call, SqlFixture, settle_loop, test_port 
+from .utils import wait_for_call, SqlFixture, settle_loop, test_port , sql_fixture, server_session
 
 
 # SQL declaration
@@ -49,6 +52,12 @@ class TableInherits(TableBase):
     info2 = Column(String(30))
     __mapper_args__ = {'polymorphic_identity': "inherits"}
 
+class TransitionTable(Base, SqlTransitionTrackerMixin):
+    __tablename__ = 'trans_table'
+    id = Column(Integer, primary_key = True)
+    x = Column(Integer)
+    
+    
 class AlternateSyncDestination(SqlSyncDestination):
 
     __mapper_args__ = {'polymorphic_identity': 'AltDestination'
@@ -58,8 +67,11 @@ class AlternateSyncDestination(SqlSyncDestination):
 
 manager_registry = SqlSyncRegistry()
 manager_registry.registry = Base.registry.registry
-    
-    
+
+@pytest.fixture
+def base_fixture():
+    return Base
+
 class TestSql(SqlFixture, unittest.TestCase):
 
     def __init__(self, *args, **kwargs):
@@ -380,7 +392,23 @@ class TestSql(SqlFixture, unittest.TestCase):
             self.manager.synchronize(o)
         for c in self.manager.connections:
             c.sync_drain()
-        
+
+def test_transition_sync_dirty(sql_fixture, server_session):
+    "Confirm that you cannot transition a sync_dirty object"
+    f = sql_fixture
+    t =     TransitionTable()
+    t.x = 10
+    s = server_session
+    s.add(t)
+    s.commit()
+    t.x = 40
+    s.flush()
+    assert t in (x[0] for x in s.sync_dirty)
+    Base.registry.register_operation('transition', operations.transition_operation)
+    with pytest.raises(DirtyTransitionError):
+        t.perform_transition(s.manager)
+    
+    
             
         
 
