@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-# Copyright (C) 2017, Hadron Industries, Inc.
+# Copyright (C) 2017, 2018, Hadron Industries, Inc.
 # Entanglement is free software; you can redistribute it and/or modify
 # it under the terms of the GNU Lesser General Public License version 3
 # as published by the Free Software Foundation. It is distributed
@@ -39,15 +39,17 @@ class SqlTransitionTrackerMixin(TransitionTrackerMixin, SqlSynchronizable):
     '''
     
     def _remove_from_session(self):
-        if self.sync_owner:
-            self.sync_owner.destination # Lazy load so we can check in sync_construct
-            ins = inspect(self.sync_owner)
-            if ins.session:
-                if self.sync_owner.destination: ins.session.expunge(self.sync_owner.destination)
-                ins.session.expunge(self.sync_owner)
-        ins = inspect(self)
-        if ins.session:
-            ins.session.expunge(self)
+        state = inspect(self)
+        if not state.session:
+            return
+        with state.session.no_autoflush:
+            if self.sync_owner:
+                self.sync_owner.destination # Lazy load so we can check in sync_construct
+                ins = inspect(self.sync_owner)
+                if ins.session:
+                    if self.sync_owner.destination: ins.session.expunge(self.sync_owner.destination)
+                    ins.session.expunge(self.sync_owner)
+            state.session.expunge(self)
 
     def store_for_transition(self, *args, **kwargs):
         self._remove_from_session()
