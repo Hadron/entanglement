@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-# Copyright (C) 2017, Hadron Industries, Inc.
+# Copyright (C) 2018, Hadron Industries, Inc.
 # Entanglement is free software; you can redistribute it and/or modify
 # it under the terms of the GNU Lesser General Public License version 3
 # as published by the Free Software Foundation. It is distributed
@@ -376,7 +376,7 @@ class TestSql(SqlFixture, unittest.TestCase):
             settle_loop(self.loop)
         self.server.add_destination(to_server(self.manager.cert_hash, "to server"))
         self.manager.add_destination(to_manager(self.server.cert_hash, "to manager"))
-        for o in self.session.query(SyncOwner).filter(SyncOwner.destination_id == None):
+        for o in self.session.query(SyncOwner).filter(SyncOwner.dest_hash == None):
             self.manager.synchronize(o)
         for c in self.manager.connections:
             c.sync_drain()

@@ -1,4 +1,4 @@
-# Copyright (C) 2017, Hadron Industries, Inc.
+# Copyright (C) 2018, Hadron Industries, Inc.
 # Entanglement is free software; you can redistribute it and/or modify
 # it under the terms of the GNU Lesser General Public License version 3
 # as published by the Free Software Foundation. It is distributed
@@ -168,7 +168,7 @@ class TestWebsockets(SqlFixture, unittest.TestCase):
         await self.client_destination.connected_future
         t = TableTransition(info = "test")
         self.session.manager = self.manager
-        t.sync_owner = self.session.query(SyncOwner).filter_by(destination_id = None).one()
+        t.sync_owner = self.session.query(SyncOwner).filter_by(dest_hash = None).one()
         self.session.add(t)
         self.session.commit()
 

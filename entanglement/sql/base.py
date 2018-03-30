@@ -61,7 +61,12 @@ class SqlSyncSession(sqlalchemy.orm.Session):
                 if isinstance(s, tuple): s = s[0]
                 if s.sync_owner_id is not None and s.sync_owner is None:
                     s.sync_owner = self.query(SyncOwner).get(s.sync_owner_id)
-                if s.sync_owner: s.sync_owner.destination
+                if s.sync_owner:
+                    if s.sync_owner.destination is None:
+                        # This does not tend  to populate __dict__ without some help
+                        inspect(s.sync_owner).get_impl('destination'). \
+                            set_committed_value(inspect(s.sync_owner),s.sync_owner.__dict__, None)
+                        
                 
                 
         @sqlalchemy.events.event.listens_for(self, "after_commit")
@@ -584,11 +589,19 @@ class SyncOwner(_internal_base, SqlSynchronizable, metaclass = SqlSyncMeta):
     __tablename__ = "sync_owners"
     id = Column(GUID, primary_key = True,
                 default = uuid.uuid4)
-    destination_id = interface.no_sync_property(Column(Integer, ForeignKey(SqlSyncDestination.id, ondelete = 'cascade'),
-                            index = True, nullable = True))
+    # We want dest_hash to be a no_sync_property, but need to set up the relationship with the Column object
+    dest_hash = Column(SqlDestHash, nullable= True, index = True)
     destination = sqlalchemy.orm.relationship(SqlSyncDestination, lazy = 'subquery',
-                                              backref = sqlalchemy.orm.backref('owners'),
+                                              primaryjoin = (dest_hash == SqlSyncDestination.dest_hash),
+                                              innerjoin = True,
+                                              uselist = False,
+                                              foreign_keys = [dest_hash],
+                                              remote_side = [SqlSyncDestination.dest_hash],
+backref = sqlalchemy.orm.backref('owners', 
+                                 uselist = True),
     )
+    dest_hash = interface.no_sync_property(dest_hash)
+    
     type = Column(String, nullable = False)
     incoming_serial = interface.no_sync_property(Column(Integer, default = 0, nullable = False))
     #outgoing_serial is managed but is transient
@@ -698,7 +711,7 @@ def sync_manager_destinations(manager, session = None,
         except AttributeError: pass
         manager.add_destination(d)
         if force_resync:
-            for o in session.query(SyncOwner).join(cls).filter(cls.dest_hash == d.dest_hash):
+            for o in session.query(SyncOwner).join(cls.owners).filter(cls.dest_hash == d.dest_hash):
                 o.incoming_epoch = datetime.datetime.now(datetime.timezone.utc)
     if hasattr(manager, 'session'):
         manager.session.commit()

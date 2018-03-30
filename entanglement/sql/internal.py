@@ -360,9 +360,9 @@ def classes_in_registries(registries):
 
 async def handle_connected(destination, manager, session):
     from .base import SyncOwner, SqlSyncDestination
-    get_or_create(session, SyncOwner, {'destination': None})
+    get_or_create(session, SyncOwner, {'dest_hash': None})
     session.commit()
-    my_owners = session.query(SyncOwner).outerjoin(SqlSyncDestination).filter((SyncOwner.destination == None)|(SqlSyncDestination.dest_hash != destination.dest_hash)).all()
+    my_owners = session.query(SyncOwner).outerjoin(SyncOwner.destination).filter((SyncOwner.destination == None)|(SqlSyncDestination.dest_hash != destination.dest_hash)).all()
     my_owners = list(filter( lambda o: manager.should_send(o, registry = o.__class__.sync_registry, destination = destination, sync_type = o.__class__, manager = manager), my_owners))
     for o in my_owners:
         manager.synchronize(o, destinations = [destination])

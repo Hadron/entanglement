@@ -171,7 +171,7 @@ class TestGateway(SqlFixture, unittest.TestCase):
             session.manager = i['manager']
             session.commit()
             session.refresh(i['obj'])
-            i['owner'] = session.query(SyncOwner).filter_by(destination_id = None).one()
+            i['owner'] = session.query(SyncOwner).filter_by(dest_hash = None).one()
         settle_loop(self.loop)
         settle_loop(self.loop) # you_have has a 0 second delay
         return l
@@ -424,7 +424,7 @@ class TestGateway(SqlFixture, unittest.TestCase):
         manager_session = manager_registry.sessionmaker()
         manager_session.manager = self.manager
         t = TableTransition(id = 30)
-        owner = SyncOwner(destination_id = None)
+        owner = SyncOwner(dest_hash = None)
         server_session.add(owner)
         server_session.commit()
         settle_loop(self.loop)
