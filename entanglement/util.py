@@ -79,9 +79,11 @@ if TypeDecorator:
         impl = String(60)
 
         def process_bind_param(self, value, dialect):
+            if value is None: return None
             return str(DestHash(value))
 
         def process_result_value(self, value, dialect):
+            if value is None: return None
             return DestHash(value)
 
         def __init__(self, *args, **kwargs):
