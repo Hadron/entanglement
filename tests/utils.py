@@ -128,13 +128,20 @@ def sql_fixture(base_fixture):
     yield s
     s.tearDown()
 
-@pytest.fixture
+@pytest.fixture()
 def server_session(sql_fixture):
     s = SqlSyncSession(sql_fixture.e1)
     s.manager = sql_fixture.server
     yield s
     s.close()
-    
+
+@pytest.fixture()
+def manager_session(sql_fixture):
+    s = SqlSyncSession(sql_fixture.e2)
+    s.manager = sql_fixture.manager
+    yield s
+    s.close()
+
 
 @contextmanager
 def transitions_tracked_as(manager):
@@ -170,5 +177,5 @@ def random_port():
     return random.randrange(10000,60000)
 
 test_port = random_port()
-__all__ = "wait_for_call SqlFixture sql_fixture settle_loop transitions_tracked_as transitions_partitioned test_port".split(' ')
+__all__ = "wait_for_call SqlFixture sql_fixture server_session manager_session settle_loop transitions_tracked_as transitions_partitioned test_port".split(' ')
 
