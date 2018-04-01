@@ -41,6 +41,8 @@ class SqlSyncSession(sqlalchemy.orm.Session):
     def __init__(self, *args, manager = None, **kwargs):
         super().__init__(*args, **kwargs)
         self.manager = manager
+        import traceback
+        self._tb = traceback.extract_stack()
         self.sync_dirty = set()
         self.sync_deleted = set()
         sqlalchemy.events.event.listens_for(self, "before_flush")(self._handle_dirty)
@@ -75,6 +77,9 @@ class SqlSyncSession(sqlalchemy.orm.Session):
                 if self.manager:
                     for x , attrs in self.sync_dirty: assert not self.is_modified(x)
                     self.sync_commit( expunge_nonlocal = False)
+                else:
+                    self.sync_dirty.clear()
+                    self.sync_deleted.clear()
             except Exception:
                 logger.exception("after_commit fails")
                 raise
@@ -99,7 +104,7 @@ class SqlSyncSession(sqlalchemy.orm.Session):
                         serial_flushed = True
                     inst.sync_serial = new_serial
                 else:
-                    if inst.sync_owner is not None: inst.sync_owner.destination # get while we can
+                    if inst.sync_owner: inst.sync_owner.dest_hash   # get while we can
                     if expunge_nonlocal:
                         session.expunge(inst)
                     elif session.manager:
@@ -110,7 +115,7 @@ class SqlSyncSession(sqlalchemy.orm.Session):
             if isinstance( inst, SqlSynchronizable):
                 if inst in session.sync_deleted: continue
                 session.sync_deleted.add(inst)
-                if inst.sync_owner is not None: inst.sync_owner.destination # get while we can
+                if inst.sync_owner: inst.sync_owner.dest_hash   # get while we can
                 if (inst.sync_owner_id is None and inst.sync_owner is None) or inst.sync_is_local:
                     if not serial_flushed:
                         new_serial = session.execute(serial_insert).lastrowid
@@ -174,10 +179,10 @@ class SqlSyncSession(sqlalchemy.orm.Session):
                     # SqlSyncDestination that is loaded and almost
                     # certainly has a different session, so we want
                     # their destination object.
-                    forward_dest = self.manager.dest_by_hash(o.sync_owner.destination.dest_hash)
+                    forward_dest = self.manager.dest_by_hash(o.sync_owner.dest_hash)
                     if not forward_dest:
                         logger.error("Requested forward to owner of {}, but manager doesn't recognize {} as a destination".format(
-                            o, o.sync_owner.destination))
+                            o, o.sync_owner.dest_hash))
                         continue
 
                 # We want to be manipulating fully refreshed detached
@@ -220,10 +225,10 @@ class SqlSyncSession(sqlalchemy.orm.Session):
                 if o.sync_is_local:
                     deleted_objects.append((o, None))
                 else:
-                    delete_dest = self.manager.dest_by_hash(o.sync_owner.destination.dest_hash)
+                    delete_dest = self.manager.dest_by_hash(o.sync_owner.dest_hash)
                     if not delete_dest:
                         logger.error("Requested delete to owner of {}, but manager doesn't recognize {} as a destination".format(
-                            o, o.sync_owner.destination))
+                            o, o.sync_owner.dest_hash))
                         continue
                     deleted_objects.append((o, [delete_dest]))
                     
@@ -338,9 +343,9 @@ class SqlSyncRegistry(interface.SyncRegistry):
         ins = inspect(obj)
         if not ins.persistent: return
         assert obj in session
-        if obj.sync_is_local or obj.sync_owner.destination == sender:
+        if obj.sync_is_local or obj.sync_owner.dest_hash == sender.dest_hash:
             session.delete(obj)
-        if obj.sync_owner and obj.sync_owner.destination == sender:
+        if obj.sync_owner and obj.sync_owner.dest_hash == sender.dest_hash:
             #It's from the sender.
             sd = SyncDeleted(sync_serial = obj.sync_serial,
                              sync_owner_id = obj.sync_owner_id,
@@ -359,6 +364,7 @@ class SqlSyncRegistry(interface.SyncRegistry):
             if operation == 'forward' and obj in context.session.new: raise interface.SyncNotFound()
             try:
                 context.session.commit()
+                obj.sync_owner
             except sqlalchemy.exc.StatementError as e:
                 raise SqlSyncError("Failed to update {}".format(obj.sync_type)) from e
 
@@ -375,6 +381,7 @@ class SqlSyncRegistry(interface.SyncRegistry):
         assert not object.sync_is_local
         assert object in session
         session.commit()
+        object.sync_owner
 
 
 
@@ -438,8 +445,8 @@ class  SqlSyncDestination(_internal_base, network.SyncDestination):
             assert getattr(session, 'manager', None) is None
             logger.info("Deleting all objects from {}".format(self))
             session.rollback()
-        q = session.query(SyncOwner).filter_by(destination=self)
-        for o in q.all():
+        q = session.query(SyncOwner).filter_by(dest_hash=self.dest_hash)
+        for o in q:
             o.clear_all_objects(manager=manager, registries=registries, session=session)
             session.delete(o)
             session.flush()
@@ -580,7 +587,7 @@ class SqlSynchronizable(interface.Synchronizable):
         return manager.synchronize(self,
                             operation = 'create',
                             attributes_to_sync = attrs,
-                            destinations = [manager.dest_by_hash(owner.destination.dest_hash)],
+                            destinations = [manager.dest_by_hash(owner.dest_hash)],
                             response = True)
         
 
@@ -617,9 +624,20 @@ backref = sqlalchemy.orm.backref('owners',
     }
 
     def __repr__(self):
-        if self.destination is not None:
-            dest_str = repr(self.destination)
-        else: dest_str = "local"
+        try:
+            if self.destination is not None:
+                dest_str = repr(self.destination)
+            elif self.dest_hash:
+                dest_str = "to {}".format(self.dest_hash)
+            else: dest_str = "local"
+        except:
+            try:
+                if self.dest_hash:
+                    dest_str = "to {}".format(dest_hash)
+                else: dest_str = "local"
+            except:
+                # This typically happens if our dest_hash attribute is expired and we cannot refresh it.
+                dest_str = "unknown destination" 
         return "<SyncOwner id: {} {}>".format(
             str(self.id), dest_str)
 
@@ -628,14 +646,18 @@ backref = sqlalchemy.orm.backref('owners',
     @property
     def sync_owner(self): return self
 
+    @property
+    def sync_is_local(self):
+        return self.dest_hash is None
+    
     @classmethod
     def sync_construct(cls, msg, context, sender, **info):
         obj = None
         if hasattr(context, 'session'):
             obj = context.session.query(SyncOwner).get(msg['id'])
-            if obj and (obj.destination  != sender):
+            if obj and (obj.dest_hash  != sender.dest_hash):
                 raise interface.SyncBadOwner("{} sent by {} but belongs to {}".format(
-                    obj, sender, obj.destination))
+                    obj, sender, obj.dest_hash))
             try: del msg['sync_owner_id']
             except KeyError: pass
         if not obj:
@@ -644,9 +666,9 @@ backref = sqlalchemy.orm.backref('owners',
                 context.session.add(obj)
                 # We don't want an autoflush between the time we add the object and the time sync_serial is set.
                 context.session.autoflush = False
-                obj.destination = context.session.merge(sender)
+                obj.dest_hash = sender.dest_hash
             except AttributeError:
-                obj.destination = sender
+                obj.dest_hash = sender.dest_hash
 
         return obj
 

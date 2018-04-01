@@ -10,7 +10,7 @@
 
 from . import interface
 
-# We assume objects have a method sync_owner that will return their owner or None if locally owned.  We assume that sync_owners have a method destination that returns a SyncDestination and that the context has both a sender and owner 
+# We assume objects have a method sync_owner that will return their owner or None if locally owned.  We assume that sync_owners have a method dest_hash that returns a hash of their destination and that the context has both a sender and owner 
 
 class SyncOperation:
 
@@ -74,16 +74,16 @@ class sync_operation(SyncOperation):
         if obj.sync_owner is interface.EphemeralUnflooded: return True
         if obj.sync_is_local: 
             raise interface.SyncBadOwner("{} synchronized one of our objects to us".format(sender))
-        if obj.sync_owner.destination != sender:
-            raise interface.SyncBadOwner("{} sent an object belonging to {}".format(sender, obj.sync_owner.destination))
-        if hasattr(context, 'owner') and context.owner.destination != sender:
+        if obj.sync_owner.dest_hash != sender.dest_hash:
+            raise interface.SyncBadOwner("{} sent an object belonging to {}".format(sender, obj.sync_owner.dest_hash))
+        if hasattr(context, 'owner') and context.owner.dest_hash != sender.dest_hash:
             raise interface.SyncBadOwner("{} sent an object with owner {} belonging to {}".format(
-                sender, owner, owner.destination))
+                sender, owner, owner.dest_hash))
         return True
 
     def flood(self, obj, manager, sender, response_for, **info):
         if obj.sync_owner is interface.EphemeralUnflooded: return
-        assert obj.sync_owner.destination == sender
+        assert obj.sync_owner.dest_hash == sender.dest_hash
         manager.synchronize(obj, exclude = [sender], operation = 'sync',
                             response_for = response_for)
 
@@ -97,7 +97,7 @@ class forward_operation(SyncOperation):
         if obj.sync_owner is interface.EphemeralUnflooded:
             raise interface.SyncBadOwner("{} is EphemeralUnflooded and cannot be forwarded".format(obj))
         if not obj.sync_is_local:
-            if obj.sync_owner.destination == sender:
+            if obj.sync_owner.dest_hash == sender.dest_hash:
                 raise interface.SyncBadOwner("{} forwarded {} which we think they own".format(
                     sender, obj))
         return True
@@ -106,7 +106,7 @@ class forward_operation(SyncOperation):
         if obj.sync_is_local:
             manager.synchronize(obj, operation = 'sync', response_for = response_for)
         else:
-            dest = manager.dest_by_hash(obj.sync_owner.destination.dest_hash)
+            dest = manager.dest_by_hash(obj.sync_owner.dest_hash)
             manager.synchronize(obj, destinations = [dest], operation = 'forward',
                                 attributes_to_sync = info.get('attributes'),
                                 response_for = response_for)
@@ -129,13 +129,13 @@ class delete_operation(SyncOperation):
             manager.synchronize(obj, operation ='delete', attributes_to_sync = obj.sync_primary_keys,
                                 response_for = response_for)
         else:
-            if obj.sync_owner.destination == sender:
+            if obj.sync_owner.dest_hash == sender.dest_hash:
                 manager.synchronize(obj, operation = 'delete',
                                     attributes_to_sync = obj.sync_primary_keys,
                                     exclude = [sender],
                                     response_for = response_for)
             else: #not from direction of object owner, so forward there
-                dest = manager.dest_by_hash(obj.sync_owner.destination.dest_hash)
+                dest = manager.dest_by_hash(obj.sync_owner.dest_hash)
                 manager.synchronize(obj, operation = 'delete',
                                     attributes_to_sync = obj.sync_primary_keys,
                                     destinations = [dest],
@@ -175,7 +175,7 @@ class transition_operation(SyncOperation):
         # response_for so that the initial sender can get an error
         # response if they like
         if not obj.sync_is_local:
-            owner_dest = manager.dest_by_hash(obj.sync_owner.destination.dest_hash)
+            owner_dest = manager.dest_by_hash(obj.sync_owner.dest_hash)
         if owner_dest:
             manager.synchronize(obj,
                                 operation = str(self),
@@ -208,7 +208,7 @@ class create_operation(SyncOperation):
 
         if not hasattr(context, 'owner'):
             raise interface.SyncBadEncodingError('Create requires _sync_owner')
-        if sender == context.owner.destination:
+        if sender.dest_hash == context.owner.dest_hash:
             raise interface.WrongSyncDestination('create loop detected')
         return True
 
@@ -219,7 +219,7 @@ class create_operation(SyncOperation):
         else:
             manager.synchronize(obj,
                                 operation = str(self),
-                                destinations = [manager.dest_by_hash(context.owner.destination.dest_hash)],
+                                destinations = [manager.dest_by_hash(context.owner.dest_hash)],
                                 response_for = response_for,
                                 attributes_to_sync = info.get('attributes', None))
 

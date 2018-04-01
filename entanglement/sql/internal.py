@@ -65,7 +65,7 @@ class _SqlMetaRegistry(SyncRegistry):
 
     def incoming_delete(self, obj, sender, context, manager, **info):
         assert isinstance(obj,base.SyncOwner)
-        assert sender.dest_hash == obj.destination.dest_hash
+        assert sender.dest_hash == obj.dest_hash
         session = context.session
         obj.clear_all_objects(session = session, manager = manager)
         session.delete(obj)
@@ -194,7 +194,7 @@ class _SqlMetaRegistry(SyncRegistry):
         session = manager.session
         session.rollback()
         sender.first_owner = obj.owners[0]
-        old_owners = session.query(base.SyncOwner).filter(base.SyncOwner.destination == sender, base.SyncOwner.id.notin_(obj.owners))
+        old_owners = session.query(base.SyncOwner).filter(base.SyncOwner.dest_hash == sender.dest_hash, base.SyncOwner.id.notin_(obj.owners))
         for o in old_owners:
             o.clear_all_objects(manager = manager, session = session)
             manager.synchronize(o, operation = 'delete', exclude = [sender])
@@ -361,10 +361,10 @@ def classes_in_registries(registries):
 
 
 async def handle_connected(destination, manager, session):
-    from .base import SyncOwner, SqlSyncDestination
+    from .base import SyncOwner
     get_or_create(session, SyncOwner, {'dest_hash': None})
     session.commit()
-    my_owners = session.query(SyncOwner).outerjoin(SyncOwner.destination).filter((SyncOwner.destination == None)|(SqlSyncDestination.dest_hash != destination.dest_hash)).all()
+    my_owners = session.query(SyncOwner).filter((SyncOwner.dest_hash == None)|(SyncOwner.dest_hash != destination.dest_hash)).all()
     my_owners = list(filter( lambda o: manager.should_send(o, registry = o.__class__.sync_registry, destination = destination, sync_type = o.__class__, manager = manager), my_owners))
     for o in my_owners:
         manager.synchronize(o, destinations = [destination])
@@ -383,7 +383,7 @@ async def handle_connected(destination, manager, session):
 def trigger_you_haves(manager, serial):
     if serial == 0: return
     for c in manager.connections:
-        for o in manager.session.query(base.SyncOwner).filter((base.SyncOwner.destination == None)):
+        for o in manager.session.query(base.SyncOwner).filter((base.SyncOwner.dest_hash == None)):
             o.outgoing_serial = max(o.outgoing_serial, serial)
             if o.id in getattr(c.dest, 'received_i_have', []):
                 c.dest.send_you_have.add(o)

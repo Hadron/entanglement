@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-# Copyright (C) 2017, Hadron Industries, Inc.
+# Copyright (C) 2017, 2018, Hadron Industries, Inc.
 # Entanglement is free software; you can redistribute it and/or modify
 # it under the terms of the GNU Lesser General Public License version 3
 # as published by the Free Software Foundation. It is distributed
@@ -269,7 +269,7 @@ class Synchronizable( metaclass = SynchronizableMeta):
 
     @property
     def sync_is_local(self):
-        return self.sync_owner is None or self.sync_owner.destination is None
+        return self.sync_owner is None or self.sync_owner.dest_hash is None
     
     @classmethod
     def sync_should_listen(self, msg, **info):

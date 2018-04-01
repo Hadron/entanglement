@@ -395,6 +395,7 @@ class TestGateway(SqlFixture, unittest.TestCase):
             # commit a change to another column the first change is
             # not folded in.  That is make sure that parties discard
             # state when an object exits transition
+            assert  inspect(t2).session is None
             t2.y = -20
             with transitions_tracked_as(self.manager):
                 t2.perform_transition(self.manager)

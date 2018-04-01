@@ -153,7 +153,7 @@ class TransitionTrackerMixin (interface.Synchronizable):
         if self.sync_is_local :
             destinations = None
         else:
-            dest_hash = self.sync_owner.destination.dest_hash
+            dest_hash = self.sync_owner.dest_hash
             destinations = [manager.dest_by_hash(dest_hash)]
         attrs =self.transition_modified_attrs()
         if attrs is not None:
