@@ -147,7 +147,7 @@ class TestGateway(SqlFixture, unittest.TestCase):
         "Test that owners are flooded correctly"
         owner_uuids = set()
         for o in (self.client, self.server, self.manager):
-            owners = o.session.query(sql.SyncOwner).filter(sql.SyncOwner.destination == None).all()
+            owners = o.session.query(sql.SyncOwner).filter(sql.SyncOwner.dest_hash == None).all()
             self.assertEqual(len(owners), 1)
             owner_uuids.add(owners[0].id)
         self.assertEqual(len(owner_uuids), 3)
@@ -489,7 +489,7 @@ class TestGateway(SqlFixture, unittest.TestCase):
         t = TableInherits(info2 = "blah baz")
         manager_session = manager_registry.sessionmaker()
         manager_session.manager = self.manager
-        manager_owner = manager_session.query(SyncOwner).filter_by(destination = None).one()
+        manager_owner = manager_session.query(SyncOwner).filter_by(dest_hash = None).one()
         t.sync_owner = self.client_session.query(SyncOwner).get(manager_owner.id)
         #logging.getLogger('entanglement.protocol').setLevel(10)
         fut = t.sync_create(self.client, t.sync_owner)
@@ -504,7 +504,7 @@ class TestGateway(SqlFixture, unittest.TestCase):
         t = TableInherits(info2 = "blah baz")
         manager_session = manager_registry.sessionmaker()
         manager_session.manager = self.manager
-        manager_owner = manager_session.query(SyncOwner).filter_by(destination = None).one()
+        manager_owner = manager_session.query(SyncOwner).filter_by(dest_hash = None).one()
         t.sync_owner = self.client_session.query(SyncOwner).get(manager_owner.id)
         t.id = t.sync_owner.id # Will cause an error
         #logging.getLogger('entanglement.protocol').setLevel(10)
@@ -517,7 +517,7 @@ class TestGateway(SqlFixture, unittest.TestCase):
     def testNoCreateForward(self):
         "Confirm that forward cannot be used to create a remote object"
         sess = self.client_session
-        owners = sess.query(SyncOwner).filter(SyncOwner.destination != None).all()
+        owners = sess.query(SyncOwner).filter(SyncOwner.dest_hash != None).all()
         assert len(owners) >= 1
         owner = owners[0]
         obj = TableInherits()
@@ -544,7 +544,7 @@ class TestGateway(SqlFixture, unittest.TestCase):
             c.close()
         sess.manager = None
         for old_owner in sess.query(SyncOwner).filter(
-                SyncOwner.destination == None, SyncOwner.id != o.id):
+                SyncOwner.dest_hash == None, SyncOwner.id != o.id):
             sess.delete(old_owner)
         sess.commit()
         sess.manager = self.client
@@ -588,7 +588,7 @@ class TestGateway(SqlFixture, unittest.TestCase):
     def testNoDeleteNotMyOwner(self):
         "Confirm we cannot delete someone else's owner"
         sess = self.client_session
-        o = sess.query(SyncOwner).filter(SyncOwner.destination != None).all()[0]
+        o = sess.query(SyncOwner).filter(SyncOwner.dest_hash != None).all()[0]
         with entanglement_logs_disabled():
             sess.delete(o)
             sess.sync_commit()

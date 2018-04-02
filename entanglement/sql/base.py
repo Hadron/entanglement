@@ -36,7 +36,7 @@ class SqlSyncSession(sqlalchemy.orm.Session):
         session.commit() # commit local objects
 
     '''
-    
+
 
     def __init__(self, *args, manager = None, **kwargs):
         super().__init__(*args, **kwargs)
@@ -63,14 +63,11 @@ class SqlSyncSession(sqlalchemy.orm.Session):
                 if isinstance(s, tuple): s = s[0]
                 if s.sync_owner_id is not None and s.sync_owner is None:
                     s.sync_owner = self.query(SyncOwner).get(s.sync_owner_id)
-                if s.sync_owner:
-                    if s.sync_owner.destination is None:
-                        # This does not tend  to populate __dict__ without some help
-                        inspect(s.sync_owner).get_impl('destination'). \
-                            set_committed_value(inspect(s.sync_owner),s.sync_owner.__dict__, None)
-                        
-                
-                
+
+
+
+
+
         @sqlalchemy.events.event.listens_for(self, "after_commit")
         def receive_after_commit(session):
             try:
@@ -110,7 +107,7 @@ class SqlSyncSession(sqlalchemy.orm.Session):
                     elif session.manager:
                         logger.error('Tried to commit non-local object: {}'.format(inst))
                         raise NotImplementedError('The semantics of a non-local commit of nonlocal objects are undefined and unimplemented')
-                            
+
         for inst in session.deleted:
             if isinstance( inst, SqlSynchronizable):
                 if inst in session.sync_deleted: continue
@@ -133,7 +130,7 @@ class SqlSyncSession(sqlalchemy.orm.Session):
                     elif session.manager:
                         logger.error('Tried to commit deletion of non-local object: {}'.format(inst))
                         raise NotImplementedError('Semantics of committing deletion of non-local objects is undefined and unimplemented')
-                    
+
 
     def sync_commit(self, expunge_nonlocal = True, *,
                     update_responses = True):
@@ -152,7 +149,7 @@ class SqlSyncSession(sqlalchemy.orm.Session):
         that a later flush/commit call will not affect them.
 
         '''
-        
+
         self._handle_dirty(self, expunge_nonlocal = expunge_nonlocal)
         # Behavior if expunge_nonlocal is false is no not fully
         # implemented; there used to be partial behavior from prior to
@@ -231,7 +228,7 @@ class SqlSyncSession(sqlalchemy.orm.Session):
                             o, o.sync_owner.dest_hash))
                         continue
                     deleted_objects.append((o, [delete_dest]))
-                    
+
             self._do_sync( update_responses, objects, deleted_objects, forward_objects)
         self.sync_dirty.clear()
         self.sync_deleted.clear()
@@ -316,7 +313,7 @@ class SqlSyncRegistry(interface.SyncRegistry):
                          'entanglement_version',
                          'sync_serial',
                          "5370406b7505")
-        
+
     def ensure_session(self, manager):
         if not hasattr(manager, 'session'):
             manager.session = self.sessionmaker()
@@ -328,7 +325,7 @@ class SqlSyncRegistry(interface.SyncRegistry):
     @contextlib.contextmanager
     def sync_context(self, **info):
         "Return a context used to receive an incoming object.  This context follows the context manager protocol.  The context will have an attribute 'session' that is an SqlSyncSession into which an object can be constructed"
-        
+
         session = self.sessionmaker(expire_on_commit = False)
         class Context: pass
         ctx = Context()
@@ -357,7 +354,7 @@ class SqlSyncRegistry(interface.SyncRegistry):
     def after_flood_delete(self, obj, manager, **info):
         if obj.sync_is_local:
             _internal.trigger_you_haves(manager, obj.sync_serial)
-            
+
     def incoming_forward(self, obj, context, sender, manager, operation, **info):
         assert obj in context.session
         if obj.sync_is_local:
@@ -369,7 +366,7 @@ class SqlSyncRegistry(interface.SyncRegistry):
                 raise SqlSyncError("Failed to update {}".format(obj.sync_type)) from e
 
     incoming_create = incoming_forward
-    
+
     def after_flood_forward(self, obj, manager, **info):
         if obj.sync_is_local:
             _internal.trigger_you_haves(manager, obj.sync_serial)
@@ -569,6 +566,7 @@ class SqlSynchronizable(interface.Synchronizable):
             if primary_key_values:
                 obj = session.query(cls).get(primary_key_values)
             owner = SyncOwner.find_from_msg(session, sender, msg)
+            if owner and owner.dest_hash == sender.dest_hash: owner.destination = sender
         context.owner = owner
         if obj is not None:
             for k in primary_keys: del msg[k]
@@ -589,7 +587,7 @@ class SqlSynchronizable(interface.Synchronizable):
                             attributes_to_sync = attrs,
                             destinations = [manager.dest_by_hash(owner.dest_hash)],
                             response = True)
-        
+
 
 class SyncOwner(_internal_base, SqlSynchronizable, metaclass = SqlSyncMeta):
     sync_registry = _internal.sql_meta_messages
@@ -598,17 +596,18 @@ class SyncOwner(_internal_base, SqlSynchronizable, metaclass = SqlSyncMeta):
                 default = uuid.uuid4)
     # We want dest_hash to be a no_sync_property, but need to set up the relationship with the Column object
     dest_hash = Column(SqlDestHash, nullable= True, index = True)
-    destination = sqlalchemy.orm.relationship(SqlSyncDestination, lazy = 'subquery',
+    sql_destination = sqlalchemy.orm.relationship(SqlSyncDestination,
                                               primaryjoin = (dest_hash == SqlSyncDestination.dest_hash),
                                               innerjoin = True,
                                               uselist = False,
                                               foreign_keys = [dest_hash],
                                               remote_side = [SqlSyncDestination.dest_hash],
-backref = sqlalchemy.orm.backref('owners', 
+backref = sqlalchemy.orm.backref('owners',
+                                 lazy = 'joined',
                                  uselist = True),
     )
     dest_hash = interface.no_sync_property(dest_hash)
-    
+
     type = Column(String, nullable = False)
     incoming_serial = interface.no_sync_property(Column(Integer, default = 0, nullable = False))
     #outgoing_serial is managed but is transient
@@ -637,7 +636,7 @@ backref = sqlalchemy.orm.backref('owners',
                 else: dest_str = "local"
             except:
                 # This typically happens if our dest_hash attribute is expired and we cannot refresh it.
-                dest_str = "unknown destination" 
+                dest_str = "unknown destination"
         return "<SyncOwner id: {} {}>".format(
             str(self.id), dest_str)
 
@@ -649,7 +648,7 @@ backref = sqlalchemy.orm.backref('owners',
     @property
     def sync_is_local(self):
         return self.dest_hash is None
-    
+
     @classmethod
     def sync_construct(cls, msg, context, sender, **info):
         obj = None

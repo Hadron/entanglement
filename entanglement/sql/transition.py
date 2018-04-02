@@ -48,10 +48,8 @@ class SqlTransitionTrackerMixin(TransitionTrackerMixin, SqlSynchronizable):
             raise DirtyTransitionError("You cannot transition a dirty object.  If a flush is not obvious, consider disabling auto_flush")
         with state.session.no_autoflush:
             if self.sync_owner:
-                self.sync_owner.destination # Lazy load so we can check in sync_construct
                 ins = inspect(self.sync_owner)
                 if ins.session:
-                    if self.sync_owner.destination: ins.session.expunge(self.sync_owner.destination)
                     ins.session.expunge(self.sync_owner)
             state.session.expunge(self)
 

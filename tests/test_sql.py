@@ -101,7 +101,7 @@ class TestSql(SqlFixture, unittest.TestCase):
             t.ch = DestHash(b'o' *32)
         t2 = self.server.session.query(Table1).get(t.id)
         assert t2 is not None
-        assert t2.sync_owner.destination.dest_hash is not None
+        assert t2.sync_owner.dest_hash is not None
         self.session.refresh(t)
         self.assertEqual(t2.ch, t.ch)
 
