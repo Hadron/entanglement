@@ -34,7 +34,8 @@ class _SqlMetaRegistry(SyncRegistry):
                 return self
 
             def __exit__(self, *args):
-                self.session.rollback()
+                self.session.close()
+
 
         ctx = context()
         if hasattr(manager, 'session'):
@@ -76,6 +77,7 @@ class _SqlMetaRegistry(SyncRegistry):
         session = context.session
         assert obj in session
         session.commit()
+        session.refresh(obj)
         i_have = IHave()
         i_have.serial = obj.incoming_serial
         i_have.epoch = obj.incoming_epoch

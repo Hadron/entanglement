@@ -324,14 +324,14 @@ class SqlSyncRegistry(interface.SyncRegistry):
     def sync_context(self, **info):
         "Return a context used to receive an incoming object.  This context follows the context manager protocol.  The context will have an attribute 'session' that is an SqlSyncSession into which an object can be constructed"
         
-        session = self.sessionmaker()
+        session = self.sessionmaker(expire_on_commit = False)
         class Context: pass
         ctx = Context()
         ctx.session = session
         try: yield ctx
         finally:
-            session.rollback()
             session.close()
+            session.expunge_all()
 
     def incoming_delete( self, obj, context, manager, sender, **info):
         session = context.session

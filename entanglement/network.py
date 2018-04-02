@@ -314,11 +314,11 @@ class SyncManager:
         try:
             with registry.sync_context(sync_type = cls, **info) as ctx:
                 info['context'] = ctx
-            obj = cls.sync_construct(msg, **info)
-            if self.should_listen_constructed(obj, msg, **info) is not True:
-                raise SyntaxError("should_listen_constructed must either return True or raise")
-            obj.sync_receive_constructed(msg, **info)
-            registry.sync_receive(obj, **info)
+                obj = cls.sync_construct(msg, **info)
+                if self.should_listen_constructed(obj, msg, **info) is not True:
+                    raise SyntaxError("should_listen_constructed must either return True or raise")
+                obj.sync_receive_constructed(msg, **info)
+                registry.sync_receive(obj, **info)
             if response_for:
                 response_for(obj)
         except Exception as e:
