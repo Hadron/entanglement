@@ -1,3 +1,10 @@
+hadron-entanglement (0.10.2) unstable-aces-proposed; urgency=medium
+
+  * SqlSyncDestination is split out from SyncOwner
+  * Use alembic for schema migrations
+
+ -- Sam Hartman <hartmans@debian.org>  Mon, 02 Apr 2018 11:31:27 -0400
+
 hadron-entanglement (0.10.1) unstable-aces-proposed; urgency=medium
 
   * Bug fix in new pki argument
