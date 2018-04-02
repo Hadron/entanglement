@@ -385,6 +385,7 @@ class TestGateway(SqlFixture, unittest.TestCase):
             manager_session.add(t2)
             manager_session.sync_commit()
             settle_loop(self.loop)
+            settle_loop(self.loop) #We sometimes don't get the message in time
             t2 = t2.sync_future.result()
             t =self.client_session.merge(t)
             self.client_session.refresh(t)
