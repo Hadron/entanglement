@@ -1,3 +1,9 @@
+hadron-entanglement (0.10.3) unstable-aces-proposed; urgency=medium
+
+  * Decrease probability of race in test
+
+ -- Sam Hartman <hartmans@debian.org>  Mon, 02 Apr 2018 13:04:25 -0400
+
 hadron-entanglement (0.10.2) unstable-aces-proposed; urgency=medium
 
   * SqlSyncDestination is split out from SyncOwner
