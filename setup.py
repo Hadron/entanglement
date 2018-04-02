@@ -18,7 +18,11 @@ setup(
     url = "http://www.hadronindustries.com/",
     setup_requires = ['pytest-runner'],
     test_requires = ['pytest'],
-    packages = ["entanglement", "entanglement.sql"],
+    packages = ["entanglement", "entanglement.sql",
+                'entanglement.protocol'],
+    package_data = {
+        'entanglement.sql': ['alembic', 'alembic/*', 'alembic/versions/*'],
+        },
     install_requires = ['alembic', 'SQLAlchemy', 'pyOpenSSL', 'iso8601'],
     scripts = ['bin/entanglement-cli',
                'bin/entanglement-pki'],
