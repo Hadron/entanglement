@@ -625,15 +625,16 @@ backref = sqlalchemy.orm.backref('owners',
 
     def __repr__(self):
         try:
-            if self.destination is not None:
-                dest_str = repr(self.destination)
+            destination = getattr(self,'destination',getattr(self,'sql_destination'))
+            if destination is not None:
+                dest_str = repr(destination)
             elif self.dest_hash:
                 dest_str = "to {}".format(self.dest_hash)
             else: dest_str = "local"
         except:
             try:
                 if self.dest_hash:
-                    dest_str = "to {}".format(dest_hash)
+                    dest_str = "to {}".format(self.dest_hash)
                 else: dest_str = "local"
             except:
                 # This typically happens if our dest_hash attribute is expired and we cannot refresh it.
