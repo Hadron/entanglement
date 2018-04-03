@@ -575,6 +575,7 @@ class SqlSynchronizable(interface.Synchronizable):
         obj.sync_owner = owner
         if session:
             assert owner is not None
+            assert obj.sync_owner is owner
             session.add(obj)
         return obj
 
