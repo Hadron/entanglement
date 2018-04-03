@@ -27,8 +27,11 @@ def test_layout(layout):
         layout.client.session.add(t)
         layout.client.session.commit()
         settle_loop(layout.server.manager.loop)
+        t2 = layout.server.session.query(Foo).get(t.id)
+        assert t2.sync_serial == t.sync_serial
+
         
         
 
 #logging.basicConfig(level = 10)
-#logging.getLogger('entanglement.protocol').setLevel(10)
+logging.getLogger('entanglement.protocol').setLevel(10)

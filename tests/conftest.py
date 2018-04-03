@@ -42,7 +42,27 @@ def requested_layout():
             },
         }
 
-class LayoutContext: pass
+class LayoutContext:
+
+    def disconnect_all(self):
+        for le in self.layout_entries:
+            for d in le.manager.destinations:
+                le.manager.remove_destination(d)
+        settle_loop(self.loop)
+
+    def connect_all(self, settle = True):
+        for le in self.layout_entries:
+            for d in le.destinations:
+                le.manager.add_destination(d)
+        if settle: self.wait_connecting()
+
+    def wait_connecting(self):
+        connecting = []
+        for e in self.layout_entries:
+            connecting.extend(e.manager._connecting.values())
+        asyncio.get_event_loop().run_until_complete(asyncio.wait(connecting, timeout = 1.0))
+        settle_loop(asyncio.get_event_loop())
+
 
 def setup_manager(name, le, registries):
     "Given a layout entry, return a layout context"
@@ -66,14 +86,14 @@ def setup_manager(name, le, registries):
     for r in registries:
         if isinstance(r, type) and \
            issubclass(r, SqlSynchronizable): # it's a declarative sync base
-            r.registry.sessionmaker.configure(bind = ctx.engine)
             r.registry.create_bookkeeping(ctx.engine)
             r.metadata.create_all(ctx.engine)
             r = r.registry
         r_new = type(r)()
         r_new.registry = r.registry
-
-        ctx.registries.append(r)
+        if hasattr(r_new, 'sessionmaker'):
+            r_new.sessionmaker.configure(bind = ctx.engine)
+        ctx.registries.append(r_new)
 
     ctx.manager = cls(cafile = pki_dir+"/ca.pem",
                       key = ctx.key,
@@ -84,6 +104,7 @@ def setup_manager(name, le, registries):
                       )
     ctx.connections = le.get('connections', [])
     ctx.session.manager = ctx.manager
+    ctx.destinations = []
     return ctx
 
 
@@ -93,16 +114,18 @@ def connect_layout(layout):
             assert connect_to in layout
             connect_to = layout[connect_to] # get the object not just the name
             d_out = SqlSyncDestination(certhash_from_file(connect_to.cert),
-                                    connect_to.name,
+                                    "to_"+connect_to.name,
                                     host = "127.0.0.1" if connect_to.server else None,
                                     server_hostname = connect_to.name)
             le.manager.add_destination(d_out)
+            le.destinations.append(d_out)
             setattr(le, "to_"+connect_to.name, d_out)
             d_in = SqlSyncDestination(certhash_from_file(le.cert),
-                                   le.name,
+                                   "from_"+le.name,
                                    host = "127.0.0.1" if le.server else None,
                                    server_hostname = le.name)
             connect_to.manager.add_destination(d_in)
+            connect_to.destinations.append(d_in)
             setattr(connect_to, 'to_'+le.name, d_in)
             setattr(le, 'from_'+connect_to.name, d_in)
             setattr(connect_to, "from_"+le.name, d_out)
@@ -113,18 +136,13 @@ def layout(registries, requested_layout):
     for name, layout_entry in requested_layout.items():
         layout_dict[name] = setup_manager(name, layout_entry, registries)
     connect_layout(layout_dict)
-    connecting = []
-    for e in layout_dict.values():
-        connecting.extend(e.manager._connecting.values())
-    asyncio.get_event_loop().run_until_complete(asyncio.wait(connecting, timeout = 1.0))
-    settle_loop(asyncio.get_event_loop())
+    layout_dict['layout_entries'] = tuple(layout_dict.values())
     layout = LayoutContext()
     layout.__dict__ = layout_dict
-    layout.as_dict = layout.__dict__
+    layout.wait_connecting()
    
     yield layout
-    for e in layout_dict.values():
-        if isinstance(e, dict): continue
+    for e in layout.layout_entries:
         e.session.close()
         e.manager.close()
     layout_dict.clear()
