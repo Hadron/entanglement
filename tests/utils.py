@@ -43,9 +43,6 @@ class SqlFixture(unittest.TestCase):
     def setUp(self):
         if not hasattr(self, 'other_registries'):
             self.other_registries = []
-        sql.internal.you_have_timeout = 0 #Send YouHave serial number updates immediately for testing
-        warnings.filterwarnings('ignore', module = 'asyncio.sslproto')
-        warnings.filterwarnings('ignore', module = 'asyncio.selector_events')
         self.e1 = create_engine('sqlite:///:memory:', echo = False)
         self.e2 = create_engine('sqlite:///:memory:', echo = False)
         Session = sync_session_maker()
@@ -80,7 +77,6 @@ class SqlFixture(unittest.TestCase):
                            'handle_i_have', 4):
             self.manager.run_until_complete(asyncio.wait(self.manager._connecting.values(), timeout = 1.0))
 
-        sql.internal.sql_meta_messages.yield_between_classes = False
 
 
     def tearDown(self):
