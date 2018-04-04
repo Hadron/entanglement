@@ -147,9 +147,9 @@ class no_sync_property:
 
     Examples:
 
-    class Model(base):A
+    class Model(base):
         id = Column(GUID, primary_key = True) # Would be a sync_property
-        local_state no_sync_property(Column(String,)) # Not synchronized
+        local_state = no_sync_property(Column(String,)) # Not synchronized
 
     or:
     class Polygon(Synchronizable):
