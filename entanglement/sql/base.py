@@ -505,7 +505,7 @@ class SyncDeleted( _internal_base):
     # sync queue.  Since IHave processes deletes before other objects,
     # the resurrection will take priority.
     for meth in ('to_sync', 'sync_should_send', 'sync_primary_keys',
-                 'sync_hash', 'sync_compatible'):
+                 'sync_hash', 'sync_compatible', 'sync_priority'):
         locals()[meth] = proxyfn(meth)
     del proxyfn
 
@@ -545,6 +545,7 @@ class SqlSynchronizable(interface.Synchronizable):
                                                                          primaryjoin = SyncOwner.id == self.__table__.c.sync_owner_id, lazy = 'joined')
         return sqlalchemy.orm.relationship(SyncOwner, foreign_keys = [self.sync_owner_id], lazy = 'joined')
 
+    sync_priority = _internal.SyncPriorityProperty()
 
 
     @classmethod

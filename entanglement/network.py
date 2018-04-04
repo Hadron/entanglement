@@ -83,7 +83,7 @@ class SyncManager:
                     attributes_to_sync = None,
                     response = False,
                     response_for = None,
-                    priority = 100):
+                    priority = None):
         '''The primary interface for synchronizing an object.  Destinations
         must be destinations in self.destinations; exclude is a set of
         destinations to exclude.  If attributes is set only these
@@ -105,6 +105,7 @@ class SyncManager:
             
         if isinstance(obj, interface.Synchronizable) and (obj.sync_receive.__func__ is not interface.Synchronizable.sync_receive.__func__):
             raise SyntaxError('Must not override sync_receive in {}'.format(obj.__class__.__name__))
+        if priority is None: priority = obj.sync_priority
         if destinations is None:
             destinations = filter(lambda  x: x.dest_hash in self._connections,
                                   self.destinations)

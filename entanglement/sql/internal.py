@@ -393,5 +393,18 @@ def trigger_you_haves(manager, serial):
                 c.dest.send_you_have.add(o)
                 schedule_you_have(c.dest, manager)
 
-
+class SyncPriorityProperty:
+    "memoize topological sort of  a given metadata's tables"
+    def __get__(self, instance, cls):
+        try: return cls.metadata.sync_metadata_priorities[cls.__table__]
+        except (AttributeError, LookupError): pass
+        assert issubclass(cls, base.SqlSynchronizable)
+        order = 100
+        priorities = {}
+        for t in cls.metadata.sorted_tables:
+            priorities[t] = order
+            if t.foreign_keys: order += 1
+        cls.metadata.sync_metadata_priorities = priorities
+        return priorities[cls.__table__]
+    
 from . import base

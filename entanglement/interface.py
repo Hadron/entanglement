@@ -317,6 +317,9 @@ class Synchronizable( metaclass = SynchronizableMeta):
     sync_type = _Sync_type()
     del _Sync_type
 
+    sync_priority = 100 # Lower numbers are sent first
+    
+
 Unique = "Unique" #Constant indicating that a synchronizable is not combinable with any other instance
 class NotPresent:
 
