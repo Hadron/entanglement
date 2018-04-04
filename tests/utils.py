@@ -172,6 +172,22 @@ def transitions_partitioned():
 def random_port():
     return random.randrange(10000,60000)
 
+class FloodableSyncOwner:
+    "A syncowner class that will allow objects to flood even if they are not sql objects; simply set the owner to this in sync_constructed"
+
+    destination = None
+    @property
+    def dest_hash(self):
+        if self.destination is not None:
+            return self.destination.dest_hash
+        return None
+    def sync_encode_value(self):
+        return "flood"
+    
+    
+
 test_port = random_port()
-__all__ = "wait_for_call SqlFixture sql_fixture server_session manager_session settle_loop transitions_tracked_as transitions_partitioned test_port".split(' ')
+__all__ = "FloodableSyncOwner wait_for_call SqlFixture sql_fixture server_session manager_session settle_loop transitions_tracked_as transitions_partitioned test_port".split(' ')
+
+
 
