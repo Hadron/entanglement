@@ -17,7 +17,7 @@ class Foo(Base):
     id = Column(Integer, primary_key = True)
     x = Column(Integer, nullable = False)
 
-@pytest.fixture
+@pytest.fixture(scope = 'module')
 def registries():
         return [Base]
 

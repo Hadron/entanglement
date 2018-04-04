@@ -6,7 +6,7 @@
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the file
 # LICENSE for details.
 
-import asyncio, gc, unittest, random, warnings, weakref
+import asyncio, copy, gc, unittest, random, warnings, weakref
 from sqlalchemy import create_engine
 from entanglement import SyncManager, SyncServer, certhash_from_file, interface
 import entanglement.sql as sql
@@ -17,7 +17,7 @@ from entanglement import pki
 import pytest
 from .utils import test_port, settle_loop
 
-@pytest.fixture
+@pytest.fixture(scope = 'module')
 def registries():
     "Return the set of entanglement registries to use"
     return []
@@ -30,7 +30,7 @@ def entanglement_basic_config():
     sql.internal.sql_meta_messages.yield_between_classes = False
 
 
-@pytest.fixture
+@pytest.fixture(scope = 'module')
 def requested_layout():
     return {
         'server': {
@@ -53,6 +53,7 @@ class LayoutContext:
     def connect_all(self, settle = True):
         for le in self.layout_entries:
             for d in le.destinations:
+                d.connect_at = 0
                 le.manager.add_destination(d)
         if settle: self.wait_connecting()
 
@@ -91,6 +92,7 @@ def setup_manager(name, le, registries):
             r = r.registry
         r_new = type(r)()
         r_new.registry = r.registry
+        r_new.operations = r.operations
         if hasattr(r_new, 'sessionmaker'):
             r_new.sessionmaker.configure(bind = ctx.engine)
         ctx.registries.append(r_new)
@@ -130,8 +132,8 @@ def connect_layout(layout):
             setattr(le, 'from_'+connect_to.name, d_in)
             setattr(connect_to, "from_"+le.name, d_out)
             
-@pytest.fixture
-def layout(registries, requested_layout):
+
+def layout_fn(registries, requested_layout):
     layout_dict = {}
     for name, layout_entry in requested_layout.items():
         layout_dict[name] = setup_manager(name, layout_entry, registries)
@@ -141,6 +143,7 @@ def layout(registries, requested_layout):
     layout.__dict__ = layout_dict
     layout.wait_connecting()
    
+    layout.loop = asyncio.get_event_loop()
     yield layout
     for e in layout.layout_entries:
         e.session.close()
@@ -150,3 +153,10 @@ def layout(registries, requested_layout):
     
 
 pki_dir = "."
+
+@pytest.fixture(scope = 'module')
+def layout(registries, requested_layout):
+    yield from layout_fn(registries = registries, requested_layout = requested_layout)
+@pytest.fixture(scope = 'module')
+def layout_module(registries, requested_layout):
+    yield from layout_fn(registries = registries, requested_layout = requested_layout)
