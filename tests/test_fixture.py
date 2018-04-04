@@ -34,4 +34,4 @@ def test_layout(layout):
         
 
 #logging.basicConfig(level = 10)
-logging.getLogger('entanglement.protocol').setLevel(10)
+#logging.getLogger('entanglement.protocol').setLevel(10)
