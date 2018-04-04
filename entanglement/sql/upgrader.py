@@ -20,7 +20,7 @@ Upgrade the database to the latest version.  If version_table is present in the 
 '''
     conf = config.Config()
     conf.set_main_option('script_location', script_location)
-    conf.set_main_option('sqlalchemy.url', str(engine.url))
+    conf.engine = engine
     reflection_meta = MetaData(bind = engine) # Used to check for table presence
     try:
         Table(version_table, reflection_meta, autoload = True)
