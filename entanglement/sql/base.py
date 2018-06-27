@@ -445,6 +445,11 @@ class  SqlSyncDestination(_internal_base, network.SyncDestination):
         q = session.query(SyncOwner).filter_by(dest_hash=self.dest_hash)
         for o in q:
             o.clear_all_objects(manager=manager, registries=registries, session=session)
+            if manager:
+                dest = manager.dest_by_hash(o.dest_hash)
+                if dest: exclude = [dest]
+                else: exclude = []
+                manager.synchronize(o, operation='delete',  exclude = exclude)
             session.delete(o)
             session.flush()
 
