@@ -62,7 +62,7 @@ class LayoutContext:
         for e in self.layout_entries:
             connecting.extend(e.manager._connecting.values())
         asyncio.get_event_loop().run_until_complete(asyncio.wait(connecting, timeout = 1.0))
-        settle_loop(asyncio.get_event_loop())
+        settle_loop(asyncio.get_event_loop(), timeout = 1.0)
 
 
 def setup_manager(name, le, registries):
