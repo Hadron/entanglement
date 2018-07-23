@@ -1,3 +1,10 @@
+hadron-entanglement (0.10.4) unstable; urgency=medium
+
+  * Engine passed directly into upgrader
+  * Fix clear_all_objects
+
+ -- Sam Hartman <hartmans@debian.org>  Mon, 23 Jul 2018 16:02:35 -0400
+
 hadron-entanglement (0.10.3) unstable-aces-proposed; urgency=medium
 
   * Decrease probability of race in test
