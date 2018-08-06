@@ -1,3 +1,9 @@
+hadron-entanglement (0.10.5) unstable-aces-proposed; urgency=medium
+
+  * Target unstable-aces-proposed
+
+ -- Sam Hartman <hartmans@debian.org>  Mon, 06 Aug 2018 17:52:27 -0400
+
 hadron-entanglement (0.10.4) unstable; urgency=medium
 
   * Engine passed directly into upgrader
