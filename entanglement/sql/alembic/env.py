@@ -71,6 +71,8 @@ def run_migrations_online():
         context.configure(
             connection=connection,
             target_metadata=target_metadata,
+            compare_types = True,
+            render_as_batch = True,
             version_table = 'entanglement_version'
         )
 
