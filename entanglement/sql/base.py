@@ -473,12 +473,12 @@ class SyncDeleted( _internal_base):
     id = Column( Integer, primary_key = True)
     sync_type = Column( String(128), nullable = False)
     primary_key = Column( TEXT, nullable = False)
-    sync_owner_id = Column(GUID, ForeignKey('sync_owners.id'),
+    sync_owner_id = Column(GUID, ForeignKey('sync_owners.id', ondelete = 'cascade'),
                            nullable = True)
     sync_serial = Column(Integer, nullable = False)
     _table_args = (Index("sync_deleted_serial_idx", sync_owner_id, sync_serial))
 
-    sync_owner = sqlalchemy.orm.relationship('SyncOwner')
+    sync_owner = sqlalchemy.orm.relationship('SyncOwner', passive_deletes = 'all')
 
     @property
     def _obj(self):
@@ -548,7 +548,7 @@ class SqlSynchronizable(interface.Synchronizable):
         if hasattr(self, '__table__') and not 'sync_owner_id' in self.__table__.columns: return
         if hasattr(self,'__table__'): return sqlalchemy.orm.relationship(SyncOwner, foreign_keys = [self.__table__.c.sync_owner_id],
                                                                          primaryjoin = SyncOwner.id == self.__table__.c.sync_owner_id, lazy = 'joined')
-        return sqlalchemy.orm.relationship(SyncOwner, foreign_keys = [self.sync_owner_id], lazy = 'joined')
+        return sqlalchemy.orm.relationship(SyncOwner, foreign_keys = [self.sync_owner_id], lazy = 'joined', passive_deletes = True)
 
     sync_priority = _internal.SyncPriorityProperty()
 
@@ -606,11 +606,13 @@ class SyncOwner(_internal_base, SqlSynchronizable, metaclass = SqlSyncMeta):
     sql_destination = sqlalchemy.orm.relationship(SqlSyncDestination,
                                               primaryjoin = (dest_hash == SqlSyncDestination.dest_hash),
                                               innerjoin = True,
+                                                  passive_deletes = 'all',
                                               uselist = False,
                                               foreign_keys = [dest_hash],
                                               remote_side = [SqlSyncDestination.dest_hash],
 backref = sqlalchemy.orm.backref('owners',
                                  lazy = 'joined',
+                                 passive_deletes = 'all',
                                  uselist = True),
     )
     dest_hash = interface.no_sync_property(dest_hash)
@@ -713,8 +715,13 @@ class SqlSyncError(interface.SyncError): pass
 
 def sql_sync_declarative_base(*args, registry = None,
                               registry_class = SqlSyncRegistry,
+                              cls = None,
                               **kwargs):
-    base =  sqlalchemy.ext.declarative.declarative_base(cls = SqlSynchronizable, metaclass = SqlSyncMeta, *args, **kwargs)
+    if cls:
+        class DeclarativeBase(SqlSynchronizable, cls): pass
+        cls = DeclarativeBase
+    else: cls = SqlSynchronizable
+    base =  sqlalchemy.ext.declarative.declarative_base(cls = cls, metaclass = SqlSyncMeta, *args, **kwargs)
     base.registry = registry or registry_class()
     return base
 
