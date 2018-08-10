@@ -381,6 +381,14 @@ class SyncRegistry:
         except KeyError:
             raise SyncInvalidOperation("{} is not supported by this registry".format(operation)) from None
 
+    def get_syncable(self, tag, default = 'raise'):
+        res = self.registry.get(tag, None)
+        if res is None:
+            if default == 'raise':
+                raise KeyError('{} is not registered with this registry.'.format(tag))
+            return default
+        return res
+    
     def should_listen(self, msg, cls, **info):
         "Authorization check as well as a check on whether we want to ignore the class for some reason"
         return True
