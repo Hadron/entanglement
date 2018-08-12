@@ -68,7 +68,7 @@ class JsTest(threading.Thread):
         try:
             output = subprocess.check_output(['nodejs', self.testname,
                                                    self.uri, self.owner],
-                                                  timeout = 0.7,
+                                                  timeout = 1.0,
                                                   cwd = os.path.dirname(self.testname))
             self.future.set_result(output)
         except subprocess.CalledProcessError:
