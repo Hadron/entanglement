@@ -726,8 +726,8 @@ def sql_sync_declarative_base(*args, registry = None,
     return base
 
 migration_naming_convention = {
-    "fk":
-    "%(table_name)s_%(column_0_name)s_fkey",
+    'fk' : '%(table_name)s_%(column_0_name)s_fkey',
+    'ix' : 'ix_%(column_0_label)s'
 }
 
 def sync_manager_destinations(manager, session = None,
