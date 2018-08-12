@@ -1,3 +1,16 @@
+hadron-entanglement (0.10.6) unstable-aces-proposed; urgency=medium
+
+  [ Sam Hartman ]
+  * Add get_syncable method
+  * Update render options
+  * Update relationships
+  * Expose migration_naming_convention
+
+  [ Klee Dienes ]
+  * Increase timeout to avoid failure on mini-buildd
+
+ -- Klee Dienes <kdienes@zotac.dienesfamily.org>  Sat, 11 Aug 2018 21:50:41 -0400
+
 hadron-entanglement (0.10.5) unstable-aces-proposed; urgency=medium
 
   * Target unstable-aces-proposed
