@@ -1,3 +1,10 @@
+hadron-entanglement (0.10.7) unstable-aces-proposed; urgency=medium
+
+  [ Klee Dienes ]
+  * Without value for 'ix' create_all fails.
+
+ -- Jeff LeBlanc <jeff.leblanc@hadronindustries.com>  Mon, 13 Aug 2018 21:22:28 +0000
+
 hadron-entanglement (0.10.6) unstable-aces-proposed; urgency=medium
 
   [ Sam Hartman ]
