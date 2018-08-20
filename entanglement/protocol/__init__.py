@@ -355,6 +355,7 @@ class SyncProtocol(SyncProtocolBase, asyncio.Protocol):
 
     def close(self):
         if not (getattr(self, 'loop', None) and hasattr(self, 'transport')): return
+        if self.transport is None: return
         self.transport.close()
         self.connection_lost(None)
 
