@@ -163,9 +163,11 @@ class SyncManager:
                     logger.debug("Connecting to {hash} at {host}".format(
                         hash = dest.dest_hash,
                         host = dest.host))
+                    port = getattr(dest, 'port', None)
+                    if port is None: port = self.port
                     transport, bwprotocol = await \
                                           loop.create_connection(self._protocol_factory_client(dest),
-                                                                 port = self.port, ssl = self._ssl,
+                                                                 port = port, ssl = self._ssl,
                                                                  host = dest.host,
                                                                  server_hostname = dest.server_hostname)
                     logger.debug("Transport connection to {dest} made".format(dest = dest))
