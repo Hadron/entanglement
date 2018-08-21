@@ -116,16 +116,18 @@ def connect_layout(layout):
             assert connect_to in layout
             connect_to = layout[connect_to] # get the object not just the name
             d_out = SqlSyncDestination(certhash_from_file(connect_to.cert),
-                                    "to_"+connect_to.name,
+                                    "{}->{}".format(connect_to.name, le.name),
                                     host = "127.0.0.1" if connect_to.server else None,
                                     server_hostname = connect_to.name)
+            d_out.port = connect_to.port
             le.manager.add_destination(d_out)
             le.destinations.append(d_out)
             setattr(le, "to_"+connect_to.name, d_out)
             d_in = SqlSyncDestination(certhash_from_file(le.cert),
-                                   "from_"+le.name,
+                                      "{}<-{}".format(connect_to.name, le.name),
                                    host = "127.0.0.1" if le.server else None,
                                    server_hostname = le.name)
+            d_in.port = le.port
             connect_to.manager.add_destination(d_in)
             connect_to.destinations.append(d_in)
             setattr(connect_to, 'to_'+le.name, d_in)

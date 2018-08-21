@@ -18,8 +18,10 @@ from sqlalchemy.orm import relationship, Session
 from sqlalchemy import Column, Integer, ForeignKey, inspect
 from entanglement.sql import sql_sync_declarative_base, SyncOwner
 from entanglement.util import GUID
+from copy import deepcopy
 from entanglement import SyncRegistry, Synchronizable, sync_property, operations
 from .utils import *
+from .conftest import layout_fn
 
 Base = sql_sync_declarative_base()
 
@@ -170,6 +172,26 @@ def test_priority_over_wire(layout, monkeypatch):
     assert len(layout.server.manager.connections) == 2
     settle_loop(layout.loop)
     assert future.result() == o2.id
-    
-    
+
+def test_delete_flooding_stops(registries, requested_layout, monkeypatch):
+
+    r_layout = deepcopy(requested_layout)
+    del r_layout['client2']
+    r_layout['server2'] = {
+        'server': True,
+        'port_offset': 1,
+        'connections': ['server']}
+    r_layout['client']['connections'].append('server2')
+    layout_gen = layout_fn(requested_layout = r_layout, registries = registries)
+    try:
+        layout = next(layout_gen)
+        server = layout.server
+        t1 = T1(x2 = uuid.uuid4())
+        server.session.add(t1)
+        server.session.commit()
+        settle_loop(layout.loop)
+    finally:
+        layout_gen.close()
+        
 logging.getLogger('entanglement.protocol').setLevel(10)
+logging.basicConfig(level = 10)
