@@ -165,6 +165,18 @@ class SyncManager:
                         host = dest.host))
                     port = getattr(dest, 'port', None)
                     if port is None: port = self.port
+                    # There is a race if we get canceled while the
+                    # create_connection call is in SSL handshake
+                    # phase: we will leave the network connection open
+                    # but it will not be functional.  It would be
+                    # possible to work around this with
+                    # asyncio.shield, although Python > 3.5 may fix
+                    # this as well.  We avoid the race by sleeping in
+                    # _incoming_connection before replacing a
+                    # connection in one direction.  That sleep is
+                    # needed anyway for tests, and the race seems very
+                    # unlikely so we accept it until it becomes a
+                    # problem.
                     transport, bwprotocol = await \
                                           loop.create_connection(self._protocol_factory_client(dest),
                                                                  port = port, ssl = self._ssl,
@@ -233,6 +245,15 @@ class SyncManager:
             logger.warning("Replacing existing connection to {}".format(dest))
             self._connections[dest.dest_hash].close()
         if dest.dest_hash in self._connecting:
+            if hash(dest.dest_hash) >hash(self.cert_hash):
+                # Wait a tenth of a second to break mutual open race
+                logger.debug("Waiting briefly before replacing connection in progress to {}".format(dest))
+                await asyncio.sleep(0.1)
+                try:
+                    if protocol.transport.is_closing(): return
+                except AttributeError: return
+                
+                    
             logger.info("Replacing existing connection in progress to {}".format(dest))
             old = self._connecting[dest.dest_hash]
         try:

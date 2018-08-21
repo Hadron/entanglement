@@ -8,11 +8,11 @@
 
 import sys, os.path
 sys.path = list(filter(lambda p: p != os.path.abspath(os.path.dirname(__file__)), sys.path))
-import asyncio, copy, datetime, gc, json, logging, ssl, unittest, uuid, warnings
+import asyncio, copy, datetime, gc, json, logging, pytest, ssl, unittest, uuid, warnings
 from contextlib import contextmanager
 from unittest import mock
 
-from entanglement.interface import Synchronizable, sync_property, SyncRegistry, SyncUnauthorized, SyncError
+from entanglement.interface import Synchronizable, sync_property, SyncRegistry, SyncUnauthorized, SyncError, SyncBadOwner
 from entanglement.network import  SyncServer,  SyncManager
 from entanglement.util import certhash_from_file, DestHash, SqlDestHash, get_or_create, entanglement_logs_disabled, GUID
 from sqlalchemy import create_engine, Column, Integer, inspect, String, ForeignKey
@@ -23,6 +23,9 @@ from tests.utils import *
 import entanglement.protocol, entanglement.operations
 from entanglement.sql.transition import SqlTransitionTrackerMixin
 from entanglement.transition import BrokenTransition
+from .conftest import layout_fn
+
+from copy import deepcopy
 
 # SQL declaration
 Base = sql_sync_declarative_base()
@@ -630,6 +633,34 @@ class TestGateway(SqlFixture, unittest.TestCase):
                 manager_session.delete(t2)
                 manager_session.sync_commit()
                 self.loop.run_until_complete(asyncio.wait([t2.sync_future], timeout = 0.5))
+
+@pytest.fixture(scope = 'module')
+def registries ():
+    return [Base]
+
+def test_two_servers(registries, requested_layout, monkeypatch):
+
+    r_layout = deepcopy(requested_layout)
+    r_layout['server2'] = {
+        'server': True,
+        'port_offset': 1,
+        'connections': ['server']}
+    r_layout['client']['connections'].append('server2')
+    layout_gen = layout_fn(requested_layout = r_layout, registries = registries)
+    def receive_error(self, msg, **info):
+        nonlocal bad_owner_count
+        bad_owner_count += 1
+    bad_owner_count = 0
+    monkeypatch.setattr(SyncBadOwner, 'sync_receive_constructed', receive_error)
+    
+        
+    try:
+        layout = next(layout_gen)
+        server = layout.server
+        settle_loop(layout.loop)
+    finally:
+        layout_gen.close()
+        assert bad_owner_count == 3
 
 
 
