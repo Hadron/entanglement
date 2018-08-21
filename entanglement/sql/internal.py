@@ -58,6 +58,7 @@ class _SqlMetaRegistry(SyncRegistry):
             elif isinstance(obj, WrongEpoch):
                 self.handle_wrong_epoch(obj, sender, manager)
             elif isinstance(obj, MyOwners):
+                sender.my_owners = obj.owners
                 manager.loop.create_task(self.handle_my_owners(obj, manager, sender))
             else: raise ValueError("Unexpected message")
         finally:
@@ -78,6 +79,8 @@ class _SqlMetaRegistry(SyncRegistry):
         assert obj in session
         session.commit()
         session.refresh(obj)
+        try: sender.my_owners.append(obj.id)
+        except AttributeError: pass
         i_have = IHave()
         i_have.serial = obj.incoming_serial
         i_have.epoch = obj.incoming_epoch
@@ -199,6 +202,8 @@ class _SqlMetaRegistry(SyncRegistry):
             raise SyncUnauthorized("{} is not one of {}'s owners".format(
                 first_owner, sender))
         old_owners = session.query(base.SyncOwner).filter(base.SyncOwner.dest_hash == sender.dest_hash, base.SyncOwner.id.notin_(obj.owners))
+        try: del sender.my_owners
+        except AttributeError: pass
         for o in old_owners:
             o.clear_all_objects(manager = manager, session = session)
             manager.synchronize(o, operation = 'delete', exclude = [sender])
