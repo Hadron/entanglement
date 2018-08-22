@@ -698,7 +698,7 @@ def test_clear_owners(layout_two_servers):
         o.id = uuid.uuid4()
         session.add(o)
     session.commit()
-    settle_loop(layout.loop)
+    settle_loop(layout.loop, timeout = 1.1)
     server = layout.server
     so = server.session.query(SyncOwner).filter_by(
         dest_hash = client.manager.cert_hash).all()
