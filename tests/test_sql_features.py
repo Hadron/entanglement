@@ -111,7 +111,8 @@ def order_natural(monkeypatch):
     order_100,
     order_explicit,
     order_natural])
-def test_foreign_key_sync(layout, order_fn, monkeypatch):
+def test_foreign_key_sync(layout_module, order_fn, monkeypatch):
+    layout = layout_module
     order_fn(monkeypatch)
     for le in layout.layout_entries:
         le.engine.execute('pragma foreign_keys = on')
@@ -148,8 +149,9 @@ def test_foreign_key_sync(layout, order_fn, monkeypatch):
 
 
 @pytest.mark.xfail(reason = "priorities over wire not implemented yet")
-def test_priority_over_wire(layout, monkeypatch):
+def test_priority_over_wire(layout_module, monkeypatch):
     "Confirm that non-standard priorities are sent over the wire"
+    layout = layout_module
     def should_listen_wrap(obj, msg, **info):
         if isinstance(obj, SyncOrder) and not future.done():
             future.set_result(msg['id'])

@@ -689,6 +689,27 @@ def test_delete_flooding_stops(layout_two_servers, monkeypatch):
     assert flood_deletes == 2
 
 
+def test_clear_owners(layout_two_servers):
+    layout = layout_two_servers
+    client = layout.client
+    session = client.session
+    for i in range(4):
+        o = SyncOwner()
+        o.id = uuid.uuid4()
+        session.add(o)
+    session.commit()
+    settle_loop(layout.loop)
+    server = layout.server
+    so = server.session.query(SyncOwner).filter_by(
+        dest_hash = client.manager.cert_hash).all()
+    assert len(so) == 5
+    server.to_client.clear_all_objects(manager = server.manager)
+    server.session.rollback()
+    so = server.session.query(SyncOwner).filter_by(
+        dest_hash = client.manager.cert_hash).all()
+    assert len(so) == 0
+    
+    
 
 #logging.getLogger('entanglement.protocol').setLevel(10)
 if __name__ == '__main__':

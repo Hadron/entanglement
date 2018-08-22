@@ -156,7 +156,8 @@ def layout_fn(registries, requested_layout):
 
 pki_dir = "."
 
-@pytest.fixture(scope = 'module')
+
+@pytest.fixture()
 def layout(registries, requested_layout):
     yield from layout_fn(registries = registries, requested_layout = requested_layout)
 @pytest.fixture(scope = 'module')

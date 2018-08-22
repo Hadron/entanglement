@@ -443,7 +443,7 @@ class  SqlSyncDestination(_internal_base, network.SyncDestination):
             logger.info("Deleting all objects from {}".format(self))
             session.rollback()
         q = session.query(SyncOwner).filter_by(dest_hash=self.dest_hash)
-        for o in q:
+        for o in list(q.all()):
             o.clear_all_objects(manager=manager, registries=registries, session=session)
             if manager:
                 dest = manager.dest_by_hash(o.dest_hash)
@@ -451,7 +451,7 @@ class  SqlSyncDestination(_internal_base, network.SyncDestination):
                 else: exclude = []
                 manager.synchronize(o, operation='delete',  exclude = exclude)
             session.delete(o)
-            session.flush()
+            session.commit()
 
     async def connected(self, manager, *args, **kwargs):
         self.you_have_task = None
