@@ -140,7 +140,7 @@ class SqlSyncSession(sqlalchemy.orm.Session):
         is non-local, send a 'forward' object toward the destination
         of the object owner, requesting that they update the object.
         Deleted objects cause a 'delete' operation.  If they are
-        local, the delete is sent to all destinatinos, otherwise it is
+        local, the delete is sent to all destinations, otherwise it is
         a request to the owner.  If 'update_responses' is True, then
         non-local objects have a 'sync_future' set on them.  This
         future will receive either an error or the updated object when
@@ -338,7 +338,7 @@ class SqlSyncRegistry(interface.SyncRegistry):
     def incoming_delete( self, obj, context, manager, sender, **info):
         session = context.session
         ins = inspect(obj)
-        if not ins.persistent: return
+        if not ins.persistent: raise interface.SyncNotFound("Deleted an already deleted object")
         assert obj in session
         if obj.sync_is_local or obj.sync_owner.dest_hash == sender.dest_hash:
             session.delete(obj)

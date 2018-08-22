@@ -173,25 +173,6 @@ def test_priority_over_wire(layout, monkeypatch):
     settle_loop(layout.loop)
     assert future.result() == o2.id
 
-def test_delete_flooding_stops(registries, requested_layout, monkeypatch):
-
-    r_layout = deepcopy(requested_layout)
-    del r_layout['client2']
-    r_layout['server2'] = {
-        'server': True,
-        'port_offset': 1,
-        'connections': ['server']}
-    r_layout['client']['connections'].append('server2')
-    layout_gen = layout_fn(requested_layout = r_layout, registries = registries)
-    try:
-        layout = next(layout_gen)
-        server = layout.server
-        t1 = T1(x2 = uuid.uuid4())
-        server.session.add(t1)
-        server.session.commit()
-        settle_loop(layout.loop)
-    finally:
-        layout_gen.close()
         
 logging.getLogger('entanglement.protocol').setLevel(10)
 logging.basicConfig(level = 10)

@@ -638,32 +638,59 @@ class TestGateway(SqlFixture, unittest.TestCase):
 def registries ():
     return [Base]
 
-def test_two_servers(registries, requested_layout, monkeypatch):
-
+@pytest.fixture()
+def layout_two_servers(registries, requested_layout, monkeypatch):
     r_layout = deepcopy(requested_layout)
     r_layout['server2'] = {
         'server': True,
         'port_offset': 1,
         'connections': ['server']}
     r_layout['client']['connections'].append('server2')
-    layout_gen = layout_fn(requested_layout = r_layout, registries = registries)
+    errors = {}
     def receive_error(self, msg, **info):
-        nonlocal bad_owner_count
-        bad_owner_count += 1
+
+        errors.setdefault('bad_owner_count', 0)
+        errors['bad_owner_count'] += 1
     bad_owner_count = 0
     monkeypatch.setattr(SyncBadOwner, 'sync_receive_constructed', receive_error)
+    layout_gen = layout_fn(requested_layout = r_layout, registries = registries)
+    layout = next(layout_gen)
+    layout.errors = errors
+    yield layout
+    layout_gen.send(None)
+    
+    
+def test_two_servers( layout_two_servers, monkeypatch):
+    layout = layout_two_servers
     
         
-    try:
-        layout = next(layout_gen)
-        server = layout.server
-        settle_loop(layout.loop)
-    finally:
-        layout_gen.close()
-        assert bad_owner_count == 3
+    server = layout.server
+    settle_loop(layout.loop)
+    assert layout.errors['bad_owner_count'] == 3
+
+def test_delete_flooding_stops(layout_two_servers, monkeypatch):
+    layout = layout_two_servers
+    from entanglement.sql import SqlSyncRegistry
+    orig_flood_after_delete = SqlSyncRegistry.after_flood_delete
+    flood_deletes = 0
+    def after_flood_delete(*args, **kwargs):
+        nonlocal flood_deletes
+        flood_deletes += 1
+        return orig_flood_after_delete(*args, **kwargs)
+    monkeypatch.setattr(SqlSyncRegistry, 'after_flood_delete', after_flood_delete)
+    server = layout.server
+    ti = TableInherits(info = "Some Info")
+    server.session.add(ti)
+    server.session.commit()
+    settle_loop(layout.loop)
+    server.session.delete(ti)
+    server.session.commit()
+    settle_loop(layout.loop)
+    assert flood_deletes == 2
 
 
 
+#logging.getLogger('entanglement.protocol').setLevel(10)
 if __name__ == '__main__':
     import logging, unittest, unittest.main
 #    logging.basicConfig(level = 'ERROR')
