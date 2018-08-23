@@ -1,3 +1,14 @@
+hadron-entanglement (0.10.9) unstable-aces-proposed; urgency=medium
+
+  * Add support for forcing outgoing port
+  * Test: server to server connections
+  * Handle SyncOwners received while processing MyOwners
+  * Fix delete flooding loop
+  * Fix clear_all_objects
+
+
+ -- Sam Hartman <hartmans@debian.org>  Thu, 23 Aug 2018 10:23:46 -0400
+
 hadron-entanglement (0.10.8) unstable-aces-proposed; urgency=medium
 
   * Ignore exception on close with no transport
