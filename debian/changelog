@@ -1,3 +1,10 @@
+hadron-entanglement (0.10.10) unstable-aces-proposed; urgency=medium
+
+  * Enable reading after connected is called
+
+
+ -- Sam Hartman <hartmans@debian.org>  Fri, 24 Aug 2018 16:23:22 -0400
+
 hadron-entanglement (0.10.9) unstable-aces-proposed; urgency=medium
 
   * Add support for forcing outgoing port
