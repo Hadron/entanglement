@@ -236,10 +236,10 @@ class SyncManager:
             protocol.close()
             return
         protocol.dest = dest
-        protocol._enable_reading()
         if self.cert_hash == dest.dest_hash:
             logger.debug("Self connection to {}".format(dest.dest_hash))
             self.incoming_self_protocol = weakref.ref(protocol)
+            protocol._enable_reading()
             return
         if dest.dest_hash in self._connections:
             logger.warning("Replacing existing connection to {}".format(dest))
@@ -261,6 +261,7 @@ class SyncManager:
                                                         bwprotocol = protocol.bwprotocol))
             self._connecting[dest.dest_hash] = task
             if old: old.cancel()
+            protocol._enable_reading()
             await self._connecting[dest.dest_hash]
             self._connections[dest.dest_hash] = protocol
             logger.info("New incoming connection from {}".format(dest))
