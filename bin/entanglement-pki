@@ -22,12 +22,12 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--pki-dir', '-d', default = '/etc/photon/pki')
 parser.add_argument('--ca-name',
                     help = "If the CA does not yet exist create with this CN; can be used to create CA with no host cert.")
-
-
 parser.add_argument('hosts', nargs = '*')
 parser.add_argument('--subj',
                     default = "",
                     help = "Additional parts of Subject to be included with host certs such as an OU")
+parser.add_argument('--prefix',
+                    help = 'Prefix for resulting host cert; result is [prefix_]hostname.{key,pem}')
 
 parser.add_argument('--hash', nargs = '+')
 
@@ -41,4 +41,4 @@ if args.ca_name:
     gen_site_ca(args.pki_dir, args.ca_name)
     
 for h in args.hosts or []:
-    host_cert(args.pki_dir, h, adl_subj = args.subj)
+    host_cert(args.pki_dir, h, adl_subj = args.subj, prefix = args.prefix)
