@@ -26,8 +26,8 @@ def gen_site_ca(pki_dir, ca_name = "Root CA"):
                    '-extensions', 'v3_ca',
                    '-out', ca_pem)
 
-def host_cert(pki_dir, hostname, adl_subj, prefix = None):
-    if prefix is not None:
+def host_cert(pki_dir, hostname, adl_subj, prefix = ""):
+    if prefix != "":
         prefix = prefix+"_"
     ca_key = os.path.join(pki_dir, 'ca.key')
     ca_pem = os.path.join(pki_dir, 'ca.pem')
