@@ -1,4 +1,4 @@
-hadron-entanglement (0.11.1) UNRELEASED; urgency=medium
+hadron-entanglement (0.11.1) unstable-aces-proposed; urgency=medium
 
   * Fix host_cert errors out if passed prefix=None
 
