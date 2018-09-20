@@ -18,16 +18,21 @@ from entanglement import transition
 import pytest
 
 @contextmanager
-def wait_for_call(loop, obj, method, calls = 1):
+def wait_for_call(loop, obj, method, calls = 1, trap_exceptions = False):
     fut = loop.create_future()
     num_calls = 0
     def cb(*args, **kwargs):
         nonlocal num_calls
+        try: res =  wraps(*args, **kwargs)
+        except Exception as e:
+            if trap_exceptions: fut.set_exception(e)
+            raise
         if not fut.done():
             num_calls +=1
             if num_calls >= calls:
                 fut.set_result(True)
-        return wraps(*args, **kwargs)
+        return res
+                
     try:
         wraps = getattr(obj, method)
         with mock.patch.object(obj, method,

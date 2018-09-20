@@ -435,8 +435,9 @@ class  SqlSyncDestination(_internal_base, network.SyncDestination):
         self._on_connection_lost_cbs = []
 
     def clear_all_objects(self, manager=None, *, registries=None, session=None):
-        if manager:
+        if manager and session is None:
             session = manager.session
+        if manager:
             registries = manager.registries
             assert session and registries
             assert getattr(session, 'manager', None) is None
@@ -694,8 +695,9 @@ backref = sqlalchemy.orm.backref('owners',
 
     def clear_all_objects(self, manager = None,
                               *, registries = None, session = None):
-        if manager:
+        if manager and session is None:
             session = manager.session
+        if manager:
             registries = manager.registries
             assert session and registries
             assert getattr(session, 'manager', None) is None

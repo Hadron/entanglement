@@ -175,6 +175,21 @@ def test_priority_over_wire(layout_module, monkeypatch):
     settle_loop(layout.loop)
     assert future.result() == o2.id
 
+
+def test_delete_unknown_sync_owner(layout_module):
+    layout = layout_module
+    from entanglement.sql.internal import sql_meta_messages
+    so = SyncOwner()
+    so.id = uuid.uuid4()
+    o1 = T1()
+    o1.id = 39
+    o1.sync_owner = so
+    layout.client.session.add(o1)
+    layout.client.session.commit()
+    settle_loop(layout.loop)
+    so.sync_serial = 20
+    with wait_for_call(layout.loop, sql_meta_messages, 'incoming_delete', trap_exceptions = True):
+        layout.client.manager.synchronize(so, operation ='delete')
         
 logging.getLogger('entanglement.protocol').setLevel(10)
 logging.basicConfig(level = 10)
