@@ -84,14 +84,16 @@ class SyncManager:
                     response = False,
                     response_for = None,
                     priority = None):
-        '''The primary interface for synchronizing an object.  Destinations
-        must be destinations in self.destinations; exclude is a set of
-        destinations to exclude.  If attributes is set only these
-        attributes are included in outgoing messages.  If response is
-        True, returns a future that will receive the response from
-        this message.  Response may also be a future to associate with the object.  Response_for should be passed the response
-        object from the context when responding to a message in a
-        flood
+        '''The primary interface for synchronizing an object.
+
+        Destinations must be destinations in self.destinations;
+        exclude is a set of destinations to exclude.  If attributes is
+        set only these attributes are included in outgoing messages.
+        If response is True, returns a future that will receive the
+        response from this message.  Response may also be a future to
+        associate with the object.  Response_for should be passed the
+        response object from the context when responding to a message
+        in a flood
 
         '''
         future = None

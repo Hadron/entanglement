@@ -97,19 +97,23 @@ class SynchronizableMeta(type):
 class sync_property:
 
     '''Represents a property that can be synchronized.
-    Simplest usage:
+
+Simplest usage::
+
         color = sync_property()
 
-    Color will be read and written in the synchronization of the
-    object using its default JSON representation
+Color will be read and written in the synchronization of the
+object using its default JSON representation
 
-        manager =sync_property()
-        @manager.encoder
-        def manager(obj, propname):
-            return obj.manager_id
-        @manager.decoder
-            def manager(obj, propname, value):
-            return Manager.get_by_id(value)
+::
+
+    manager =sync_property()
+    @manager.encoder
+    def manager(obj, propname):
+        return obj.manager_id
+    @manager.decoder
+        def manager(obj, propname, value):
+        return Manager.get_by_id(value)
 
     '''
 
@@ -167,16 +171,16 @@ class no_sync_property:
 
 class Synchronizable( metaclass = SynchronizableMeta):
 
-    '''Represents a class that can be synchronized between two
-    Entanglement SyncManagers.  Objects are synchronized by calling
-    the synchronize method on a SyncManager.  Synchronizables have one
-    or more sync_properties.  The sync_properties are packaged up into
-    a serialized representation by the to_sync method and
-    reconstituted into an object by the sync_construct, sync_receive
-    and sync_receive_constructed methods.  Objects may have primary
-    keys set in the sync_primary_keys attribute.  Objects with the
-    same sync_primary_keys may be coalesced during transmission; only
-    the latest synchronized version will be sent.
+    '''Represents a class that can be synchronized
+
+A *Synchronizable* can be synchronized between two     Entanglement `SyncManager`\ s.  Objects are synchronized by calling
+the :meth:`entanglement.network.SyncManager.synchronize` method on a SyncManager.  Synchronizables have one
+or more sync_properties.  The `sync_properties <sync_property>` are packaged up into
+a serialized representation by the to_sync method and
+reconstituted into an object by the `sync_construct`, `sync_receive`
+and `sync_receive_constructed` methods.  Objects may have primary keys set in the `sync_primary_keys` attribute.  Objects with the
+same sync_primary_keys may be coalesced during transmission; only
+the latest synchronized version will be sent.
 
     '''
     
@@ -320,7 +324,8 @@ class Synchronizable( metaclass = SynchronizableMeta):
     sync_priority = 100 # Lower numbers are sent first
     
 
-Unique = "Unique" #Constant indicating that a synchronizable is not combinable with any other instance
+Unique = "Unique" #: Constant indicating that a synchronizable is not combinable with any other instance
+
 class NotPresent:
 
     def __repr__(self):
@@ -523,3 +528,10 @@ class SyncNotConnected(SyncError):
 
 from . import operations
 error_registry.register_operation('error', operations.error_operation)
+
+__all__ = '''Synchronizable
+SyncRegistry sync_property no_sync_property
+EphemeralUnflooded SyncUnauthorized WrongSyncDestination
+error_registry
+SynchronizableMeta
+'''.split()
