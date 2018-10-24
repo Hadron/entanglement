@@ -58,6 +58,7 @@ source_suffix = ['.rst', '.md']
 # The master toctree document.
 master_doc = 'index'
 
+autodoc_mock_imports = r'iso8601 OpenSSL'.split()
 # General information about the project.
 project = 'Entanglement'
 copyright = '2018, Hadron Industries'

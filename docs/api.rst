@@ -7,7 +7,7 @@ API Reference
 
 
 .. automodule:: entanglement.interface
-    :members:
+    :members: 
     :show-inheritance:
     :undoc-members:
 
