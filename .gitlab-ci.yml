@@ -57,5 +57,7 @@ pages:
         - public
     allow_failure: true
     stage: build
+    only:
+        - master
     
     
