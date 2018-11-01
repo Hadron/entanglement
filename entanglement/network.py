@@ -132,7 +132,7 @@ class SyncManager:
             if self.should_send( obj, destination = d, **info):
                 if d.dest_hash not in valid_dest_hashes:
                     raise SyncNotConnected(dest = d)
-                should_send_destinations.add( d)
+                should_send_destinations.add(d)
         for d in should_send_destinations:
             con = d.protocol
             con._synchronize_object(obj,
