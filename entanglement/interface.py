@@ -484,6 +484,13 @@ class SyncError(RuntimeError, Synchronizable):
         except AttributeError: pass
         return s
 
+    def __repr__(self):
+        s = super().__repr__()
+        if hasattr(self, 'cause'):
+            return 'SyncError({}, network_msg={}, cause={})'.format(s, self.network_msg, self.cause)
+        else:
+            return 'SyncError({}, network_msg={})'.format(s, self.network_msg)
+
     def to_sync(selff, **kwargs):
         d = super().to_sync(**kwargs)
         d['_sync_is_error'] = True
