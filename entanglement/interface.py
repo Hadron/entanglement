@@ -502,10 +502,10 @@ class UnregisteredSyncClass(SyncError): pass
 
 class WrongSyncDestination(SyncError):
 
-    def __init__(msg = None, *args, dest = None, got_hash = None,
+    def __init__(self, msg = None, *args, dest = None, got_hash = None,
                  **kwargs):
         if not msg and dest:
-            msg = "Incorrect certificate hash received from connection to {dest}".format(dest)
+            msg = "Incorrect certificate hash received from connection to {}".format(dest)
             if got_hash: msg = msg + " (got {got})".format(got = got_hash)
         super().__init__(msg, *args, **kwargs)
 
