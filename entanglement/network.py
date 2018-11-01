@@ -493,7 +493,7 @@ class SyncDestination:
         self._on_connection_lost_cbs = []
 
     def __repr__(self):
-        return "<SyncDestination {{name: '{name}', hash: {hash}}}".format(
+        return "<SyncDestination {{name: '{name}', hash: {hash}}}>".format(
             name = self.name,
             hash = self.dest_hash)
 
