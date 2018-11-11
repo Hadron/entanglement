@@ -17,7 +17,7 @@ setup(
     maintainer_email = "sam.hartman@hadronindustries.com",
     url = "http://www.hadronindustries.com/",
     setup_requires = ['pytest-runner'],
-    test_requires = ['pytest'],
+    tests_require = ['pytest'],
     packages = ["entanglement", "entanglement.sql",
                 'entanglement.protocol'],
     package_data = {
@@ -29,4 +29,3 @@ setup(
     test_suite = "tests",
     version = "0.9.3",
 )
-
