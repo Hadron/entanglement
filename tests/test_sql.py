@@ -141,8 +141,9 @@ class TestSql(SqlFixture, unittest.TestCase):
             session.commit()
             self.d1.connect_at = 0
             self.manager.run_until_complete(self.manager.add_destination(self.d1))
-        self.manager.loop.run_until_complete(asyncio.wait([x.sync_drain() for x in self.manager.connections + self.server.connections]))
-        with wait_for_call(self.loop, Base.registry, 'sync_receive'): pass
+        with wait_for_call(self.loop, Base.registry, 'sync_receive'):
+            self.manager.loop.run_until_complete(asyncio.wait([x.sync_drain() for x in self.manager.connections + self.server.connections]))
+            pass
         t2 = self.server.session.query(Table1).get(t1.id)
         assert t2 is not None
         assert t2.ch == t1.ch
