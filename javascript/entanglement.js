@@ -9,7 +9,13 @@ if (!('WebSocket' in this)) {
 }
 try {
     var uuid = require('node-uuid');
-} catch(err) {}
+} catch(err) {
+    try {
+        var uuid = require('uuid');
+    } catch(err) {
+    }
+}
+
 
 class SyncManager {
 
