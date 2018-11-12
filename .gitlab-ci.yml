@@ -25,6 +25,7 @@ upload_snapshot:
   tags:
     - debian
   only:
+    - kdienes-buster
     - master
     - /^debian/.*$/
 
@@ -59,5 +60,3 @@ pages:
     stage: build
     only:
         - master
-    
-    
