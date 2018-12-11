@@ -26,7 +26,8 @@ def gen_site_ca(pki_dir, ca_name = "Root CA"):
                    '-extensions', 'v3_ca',
                    '-out', ca_pem)
 
-def host_cert(pki_dir, hostname, adl_subj, prefix = ""):
+def host_cert(pki_dir, hostname, adl_subj, prefix = "", *,
+              force = False):
     if prefix != "":
         prefix = prefix+"_"
     ca_key = os.path.join(pki_dir, 'ca.key')
@@ -34,7 +35,7 @@ def host_cert(pki_dir, hostname, adl_subj, prefix = ""):
     gen_site_ca(pki_dir)
     hostfile = os.path.join(pki_dir, prefix+hostname)
     
-    if not (exists (hostfile + '.key') and exists(hostfile + '.pem')):
+    if force or (not (exists (hostfile + '.key') and exists(hostfile + '.pem'))):
         sh.openssl.genrsa('-out', '{}.key'.format(hostfile),
                           '2048')
         sh.openssl.x509(
