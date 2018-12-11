@@ -1,3 +1,10 @@
+hadron-entanglement (0.13) unstable-aces-proposed; urgency=medium
+
+  * Add --force for entanglement-pki
+  * Add attach_callbacks to SqlSyncDestination
+
+ -- Sam Hartman <hartmans@debian.org>  Mon, 10 Dec 2018 21:18:44 -0500
+
 hadron-entanglement (0.12) unstable-aces-proposed; urgency=medium
 
 
