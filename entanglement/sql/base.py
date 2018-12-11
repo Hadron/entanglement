@@ -415,12 +415,14 @@ class  SqlSyncDestination(_internal_base, network.SyncDestination):
         if isinstance(other,SqlSyncDestination):
             return other.dest_hash == self.dest_hash
         else: return super().__eq__(other)
+
     def __init__(self, *args, **kwargs):
         network.SyncDestination.__init__(self, *args, **kwargs)
         self.you_have_task = None
         self.i_have_task = None
         self.send_you_have = set()
         self.received_i_have = set()
+        self.attach_callbacks()
 
     @sqlalchemy.orm.reconstructor
     def reconstruct(self):
@@ -433,6 +435,16 @@ class  SqlSyncDestination(_internal_base, network.SyncDestination):
         self.received_i_have = set()
         self._on_connected_cbs = []
         self._on_connection_lost_cbs = []
+        self.attach_callbacks()
+
+    def attach_callbacks(self):
+        '''
+
+        This method is guaranteed to be called whenever a `SqlSyncDestination` is instantiated.  It is intended for subclasses to override and to attach any callbacks they wish to attach.  Note that overriding :meth:`__init__` is insufficient because SQLAlchemy mapped classes do not call __init__ when loading from the database.
+
+        '''
+        pass
+    
 
     def clear_all_objects(self, manager=None, *, registries=None, session=None):
         if manager and session is None:
