@@ -1,3 +1,9 @@
+hadron-entanglement (0.13.1) unstable-aces-proposed; urgency=medium
+
+  * Rebuild from right branch
+
+ -- Sam Hartman <hartmans@debian.org>  Mon, 10 Dec 2018 21:22:07 -0500
+
 hadron-entanglement (0.13) unstable-aces-proposed; urgency=medium
 
   * Add --force for entanglement-pki
