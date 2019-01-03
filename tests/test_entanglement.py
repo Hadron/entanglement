@@ -1,4 +1,4 @@
-# Copyright (C) 2018, Hadron Industries, Inc.
+# Copyright (C) 2018, 2019, Hadron Industries, Inc.
 # Entanglement is free software; you can redistribute it and/or modify
 # it under the terms of the GNU Lesser General Public License version 3
 # as published by the Free Software Foundation. It is distributed
@@ -6,10 +6,8 @@
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the file
 # LICENSE for details.
 
-import ssl, asyncio, asyncio.log, json, os, unittest, warnings
+import ssl, asyncio, asyncio.log, json, os, pytest, unittest, warnings
 from unittest import mock
-from asyncio.test_utils import disable_logger,  run_once
-import asyncio.test_utils
 
 
 from entanglement import bandwidth, protocol, SyncManager
@@ -94,96 +92,75 @@ class LoopFixture:
                                              , port = test_port, host = '127.0.0.1', ssl=self.sslctx_client, server_hostname='host1')
 
     def close(self):
-        with disable_logger():
-            if self.loop:
-                for t in self.transports: t.close()
-                self.loop.set_debug(False)
-                self.server.close()
-                self.loop.call_soon(self.loop.stop)
-                self.loop.run_forever()
-                self.loop.close()
-                self.loop = None
+        if self.loop:
+            for t in self.transports: t.close()
+            self.loop.set_debug(False)
+            self.server.close()
+            self.loop.call_soon(self.loop.stop)
+            self.loop.run_forever()
+            self.loop.close()
+            self.loop = None
             del self.transports
             
 
-        
+@pytest.fixture
+def loop():
+    loop = asyncio.new_event_loop()
+    yield loop
+    loop.close()
 
-class TestBwAlgorithm( unittest.TestCase):
-
-    "Test the timing algorithms for bandwidth"
-
-    def start(self, gen):
-        self.loop = asyncio.test_utils.TestLoop(gen)
-        self.protocol = bandwidth.BwLimitProtocol(loop = self.loop,
+@pytest.fixture
+def bwtest_protocol(loop):
+    protocol = bandwidth.BwLimitProtocol(loop = loop,
                                         upper_protocol = mock.MagicMock(),
                                         chars_per_sec = 10000,
                                         bw_quantum = 0.1)
+    return protocol
 
-    def tearDown(self):
-        self.loop.close()
 
-    def testOverUse(self):
-        "Confirm that if we use a lot, it gets refunded eventually"
-        def gen():
-            yield
-            yield 0.1
-            yield 0.1
-        self.start(gen)
-        self.protocol.bw_used(2000)
-        self.assertTrue(self.protocol._paused)
-        run_once(self.loop)
-        self.assertEqual(self.protocol.used, 2000)
-        run_once(self.loop)
-        self.assertEqual(self.protocol.used, 1000)
-        run_once(self.loop)
-        self.assertEqual(self.protocol.used, 0)
-        self.assertFalse(self.protocol._paused, False)
+def testOverUse(bwtest_protocol, loop):
+    "Confirm that if we use a lot, it gets refunded eventually"
+    protocol = bwtest_protocol
+    protocol.bw_used(2000)
+    assert protocol._paused is True
+    assert protocol.used == 2000
+    loop.run_until_complete(asyncio.sleep(0.1))
+    assert protocol.used == 1000
+    loop.run_until_complete(asyncio.sleep(0.1))
+    assert protocol.used == 0
+    assert protocol._paused is False
 
-    def testGradual(self):
-        def gen():
-            yield
-        self.start(gen)
-        self.protocol.bw_used(900)
-        run_once(self.loop)
-        self.assertEqual( self.protocol.used, 900)
-        self.assertFalse(self.protocol._paused, False)
-        self.loop.advance_time(2)
-        run_once(self.loop)
-        self.protocol.bw_used(1)
-        self.assertEqual( self.protocol.used, 1)
+def testGradual(loop, bwtest_protocol):
+    protocol = bwtest_protocol
+    protocol.bw_used(900)
+    loop.call_soon(loop.stop())
+    loop.run_forever()
+    assert protocol.used == 900
+    assert protocol._paused is False
+    loop.run_until_complete(asyncio.sleep(0.9))
+    protocol.bw_used(1)
+    assert protocol.used == 1
 
-    def testTransportPause(self):
-        "Test to confirm transport pause interacts with bandwidth pause"
-        def gen():
-            yield
-            yield 0.1
-            yield 0.1
-            yield 0.1
-        self.start(gen)
-        upper = self.protocol.protocol
-        protocol = self.protocol
-        protocol.bw_used(1200)
-        self.assertTrue( protocol._paused)
-        self.assertEqual( upper.pause_writing.call_count,1)
-        protocol.pause_writing()
-        self.assertEqual(upper.pause_writing.call_count, 1)
-        run_once(self.loop)
-        self.assertEqual( self.loop.time(), 0.1)
-        run_once(self.loop)
-        self.assertEqual( protocol.used, 200)
-        self.assertEqual( upper.resume_writing.call_count, 0)
-        # Even though we're paused, the client can still write.
-        #Write enough that one quantum isn't enough and confirm  that we do eventually resume once we're ready.
-        protocol.bw_used(2000)
-        protocol.resume_writing()
-        # still at t=0.1; collect the timer scheduled by resume_writing
-        run_once(self.loop)
-        self.assertEqual( self.loop.time(), 0.2)
-        self.assertEqual( upper.resume_writing.call_count, 0)
-        run_once(self.loop) # at t = 0.2
-        self.assertAlmostEqual(self.loop.time(), 0.3)
-        run_once(self.loop) # at t = 0.3
-        self.assertEqual( upper.resume_writing.call_count, 1)
+def testTransportPause(loop, bwtest_protocol):
+    "Test to confirm transport pause interacts with bandwidth pause"
+    protocol = bwtest_protocol
+    upper = protocol.protocol
+    protocol.bw_used(1200)
+    assert protocol._paused is True
+    assert  upper.pause_writing.call_count == 1
+    protocol.pause_writing()
+    assert upper.pause_writing.call_count ==  1
+    loop.run_until_complete(asyncio.sleep(0.1))
+    assert protocol.used ==  200
+    assert  upper.resume_writing.call_count == 0
+    # Even though we're paused, the client can still write.
+    #Write enough that one quantum isn't enough and confirm  that we do eventually resume once we're ready.
+    protocol.bw_used(2000)
+    protocol.resume_writing()
+    loop.run_until_complete(asyncio.sleep(0.1))
+    assert  upper.resume_writing.call_count ==  0
+    loop.run_until_complete(asyncio.sleep(0.1))
+    assert upper.resume_writing.call_count ==  1
         
         
             
