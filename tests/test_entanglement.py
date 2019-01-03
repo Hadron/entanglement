@@ -271,12 +271,13 @@ class TestSynchronization(unittest.TestCase):
         def record_call(*args, **kwargs):
             nonlocal send_count
             send_count += 1
+            return obj1_to_sync(*args, **kwargs)
         send_count = 0
         self.obj1 = MockSyncable(1, 5)
         self.obj1.serial = 1
         approx_len = 4+len(json.dumps(self.obj1.to_sync()))
+        obj1_to_sync = self.obj1.to_sync
         with mock.patch.object(self.obj1, 'to_sync',
-                               wraps = self.obj1.to_sync,
                                side_effect = record_call):
             self.bwprotocol.bw_per_quantum = 10*approx_len
             task = self.loop.create_task(self.lots_of_updates())
@@ -292,10 +293,12 @@ class TestSynchronization(unittest.TestCase):
     def testReconnect(self):
         "After connection lost, reconnect"
         fut = self.loop.create_future()
-        def cb(*args, **kwargs): fut.set_result(True)
+        def cb(*args, **kwargs):
+            fut.set_result(True)
+            return orig_connected(*args, **kwargs)
+        orig_connected = self.manager._destinations[self.cert_hash].connected
         with mock.patch.object(self.manager._destinations[self.cert_hash],
                                'connected',
-                               wraps = self.manager._destinations[self.cert_hash].connected,
                                side_effect = cb):
             with entanglement_logs_disabled():
                 self.cprotocol.close()
@@ -336,8 +339,10 @@ class TestSynchronization(unittest.TestCase):
         obj_send2.to_sync = mock.MagicMock(wraps = obj_send2.to_sync)
         self.assertFalse(obj_send.to_sync.called)
         self.manager.synchronize(obj_send2)
-        fut.set_result = mock.MagicMock(wraps = fut.set_result,
-                                   side_effect = lambda x: self.assertFalse(obj_send2.to_sync.called))
+        def set_results_wrap(res):
+            self.assertFalse(obj_send2.to_sync.called)
+            return orig_set_result(res)
+        orig_set_result = fut.set_result
         self.loop.run_until_complete(fut)
         self.assertEqual(obj_send.to_sync.call_count, 1)
 

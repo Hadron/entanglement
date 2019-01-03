@@ -1,4 +1,4 @@
-# Copyright (C) 2018, Hadron Industries, Inc.
+# Copyright (C) 2018, 2019, Hadron Industries, Inc.
 # Entanglement is free software; you can redistribute it and/or modify
 # it under the terms of the GNU Lesser General Public License version 3
 # as published by the Free Software Foundation. It is distributed
@@ -657,7 +657,8 @@ def layout_two_servers(registries, requested_layout, monkeypatch):
     layout = next(layout_gen)
     layout.errors = errors
     yield layout
-    layout_gen.send(None)
+    try: layout_gen.send(None)
+    except StopIteration: pass
     
     
 def test_two_servers( layout_two_servers, monkeypatch):
