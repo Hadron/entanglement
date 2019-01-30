@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-# Copyright (C) 2017, 2018, Hadron Industries, Inc.
+# Copyright (C) 2017, 2018, 2019, Hadron Industries, Inc.
 # Entanglement is free software; you can redistribute it and/or modify
 # it under the terms of the GNU Lesser General Public License version 3
 # as published by the Free Software Foundation. It is distributed
@@ -51,7 +51,7 @@ class SyncManager:
         for r in list(self.registries):
             if hasattr(r, 'inherited_registries'):
                 self.registries.extend(r.inherited_registries)
-            self.registries = set(self.registries) # Remove duplicates
+        self.registries = set(self.registries) # Remove duplicates
         self.port = port
         for r in self.registries: r.associate_with_manager(self)
 
