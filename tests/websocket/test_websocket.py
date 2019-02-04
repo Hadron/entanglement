@@ -1,4 +1,4 @@
-# Copyright (C) 2018, Hadron Industries, Inc.
+# Copyright (C) 2018, 2019, Hadron Industries, Inc.
 # Entanglement is free software; you can redistribute it and/or modify
 # it under the terms of the GNU Lesser General Public License version 3
 # as published by the Free Software Foundation. It is distributed
@@ -68,7 +68,7 @@ class JsTest(threading.Thread):
         try:
             output = subprocess.check_output(['nodejs', self.testname,
                                                    self.uri, self.owner],
-                                                  timeout = 1.0,
+                                                  timeout = 3.0,
                                                   cwd = os.path.dirname(self.testname))
             self.future.set_result(output)
         except subprocess.CalledProcessError:
