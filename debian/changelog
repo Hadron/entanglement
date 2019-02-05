@@ -1,3 +1,9 @@
+hadron-entanglement (0.14.1) unstable; urgency=medium
+
+  * Increase timeout due to Buster test failures
+
+ -- Klee Dienes <klee.dienes@hadronindustries.com>  Mon, 04 Feb 2019 18:52:28 -0500
+
 hadron-entanglement (0.14) unstable-aces-proposed; urgency=medium
 
   * Fixes for tests for buster
