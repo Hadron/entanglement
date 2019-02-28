@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-# Copyright (C) 2017, 2018, Hadron Industries, Inc.
+# Copyright (C) 2017, 2018, 2019, Hadron Industries, Inc.
 # Entanglement is free software; you can redistribute it and/or modify
 # it under the terms of the GNU Lesser General Public License version 3
 # as published by the Free Software Foundation. It is distributed
@@ -7,7 +7,7 @@
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the file
 # LICENSE for details.
 
-import contextlib, datetime, json, sqlalchemy, uuid
+import contextlib, datetime, json, sqlalchemy, uuid, warnings
 from datetime import timezone
 
 from sqlalchemy import Column, Table, String, Integer, DateTime, ForeignKey, inspect, TEXT, Index
@@ -18,6 +18,8 @@ from ..util import DestHash, SqlDestHash, get_or_create, GUID
 from .. import interface, network, operations
 from ..protocol import logger
 from . import internal as _internal
+
+warnings.filterwarnings("ignore", message = ".*normally configured.*", category = sqlalchemy.exc.SAWarning)
 
 class SqlSyncSession(sqlalchemy.orm.Session):
 
