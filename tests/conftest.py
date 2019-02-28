@@ -1,4 +1,4 @@
-# Copyright (C) 2018, Hadron Industries, Inc.
+# Copyright (C) 2018, 2019, Hadron Industries, Inc.
 # Entanglement is free software; you can redistribute it and/or modify
 # it under the terms of the GNU Lesser General Public License version 3
 # as published by the Free Software Foundation. It is distributed
@@ -104,6 +104,8 @@ def setup_manager(name, le, registries):
                       loop = asyncio.get_event_loop(),
                       registries = ctx.registries
                       )
+    if cls is SyncServer:
+        ctx.manager.listen_ssl()
     ctx.connections = le.get('connections', [])
     ctx.session.manager = ctx.manager
     ctx.destinations = []

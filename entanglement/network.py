@@ -220,56 +220,6 @@ class SyncManager:
 
 
 
-    async def _incoming_connection(self, protocol):
-        old = None
-        task = None
-        if protocol.dest_hash not in self._destinations:
-            try: dest = await self.unknown_destination(protocol)
-            except Exception as e:
-                dest = None
-                logger.exception("Error handling unknown_destination:", exc_info = e)
-                
-            if dest and dest not in self.destinations:
-                self.add_destination(dest)
-        else:
-            dest = self._destinations[protocol.dest_hash]
-        if dest is None:
-            logger.error("Unexpected connection from {}".format(protocol.dest_hash))
-            protocol.close()
-            return
-        protocol.dest = dest
-        if self.cert_hash == dest.dest_hash:
-            logger.debug("Self connection to {}".format(dest.dest_hash))
-            self.incoming_self_protocol = weakref.ref(protocol)
-            protocol._enable_reading()
-            return
-        if dest.dest_hash in self._connections:
-            logger.warning("Replacing existing connection to {}".format(dest))
-            self._connections[dest.dest_hash].close()
-        if dest.dest_hash in self._connecting:
-            if hash(dest.dest_hash) >hash(self.cert_hash):
-                # Wait a tenth of a second to break mutual open race
-                logger.debug("Waiting briefly before replacing connection in progress to {}".format(dest))
-                await asyncio.sleep(0.1)
-                try:
-                    if protocol.transport.is_closing(): return
-                except AttributeError: return
-                
-                    
-            logger.info("Replacing existing connection in progress to {}".format(dest))
-            old = self._connecting[dest.dest_hash]
-        try:
-            task = self.loop.create_task(dest.connected(self, protocol,
-                                                        bwprotocol = protocol.bwprotocol))
-            self._connecting[dest.dest_hash] = task
-            if old: old.cancel()
-            protocol._enable_reading()
-            await self._connecting[dest.dest_hash]
-            self._connections[dest.dest_hash] = protocol
-            logger.info("New incoming connection from {}".format(dest))
-        finally:
-            if dest.dest_hash in self._connecting and self._connecting[dest.dest_hash] == task:
-                del self._connecting[dest.dest_hash]
 
     def _connection_lost(self, protocol, exc):
         if self._connections.get(protocol.dest.dest_hash,None)  == protocol:
@@ -449,28 +399,100 @@ class SyncServer(SyncManager):
 
     "A SyncManager that accepts incoming connections"
 
-    def __init__(self, cert, port, *, host = None, cafile = None, capath = None,
+    def __init__(self, cert, port, *, cafile = None, capath = None,
                  key = None, **kwargs):
         super().__init__(cert, port, capath = capath,
                          cafile = cafile, key = key,
                          **kwargs)
+        self._cert = cert
+        self._cafile = cafile
+        self._key = key
+        self._capath = capath
+        self._server = None
+
+    def listen_ssl(self, port = None, host = None):
+        '''
+        Start listening for ssl connections
+
+        :param port: None will use the outgoing port specified in the constructuor; otherwise specify  a port to listen on.
+
+        :param host: None will listen on all addresses, else a hostname or address.
+
+        '''
+        if self._server:
+            raise ValueError("This SyncServer is already listening for SSL connections")
+        
+        if port is None: port = self.port
+        if self._ssl is None:
+            raise ValueError("You must construct the SyncServer with a valid certificate to listen for SSL")
         self.host = host
         self._server = None
-        self._ssl_server = self._new_ssl(cert, key = key, cafile = cafile,
-                                         capath = capath)
+        self._ssl_server = self._new_ssl(self._cert, key = self._key, cafile = self._cafile,
+                                                 capath = self._capath)
         self._ssl_server.check_hostname = False
         self._server = self.loop.run_until_complete(self.loop.create_server(
-            self._protocol_factory_server(),
-                        host = host,
-            port = port,
-            ssl = self._ssl_server,
-            reuse_address = True, reuse_port = True))
+                    self._protocol_factory_server(),
+                    host = host,
+                    port = port,
+                    ssl = self._ssl_server,
+                    reuse_address = True, reuse_port = True))
 
     def close(self):
         if hasattr(self, '_server') and self._server:
             self._server.close()
             self._server = None
         super().close()
+
+    async def _incoming_connection(self, protocol):
+        old = None
+        task = None
+        if protocol.dest_hash not in self._destinations:
+            try: dest = await self.unknown_destination(protocol)
+            except Exception as e:
+                dest = None
+                logger.exception("Error handling unknown_destination:", exc_info = e)
+                
+            if dest and dest not in self.destinations:
+                self.add_destination(dest)
+        else:
+            dest = self._destinations[protocol.dest_hash]
+        if dest is None:
+            logger.error("Unexpected connection from {}".format(protocol.dest_hash))
+            protocol.close()
+            return
+        protocol.dest = dest
+        if self.cert_hash == dest.dest_hash:
+            logger.debug("Self connection to {}".format(dest.dest_hash))
+            self.incoming_self_protocol = weakref.ref(protocol)
+            protocol._enable_reading()
+            return
+        if dest.dest_hash in self._connections:
+            logger.warning("Replacing existing connection to {}".format(dest))
+            self._connections[dest.dest_hash].close()
+        if dest.dest_hash in self._connecting:
+            if hash(dest.dest_hash) >hash(self.cert_hash):
+                # Wait a tenth of a second to break mutual open race
+                logger.debug("Waiting briefly before replacing connection in progress to {}".format(dest))
+                await asyncio.sleep(0.1)
+                try:
+                    if protocol.transport.is_closing(): return
+                except AttributeError: return
+                
+                    
+            logger.info("Replacing existing connection in progress to {}".format(dest))
+            old = self._connecting[dest.dest_hash]
+        try:
+            task = self.loop.create_task(dest.connected(self, protocol,
+                                                        bwprotocol = protocol.bwprotocol))
+            self._connecting[dest.dest_hash] = task
+            if old: old.cancel()
+            protocol._enable_reading()
+            await self._connecting[dest.dest_hash]
+            self._connections[dest.dest_hash] = protocol
+            logger.info("New incoming connection from {}".format(dest))
+        finally:
+            if dest.dest_hash in self._connecting and self._connecting[dest.dest_hash] == task:
+                del self._connecting[dest.dest_hash]
 
 
 

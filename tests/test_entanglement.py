@@ -221,7 +221,8 @@ class TestSynchronization(unittest.TestCase):
                                   cert = "host1.pem", key = "host1.key",
                                   port = test_port,
                                   registries = [reg],
-                                  host = "127.0.0.1")
+                                  )
+        self.manager.listen_ssl(host = "127.0.0.1")
         self.cert_hash = certhash_from_file("host1.pem")
         client = self.manager.add_destination(SyncDestination(self.cert_hash,
                                                               "destination1", host = "127.0.0.1", server_hostname = "host1",

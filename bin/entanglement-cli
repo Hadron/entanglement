@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-# Copyright (C) 2017, Hadron Industries, Inc.
+# Copyright (C) 2017, 2019, Hadron Industries, Inc.
 # Entanglement is free software; you can redistribute it and/or modify
 # it under the terms of the GNU Lesser General Public License version 3
 # as published by the Free Software Foundation. It is distributed
@@ -150,6 +150,7 @@ elif args.mode == "server":
                         cafile = args.ca,
                         key = args.key, port = args.port,
                         registries = registries)
+    server.listen_ssl()
     sync_manager_destinations(server, session)
     if not hasattr(server, 'session'):
         server.session = session

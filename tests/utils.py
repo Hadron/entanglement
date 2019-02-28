@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-# Copyright (C) 2017, 2018, Hadron Industries, Inc.
+# Copyright (C) 2017, 2018, 2019, Hadron Industries, Inc.
 # Entanglement is free software; you can redistribute it and/or modify
 # it under the terms of the GNU Lesser General Public License version 3
 # as published by the Free Software Foundation. It is distributed
@@ -63,7 +63,9 @@ class SqlFixture(unittest.TestCase):
                                  port = test_port,
                                  registries = [self.base.registry] + self.other_registries,
                                  loop = asyncio.get_event_loop())
-        self.manager = SyncManager(cafile = "ca.pem",
+        self.server.listen_ssl()
+        # We do not listen ssl for this item
+        self.manager = SyncServer(cafile = "ca.pem",
                                    cert = "host2.pem",
                                    key = "host2.key",
                                    loop = self.server.loop,
