@@ -44,8 +44,10 @@ class SyncManager:
         self._destinations = {}
         self._connections = {}
         self._connecting = {}
-        self._ssl = self._new_ssl(cert, key = key,
+        if cert is not None:
+            self._ssl = self._new_ssl(cert, key = key,
                                  capath = capath, cafile = cafile)
+        else: self._ssl = None
         self.registries = registries
         self.registries.append(interface.error_registry)
         for r in list(self.registries):
@@ -147,9 +149,10 @@ class SyncManager:
         if not hasattr(self, 'loop'): return
         loop = self.loop
         delta = 1
-        close_transport = None #Close this transport if we fail to
         task = self._connecting[dest.dest_hash] #our task
-        #connect There are two levels of try; the outer catches exceptions
+        close_transport = None #Close this transport if we fail to connect
+
+        # There are two levels of try; the outer catches exceptions
         #that end all connection attempts and cleans up the cache of
         #destinations we're connecting to.
         try:
@@ -165,25 +168,11 @@ class SyncManager:
                     logger.debug("Connecting to {hash} at {host}".format(
                         hash = dest.dest_hash,
                         host = dest.host))
-                    port = getattr(dest, 'port', None)
-                    if port is None: port = self.port
-                    # There is a race if we get canceled while the
-                    # create_connection call is in SSL handshake
-                    # phase: we will leave the network connection open
-                    # but it will not be functional.  It would be
-                    # possible to work around this with
-                    # asyncio.shield, although Python > 3.5 may fix
-                    # this as well.  We avoid the race by sleeping in
-                    # _incoming_connection before replacing a
-                    # connection in one direction.  That sleep is
-                    # needed anyway for tests, and the race seems very
-                    # unlikely so we accept it until it becomes a
-                    # problem.
-                    transport, bwprotocol = await \
-                                          loop.create_connection(self._protocol_factory_client(dest),
-                                                                 port = port, ssl = self._ssl,
-                                                                 host = dest.host,
-                                                                 server_hostname = dest.server_hostname)
+                    transport, bwprotocol = \
+                        await dest.create_connection(
+                            self.port, loop,
+                            self._protocol_factory_client(dest),
+                            self._ssl)
                     logger.debug("Transport connection to {dest} made".format(dest = dest))
                     close_transport = transport
                     protocol = bwprotocol.protocol
@@ -514,6 +503,26 @@ class SyncDestination:
         self._on_connected_cbs = []
         self._on_connection_lost_cbs = []
 
+    async def create_connection(self, port, loop, proto_factory, ssl):
+        port = getattr(self, 'port', port)
+        # There is a race if we get canceled while the
+        # create_connection call is in SSL handshake
+        # phase: we will leave the network connection open
+        # but it will not be functional.  It would be
+        # possible to work around this with
+        # asyncio.shield, although Python > 3.5 may fix
+        # this as well.  We avoid the race by sleeping in
+        # _incoming_connection before replacing a
+        # connection in one direction.  That sleep is
+        # needed anyway for tests, and the race seems very
+        # unlikely so we accept it until it becomes a
+        # problem.
+        return await \
+            loop.create_connection(proto_factory,
+                                   port = port, ssl = ssl,
+                                   host = self.host,
+                                   server_hostname = self.server_hostname)
+                    
     def __repr__(self):
         return "<SyncDestination {{name: '{name}', hash: {hash}}}>".format(
             name = self.name,
