@@ -1,6 +1,7 @@
 hadron-entanglement (0.15) UNRELEASED; urgency=medium
 
   * You must call listen_ssl on a SyncServer to accept connections
+  * Unix domain sockets; break current photon
 
  -- Sam Hartman <hartmans@debian.org>  Thu, 28 Feb 2019 15:26:11 -0500
 

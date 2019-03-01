@@ -13,6 +13,7 @@ Architecture: all
 Multi-Arch: foreign
 Depends: ${misc:Depends}, ${python3:Depends}
 Recommends: python3-tornado
+Breaks: python3-photon (<= 0.4.18)
 Description: Hadron State Synchronization Framework
  This is the python3 library
 
