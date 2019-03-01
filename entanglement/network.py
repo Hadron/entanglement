@@ -47,7 +47,9 @@ class SyncManager:
         if cert is not None:
             self._ssl = self._new_ssl(cert, key = key,
                                  capath = capath, cafile = cafile)
-        else: self._ssl = None
+        else:
+            self._ssl = None
+            self.cert_hash = None
         self.registries = registries
         self.registries.append(interface.error_registry)
         for r in list(self.registries):
@@ -63,19 +65,12 @@ class SyncManager:
         self.cert_hash = certhash_from_file(cert)
         return sslctx
 
-    def _protocol_factory_client(self, dest):
+    def _protocol_factory_client(self, dest, protocol = protocol.SyncProtocol):
         "This is more of a factory factory than a factory.  Construct a protocol object for a connection to a given outgoing SyncDestination"
         return lambda: BwLimitProtocol(chars_per_sec = 10000000,
                                        bw_quantum = 0.1, loop = self.loop,
-                                       upper_protocol = protocol.SyncProtocol(manager = self, dest = dest))
+                                       upper_protocol = protocol(manager = self, dest = dest))
 
-    def _protocol_factory_server(self):
-        "Factory factory for server connections"
-        return lambda: BwLimitProtocol(
-            chars_per_sec = 10000000,
-            bw_quantum = 0.1,
-            loop = self.loop,
-            upper_protocol = protocol.SyncProtocol(manager = self, incoming = True))
 
 
     def synchronize(self, obj, *,
@@ -167,16 +162,16 @@ class SyncManager:
                 try:
                     logger.debug("Connecting to {hash} at {host}".format(
                         hash = dest.dest_hash,
-                        host = dest.host))
+                        host = dest.endpoint_desc))
                     transport, bwprotocol = \
                         await dest.create_connection(
                             self.port, loop,
-                            self._protocol_factory_client(dest),
+                            self._protocol_factory_client,
                             self._ssl)
                     logger.debug("Transport connection to {dest} made".format(dest = dest))
                     close_transport = transport
                     protocol = bwprotocol.protocol
-                    if protocol.dest_hash != dest.dest_hash:
+                    if protocol.dest_hash != dest.dest_hash and protocol.confirm_outgoing_dest_hash:
                         raise WrongSyncDestination(dest = dest, got_hash = protocol.dest_hash)
                     protocol._enable_reading()
 
@@ -185,7 +180,7 @@ class SyncManager:
                     close_transport = None
                     logger.info("Connected to {hash} at {host}".format(
                         hash = dest.dest_hash,
-                        host = dest.host))
+                        host = dest.endpoint_desc))
                     dest.connect_at = time.time()+delta
                     return transport, protocol
                 except (asyncio.futures.CancelledError, GeneratorExit):
@@ -220,7 +215,7 @@ class SyncManager:
             if exc is None:
                 logger.info(msg)
             else: logger.exception(msg, exc_info = exc)
-            if protocol.dest.host: 
+            if protocol.dest.can_connect: 
                 self._connecting[protocol.dest.dest_hash] = self.loop.create_task(self._create_connection(protocol.dest))
         protocol.dest = None
 
@@ -238,7 +233,7 @@ class SyncManager:
         self._destinations[dest.dest_hash] = dest
         assert dest.protocol is None
         assert dest.dest_hash not in self._connecting
-        if dest.host is None: return
+        if not dest.can_connect: return
         self._connecting[dest.dest_hash] = self.loop.create_task(self._create_connection(dest))
         return self._connecting[dest.dest_hash]
 
@@ -397,7 +392,7 @@ class SyncServer(SyncManager):
         self._cafile = cafile
         self._key = key
         self._capath = capath
-        self._server = None
+        self._servers = []
 
     def listen_ssl(self, port = None, host = None):
         '''
@@ -408,28 +403,42 @@ class SyncServer(SyncManager):
         :param host: None will listen on all addresses, else a hostname or address.
 
         '''
-        if self._server:
-            raise ValueError("This SyncServer is already listening for SSL connections")
-        
         if port is None: port = self.port
         if self._ssl is None:
             raise ValueError("You must construct the SyncServer with a valid certificate to listen for SSL")
         self.host = host
-        self._server = None
         self._ssl_server = self._new_ssl(self._cert, key = self._key, cafile = self._cafile,
                                                  capath = self._capath)
         self._ssl_server.check_hostname = False
-        self._server = self.loop.run_until_complete(self.loop.create_server(
+        self._servers.append(self.loop.run_until_complete(self.loop.create_server(
                     self._protocol_factory_server(),
                     host = host,
                     port = port,
                     ssl = self._ssl_server,
-                    reuse_address = True, reuse_port = True))
+                    reuse_address = True, reuse_port = True)))
+
+    def listen_unix(self, path):
+        '''
+Listen on the given unix path.
+        '''
+        self._servers.append(self.loop.run_until_complete(
+        self.loop.create_unix_server(self._protocol_factory_server(protocol.UnixProtocol),
+                                      path = path)))
+
+
+    def _protocol_factory_server(self,
+                                 protocol = protocol.SyncProtocol):
+        "Factory factory for server connections"
+        return lambda: BwLimitProtocol(
+            chars_per_sec = 10000000,
+            bw_quantum = 0.1,
+            loop = self.loop,
+            upper_protocol = protocol(manager = self, incoming = True))
 
     def close(self):
-        if hasattr(self, '_server') and self._server:
-            self._server.close()
-            self._server = None
+        for s in self._servers:
+            s.close()
+        self._servers.clear()
         super().close()
 
     async def _incoming_connection(self, protocol):
@@ -483,50 +492,24 @@ class SyncServer(SyncManager):
             if dest.dest_hash in self._connecting and self._connecting[dest.dest_hash] == task:
                 del self._connecting[dest.dest_hash]
 
-
-
-class SyncDestination:
+class SyncDestinationBase:
 
     '''A SyncDestination represents a SyncManager other than ourselves that can receive (and generate) synchronizations.  The Synchronizable and subclasses of SyncDestination must cooperate to make sure that receiving and object does not create a loop by trying to Synchronize that object back to the sender.  One solution is for should_send on SyncDestination to return False (or raise) if the outgoing object is received from this destination.'''
 
-    def __init__(self, dest_hash = None, name = None, *,
-                 host = None, bw_per_sec = 10000000,
-                 server_hostname = None):
-        if server_hostname is None: server_hostname = host
-        self.host = host
-        self.dest_hash = DestHash(dest_hash)
+    def __init__(self, dest_hash, name, bw_per_sec = 10000000000):
+        self.dest_hash = dest_hash
         self.name = name
-        self.server_hostname = server_hostname
         self.bw_per_sec = bw_per_sec
         self.protocol = None
         self.connect_at = 0
         self._on_connected_cbs = []
         self._on_connection_lost_cbs = []
-
-    async def create_connection(self, port, loop, proto_factory, ssl):
-        port = getattr(self, 'port', port)
-        # There is a race if we get canceled while the
-        # create_connection call is in SSL handshake
-        # phase: we will leave the network connection open
-        # but it will not be functional.  It would be
-        # possible to work around this with
-        # asyncio.shield, although Python > 3.5 may fix
-        # this as well.  We avoid the race by sleeping in
-        # _incoming_connection before replacing a
-        # connection in one direction.  That sleep is
-        # needed anyway for tests, and the race seems very
-        # unlikely so we accept it until it becomes a
-        # problem.
-        return await \
-            loop.create_connection(proto_factory,
-                                   port = port, ssl = ssl,
-                                   host = self.host,
-                                   server_hostname = self.server_hostname)
-                    
+        
     def __repr__(self):
-        return "<SyncDestination {{name: '{name}', hash: {hash}}}>".format(
+        return "<{c} {{name: '{name}', hash: {hash}}}>".format(
             name = self.name,
-            hash = self.dest_hash)
+            hash = self.dest_hash,
+            c = self.__class__.__name__)
 
     def on_connect(self, callback):
         "call callback on connection"
@@ -566,3 +549,65 @@ class SyncDestination:
     def connection_lost(self, manager):
         for cb in self._on_connection_lost_cbs:
             manager.loop.call_soon(lambda: cb(manager))
+
+
+class SyncDestination(SyncDestinationBase):
+
+    '''A standard  SyncDestination representing another system that can be reached by a TLS encrypted TCP connection.'''
+    
+
+    def __init__(self, dest_hash = None, name = None, *,
+                 host = None, bw_per_sec = 10000000,
+                 server_hostname = None):
+        if server_hostname is None: server_hostname = host
+        super().__init__(dest_hash, name, bw_per_sec = bw_per_sec)
+        self.host = host
+        self.server_hostname = server_hostname
+
+    async def create_connection(self, port, loop, proto_factory, ssl):
+        port = getattr(self, 'port', port)
+        # There is a race if we get canceled while the
+        # create_connection call is in SSL handshake
+        # phase: we will leave the network connection open
+        # but it will not be functional.  It would be
+        # possible to work around this with
+        # asyncio.shield, although Python > 3.5 may fix
+        # this as well.  We avoid the race by sleeping in
+        # _incoming_connection before replacing a
+        # connection in one direction.  That sleep is
+        # needed anyway for tests, and the race seems very
+        # unlikely so we accept it until it becomes a
+        # problem.
+        return await \
+            loop.create_connection(proto_factory(self),
+                                   port = port, ssl = ssl,
+                                   host = self.host,
+                                   server_hostname = self.server_hostname)
+
+    @property
+    def can_connect(self):
+        return bool(self.host)
+
+    @property
+    def endpoint_desc(self):
+        return self.host
+    
+                    
+class OutgoingUnixDestination(SyncDestinationBase):
+
+    def __init__(self, dest_hash, name, path,
+                 *, bw_per_sec = 10000000000):
+        super().__init__(dest_hash, name, bw_per_sec = bw_per_sec)
+        self.path = path
+
+    async def create_connection(self, port, loop, proto_factory, ssl):
+        return await loop.create_unix_connection(proto_factory(self, protocol.UnixProtocol), self.path)
+
+    @property
+    def can_connect(self):
+        return bool(self.path)
+
+    @property
+    def endpoint_desc(self):
+        return self.path
+

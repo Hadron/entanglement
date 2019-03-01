@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-# Copyright (C) 2017, 2018, Hadron Industries, Inc.
+# Copyright (C) 2017, 2018, 2019, Hadron Industries, Inc.
 # Entanglement is free software; you can redistribute it and/or modify
 # it under the terms of the GNU Lesser General Public License version 3
 # as published by the Free Software Foundation. It is distributed
@@ -56,6 +56,21 @@ class DestHash(bytes):
 
     def __hash__(self): return hash(str(self))
 
+    @classmethod
+    def from_string(cls, s):
+        return cls(hashlib.sha256(bytes(s, 'utf-8')).digest())
+
+    @classmethod
+    def from_unix_dest_info(cls, path, pid, uid, gid):
+        # We assume the path is not under the control of the attacker. Even so, make this prefix free
+        path = path.replace(':','_')
+        s = "{p}:{pid}:{uid}:{gid}".format(
+            p = path,
+            pid = pid,
+            gid = gid,
+            uid = uid)
+        return cls.from_string(s)
+    
 class CertHash(DestHash):
     
     @classmethod

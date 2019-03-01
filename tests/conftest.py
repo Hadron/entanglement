@@ -57,10 +57,13 @@ class LayoutContext:
                 le.manager.add_destination(d)
         if settle: self.wait_connecting()
 
-    def wait_connecting(self):
+    def wait_connecting(self, allow_empty = False):
         connecting = []
         for e in self.layout_entries:
             connecting.extend(e.manager._connecting.values())
+        if not connecting:
+            if allow_empty: return
+            raise ValueError("No connections are connecting")
         asyncio.get_event_loop().run_until_complete(asyncio.wait(connecting, timeout = 1.0))
         settle_loop(asyncio.get_event_loop(), timeout = 1.0)
 
@@ -105,7 +108,11 @@ def setup_manager(name, le, registries):
                       registries = ctx.registries
                       )
     if cls is SyncServer:
-        ctx.manager.listen_ssl()
+        if le.get('listen_ssl', True):
+            ctx.manager.listen_ssl()
+        ctx.unix_path = le.get('listen_unix', None)
+        if ctx.unix_path:
+            ctx.manager.listen_unix(ctx.unix_path)
     ctx.connections = le.get('connections', [])
     ctx.session.manager = ctx.manager
     ctx.destinations = []
@@ -145,7 +152,7 @@ def layout_fn(registries, requested_layout):
     layout_dict['layout_entries'] = tuple(layout_dict.values())
     layout = LayoutContext()
     layout.__dict__ = layout_dict
-    layout.wait_connecting()
+    layout.wait_connecting(True)
    
     layout.loop = asyncio.get_event_loop()
     yield layout
