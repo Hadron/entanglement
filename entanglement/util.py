@@ -52,7 +52,10 @@ class DestHash(bytes):
             try:
                 return self.__eq__(DestHash(other))
             except: return res
-            
+
+    def __ne__(self, other):
+        return not (self == other)
+    
 
     def __hash__(self): return hash(str(self))
 

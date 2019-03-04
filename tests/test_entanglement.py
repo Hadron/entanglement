@@ -381,8 +381,14 @@ class TestSynchronization(unittest.TestCase):
         self.manager.unknown_destination = unknown_destination
         settle_loop(self.loop)
         self.assertIn(other_manager.cert_hash, self.manager._connections.keys())
-        
-        
+def test_desthash_equality():
+    d1 = DestHash(b'o'*32)
+    d1s = str(d1)
+    assert d1 == d1s
+    assert d1s == d1
+    assert (d1s != d1) == False
+    assert (d1 != d1s) == False
+    
        
 
 

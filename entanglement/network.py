@@ -497,7 +497,7 @@ class SyncDestinationBase:
     '''A SyncDestination represents a SyncManager other than ourselves that can receive (and generate) synchronizations.  The Synchronizable and subclasses of SyncDestination must cooperate to make sure that receiving and object does not create a loop by trying to Synchronize that object back to the sender.  One solution is for should_send on SyncDestination to return False (or raise) if the outgoing object is received from this destination.'''
 
     def __init__(self, dest_hash, name, bw_per_sec = 10000000000):
-        self.dest_hash = dest_hash
+        self.dest_hash = DestHash(dest_hash)
         self.name = name
         self.bw_per_sec = bw_per_sec
         self.protocol = None
