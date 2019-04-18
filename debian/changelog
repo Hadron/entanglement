@@ -1,3 +1,9 @@
+hadron-entanglement (0.16) unstable; urgency=medium
+
+  * Use our own uuid logic in the javascript because bundling is hard
+
+ -- Sam Hartman <hartmans@debian.org>  Thu, 18 Apr 2019 10:56:43 -0400
+
 hadron-entanglement (0.15) UNRELEASED; urgency=medium
 
   * You must call listen_ssl on a SyncServer to accept connections
