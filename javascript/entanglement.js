@@ -7,15 +7,6 @@
 if (!('WebSocket' in this)) {
     var WebSocket =require('websocket').w3cwebsocket;
 }
-try {
-    var uuid = require('node-uuid');
-} catch(err) {
-    try {
-        var uuid = require('uuid');
-    } catch(err) {
-    }
-}
-
 
 class SyncManager {
 
@@ -25,6 +16,29 @@ class SyncManager {
         this._backoff = 256;
         this.url = url;
         this._connect();
+    }
+
+    genuuid4(){
+        let a;
+        try{
+            a = new Uint8Array(16);
+            window.crypto.getRandomValues(a);
+        }catch (err){
+            let crypto = require('crypto');
+            a = crypto.randomBytes(16);
+        }
+
+        // Mark as v4
+        a[6] = (a[6] & 0x0f) | 0x40;
+        a[8] = (a[8] & 0x3f) | 0x80;
+
+        let str = '';
+        for(let i=0; i<16; i++){
+            if(i==4||i==6||i==8||i==10){
+                str += '-'; }
+            str += (a[i] + 0x100).toString(16).substr(1);
+        }
+        return str;
     }
 
     _connect() {
@@ -130,7 +144,7 @@ class SyncManager {
         var first_transition = false;
         var result;
         if(obj.transition_id == null ) { // undefined is OK too
-            obj.transition_id = uuid.v4();
+            obj.transition_id = this.genuuid4();
             first_transition = true;
         } else {
             result = obj.transition_promise;
