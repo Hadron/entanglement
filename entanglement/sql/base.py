@@ -576,8 +576,8 @@ class SqlSynchronizable(interface.Synchronizable):
         obj = None
         owner = None
         if hasattr(context,'session'):
-            primary_keys = map(lambda x:x.name, inspect(cls).primary_key)
-            try: primary_key_values = tuple(map(lambda k: msg[k], primary_keys))
+            primary_keys = tuple(x.name for x in inspect(cls).primary_key)
+            try: primary_key_values = tuple(msg[k] for k in primary_keys)
             except KeyError as e:
                 if (not operation) or operation.primary_keys_required:
                     raise interface.SyncBadEncodingError("All primary keys must be present in the encoding", msg = msg) from e
