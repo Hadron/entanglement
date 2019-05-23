@@ -1,3 +1,9 @@
+hadron-entanglement (0.17) unstable; urgency=medium
+
+  * Fold in map fix from Klee.
+
+ -- Sam Hartman <hartmans@debian.org>  Thu, 23 May 2019 15:34:59 -0400
+
 hadron-entanglement (0.16) unstable; urgency=medium
 
   * Use our own uuid logic in the javascript because bundling is hard
