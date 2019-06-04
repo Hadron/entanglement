@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-# Copyright (C) 2017, 2018, Hadron Industries, Inc.
+# Copyright (C) 2017, 2018, 2019, Hadron Industries, Inc.
 # Entanglement is free software; you can redistribute it and/or modify
 # it under the terms of the GNU Lesser General Public License version 3
 # as published by the Free Software Foundation. It is distributed
@@ -111,7 +111,7 @@ class _SqlMetaRegistry(SyncRegistry):
             if owner.id == sender.first_local_owner:
                 owner_condition = owner_condition | (base.SyncOwner.id == None)
             if obj.serial > 0:
-                for d in session.query(SyncDeleted).filter(SyncDeleted.sync_serial > max_serial, owner_condition):
+                for d in session.query(SyncDeleted).outerjoin(base.SyncOwner).filter(SyncDeleted.sync_serial > max_serial, owner_condition):
                     try: cls, registry  = manager._find_registered_class(d.sync_type)
                     except UnregisteredSyncClass:
                         logger.error("{} is not a registered sync class for this manager, but deletes are recorded for it; forcing full resync of {}".format(
