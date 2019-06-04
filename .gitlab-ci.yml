@@ -36,12 +36,10 @@ install_test:
     DEBIAN_FRONTEND: noninteractive
   script:
     - schroot -b -n install_test_${CI_BUILD_ID} -c install-test
-    - (cd /apt_cache && tar cf - var  ) | schroot -r --directory / -c install_test_${CI_BUILD_ID} tar xpf -
     - tar -cf - sbuild_out |schroot -r -c install_test_${CI_BUILD_ID} --directory / tar xpf -
     - schroot --directory / -r -c install_test_${CI_BUILD_ID} apt-get update
     - schroot --directory / -r -c install_test_${CI_BUILD_ID} -- apt-get -y --allow-downgrades -o DPkg::Options::="--force-confold" install ./sbuild_out/*.deb
     - mkdir -p /apt_cache
-    - schroot -r -c install_test_${CI_BUILD_ID} --directory / tar cf - var/cache/apt var/lib/apt/lists | (cd /apt_cache&& tar xpf - )
   after_script:
     - schroot -e -c install_test_${CI_BUILD_ID} || true
   tags:
