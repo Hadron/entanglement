@@ -1,3 +1,12 @@
+hadron-entanglement (0.18) unstable; urgency=medium
+
+  * Critical fix for SyncDeleted handling; when multiple owners are
+    involved, SyncDeleted can be handled for objects that are not
+    associated with the right owner.  This can among other things reflect
+    a delete back at its source.
+
+ -- Sam Hartman <hartmans@debian.org>  Tue, 04 Jun 2019 17:42:12 -0400
+
 hadron-entanglement (0.17) unstable; urgency=medium
 
   * Fold in map fix from Klee.
