@@ -1,4 +1,4 @@
-# Copyright (C) 2018, Hadron Industries, Inc.
+# Copyright (C) 2018, 2020, Hadron Industries, Inc.
 # Entanglement is free software; you can redistribute it and/or modify
 # it under the terms of the GNU Lesser General Public License version 3
 # as published by the Free Software Foundation. It is distributed
@@ -15,7 +15,7 @@
 import logging, pytest, uuid
 
 from sqlalchemy.orm import relationship, Session
-from sqlalchemy import Column, Integer, ForeignKey, inspect
+from sqlalchemy import Column, Float, Integer, ForeignKey, inspect
 from entanglement.sql import sql_sync_declarative_base, SyncOwner
 from entanglement.util import GUID
 from copy import deepcopy
@@ -29,7 +29,14 @@ class T1(Base):
     __tablename__ = 't1'
     id = Column(Integer, primary_key = True)
     x2 = Column(GUID, unique = True)
+    f1 = Column(Float)
 
+    # we override sync_receive_constructed for test_float_set_as_string
+    def sync_receive_constructed(self, msg, **kwargs):
+        if 'f1' in msg:
+            assert isinstance(msg['f1'], (float, type(None)))
+        return super().sync_receive_constructed(msg, **kwargs)
+    
     def __eq__(self, other):
         if type(other) is not type(self): return False
         return (other.id == self.id) and (other.x2 == self.x2)
@@ -190,6 +197,19 @@ def test_delete_unknown_sync_owner(layout_module):
     so.sync_serial = 20
     with wait_for_call(layout.loop, sql_meta_messages, 'incoming_delete', trap_exceptions = True):
         layout.client.manager.synchronize(so, operation ='delete')
-        
+
+def test_float_set_as_string(layout_module):
+    layout = layout_module
+    session = layout.client.session
+    t1 = T1()
+    t1.f1 = "30.9"
+    session.add(t1)
+    session.commit()
+    settle_loop(layout.loop)
+    t1_server = layout.server.session.query(T1).filter_by(id = t1.id).first()
+    assert isinstance(t1_server.f1, float)
+    
+    
+    
 logging.getLogger('entanglement.protocol').setLevel(10)
 logging.basicConfig(level = 10)

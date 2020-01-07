@@ -1,4 +1,4 @@
-# Copyright (C) 2017, Hadron Industries, Inc.
+# Copyright (C) 2017, 2020, Hadron Industries, Inc.
 # Entanglement is free software; you can redistribute it and/or modify
 # it under the terms of the GNU Lesser General Public License version 3
 # as published by the Free Software Foundation. It is distributed
@@ -7,10 +7,24 @@
 # LICENSE for details.
 
 import base64, datetime, iso8601, uuid
-from sqlalchemy import DateTime, DATETIME, BLOB, BINARY
+from sqlalchemy import DateTime, DATETIME, BLOB, BINARY, Float, Integer
 
 from datetime import timezone
 from ..util import GUID
+
+def type_encoder(t):
+    def encode(obj, propname):
+        val = getattr(obj, propname, None)
+        if val is None: return None
+        return t(val)
+    return encode
+
+def type_decoder(t):
+    def decode(obj, propname, val):
+        if val is None:
+            return None
+        return t(val)
+    return decode
 
 
 def binary_encoder(obj, propname):
@@ -56,3 +70,5 @@ register_type(DATETIME, datetime_encoder, datetime_decoder)
 register_type(BLOB, binary_encoder, binary_decoder)
 register_type(BINARY, binary_encoder, binary_decoder)
 register_type(GUID, uuid_encoder, uuid_decoder)
+register_type(Float, type_encoder(float), type_decoder(float))
+register_type(Integer, type_encoder(int), type_decoder(int))
