@@ -1,3 +1,11 @@
+hadron-entanglement (0.19) unstable; urgency=medium
+
+  [ Sam Hartman ]
+  * Encoders for Float and Integer
+  * Update certs
+
+ -- Jeff LeBlanc <jeff.leblanc@hadronindustries.com>  Tue, 11 Feb 2020 12:15:09 -0500
+
 hadron-entanglement (0.18) unstable; urgency=medium
 
   * Critical fix for SyncDeleted handling; when multiple owners are
