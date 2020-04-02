@@ -1,4 +1,4 @@
-# Copyright (C) 2017, 2018, 2019, Hadron Industries, Inc.
+# Copyright (C) 2017, 2018, 2019, 2020, Hadron Industries, Inc.
 # Entanglement is free software; you can redistribute it and/or modify
 # it under the terms of the GNU Lesser General Public License version 3
 # as published by the Free Software Foundation. It is distributed
@@ -8,7 +8,7 @@
 
 import asyncio, json, logging, struct, socket, weakref
 from ..util import CertHash, DestHash
-from ..interface import SyncError, SyncBadEncodingError
+from ..interface import SyncError, SyncBadEncodingError, UnregisteredSyncClass
 from .dirty import DirtyMember, DirtyQueue
 
 
@@ -246,7 +246,10 @@ class SyncProtocolBase:
                 del sync_repr['_resp_for']
             self._manager._sync_receive(sync_repr, self, response_for = response_for)
         except Exception as e:
-            logger.exception("Error receiving {}".format(sync_repr))
+            if isinstance(e,(SyncError,UnregisteredSyncClass)):
+                logger.error(str(e))
+            else:
+                logger.exception("Error receiving {}".format(sync_repr))
             if isinstance(e,SyncError) and not '_sync_is_error' in sync_repr:
                 self._manager.synchronize(e,
                                           destinations = [self.dest],
