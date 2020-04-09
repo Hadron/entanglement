@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-# Copyright (C) 2017, 2018, 2019, Hadron Industries, Inc.
+# Copyright (C) 2017, 2018, 2019, 2020, Hadron Industries, Inc.
 # Entanglement is free software; you can redistribute it and/or modify
 # it under the terms of the GNU Lesser General Public License version 3
 # as published by the Free Software Foundation. It is distributed
@@ -258,21 +258,21 @@ class SyncManager:
                 'manager': self,
                 'response_for': response_for}
         if protocol.dest: info['sender'] = protocol.dest
-        self._validate_message(msg)
-        cls, registry = self._find_registered_class(msg['_sync_type'])
-        info['operation'] = registry.get_operation(msg['_sync_operation'])
-        info['registry'] = registry
-        info['attributes'] = frozenset(filter(lambda a: not a.startswith('_'), msg.keys()))
-        if self.should_listen(msg, cls, **info) is not True:
-            # Failure should raise because ignoring an exception takes
-            # active work, leading to a small probability of errors.
-            # However, active authorization should be an explicit true
-            # not falling off the end of a function.
-            raise SyntaxError("should_listen must either return True or raise")
-        if msg['_sync_authorized'] != self:
-            raise SyntaxError("When SyncManager.should_listen is overwridden, you must call super().should_listen")
-        del msg['_sync_authorized']
         try:
+            self._validate_message(msg)
+            cls, registry = self._find_registered_class(msg['_sync_type'])
+            info['operation'] = registry.get_operation(msg['_sync_operation'])
+            info['registry'] = registry
+            info['attributes'] = frozenset(filter(lambda a: not a.startswith('_'), msg.keys()))
+            if self.should_listen(msg, cls, **info) is not True:
+                # Failure should raise because ignoring an exception takes
+                # active work, leading to a small probability of errors.
+                # However, active authorization should be an explicit true
+                # not falling off the end of a function.
+                raise SyntaxError("should_listen must either return True or raise")
+            if msg['_sync_authorized'] != self:
+                raise SyntaxError("When SyncManager.should_listen is overwridden, you must call super().should_listen")
+            del msg['_sync_authorized']
             with registry.sync_context(sync_type = cls, **info) as ctx:
                 info['context'] = ctx
                 obj = cls.sync_construct(msg, **info)
@@ -283,14 +283,16 @@ class SyncManager:
             if response_for:
                 response_for(obj)
         except Exception as e:
-            logger.exception("Error receiving a {}".format(cls.__name__),
-exc_info = e)
+            logger.error("Error receiving a {}".format(cls.__name__),
+                         exc_info = e if (not isinstance(e, interface.SyncError)) else None)
             if isinstance(e,interface.SyncError) and not '_sync_is_error' in msg:
                 if not e.network_msg: e.network_msg = msg
-                self.synchronize(e,
+                try:
+                    self.synchronize(e,
                                           destinations = [protocol.dest],
                                           response_for = response_for,
                                           operation = 'error')
+                except: pass
 
         finally:
             if 'context' in info: del info['context']
