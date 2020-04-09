@@ -85,11 +85,11 @@ class SyncManager {
         this.expected = {}
     }
 
-    _disconnect() {
+    _disconnect(event) {
         if (this.socket === undefined) return;
         if (this._open) {
             this._open = false;
-            if (this._onclose) this._onclose(this);
+            if (this._onclose) this._onclose(this,event);
         }
         try {
             this.socket.close();
