@@ -259,6 +259,7 @@ class SyncManager:
                 'response_for': response_for}
         if protocol.dest: info['sender'] = protocol.dest
         try:
+            cls = None
             self._validate_message(msg)
             cls, registry = self._find_registered_class(msg['_sync_type'])
             info['operation'] = registry.get_operation(msg['_sync_operation'])
@@ -283,8 +284,13 @@ class SyncManager:
             if response_for:
                 response_for(obj)
         except Exception as e:
-            logger.error("Error receiving a {}".format(cls.__name__),
-                         exc_info = e if (not isinstance(e, interface.SyncError)) else None)
+            if isinstance(e, interface.SyncError):
+                exc_str = f': {str(e)}'
+            else: exc_str = None
+            logger.error("Error receiving a {}{}".format(
+                cls.__name__ if cls is not None else msg['_sync_type'],
+                exc_str),
+                         exc_info = e  if not exc_str else None)
             if isinstance(e,interface.SyncError) and not '_sync_is_error' in msg:
                 if not e.network_msg: e.network_msg = msg
                 try:

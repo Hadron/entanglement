@@ -1,4 +1,4 @@
-# Copyright (C) 2018, 2019, Hadron Industries, Inc.
+# Copyright (C) 2018, 2019, 2020, Hadron Industries, Inc.
 # Entanglement is free software; you can redistribute it and/or modify
 # it under the terms of the GNU Lesser General Public License version 3
 # as published by the Free Software Foundation. It is distributed
@@ -11,7 +11,7 @@ from unittest import mock
 
 
 from entanglement import bandwidth, protocol, SyncManager
-from entanglement.interface import Synchronizable, sync_property, SyncRegistry
+from entanglement.interface import Synchronizable, sync_property, SyncRegistry, SyncError
 from entanglement.network import  SyncServer, SyncDestination
 from entanglement.util import certhash_from_file, DestHash, SqlDestHash, entanglement_logs_disabled
 
@@ -381,6 +381,7 @@ class TestSynchronization(unittest.TestCase):
         self.manager.unknown_destination = unknown_destination
         settle_loop(self.loop)
         self.assertIn(other_manager.cert_hash, self.manager._connections.keys())
+
 def test_desthash_equality():
     d1 = DestHash(b'o'*32)
     d1s = str(d1)
@@ -389,7 +390,32 @@ def test_desthash_equality():
     assert (d1s != d1) == False
     assert (d1 != d1s) == False
     
-       
+
+@pytest.fixture(scope = 'module')
+def registries():
+    # Registry that is empty.
+    return [SyncRegistry()]
+
+def test_unregistered_error_handling(layout, monkeypatch):
+    exc_raised = None
+    def sr_wrap(*args, **kwargs):
+        nonlocal exc_raised
+        try:
+            return old_sr(*args, **kwargs)
+        except Exception as e:
+            exc_raised = e
+            raise
+    old_sr = SyncManager._sync_receive
+    monkeypatch.setattr(SyncManager, '_sync_receive', sr_wrap)
+    monkeypatch.setattr(layout.client.manager, '_find_registered_class', lambda a: (MockSyncable, reg))
+    res = layout.client.manager.synchronize(MockSyncable(9, 10.3), response = True)
+    # Now that synchronize is called we want to clear the find_registered_class hack so we can receive the syncerror
+    del layout.client.manager._find_registered_class
+    settle_loop(layout.loop)
+    assert exc_raised is None
+    assert isinstance(res.exception(), SyncError)
+    
+
 
 
 
