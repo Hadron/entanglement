@@ -1,3 +1,19 @@
+hadron-entanglement (0.20) unstable; urgency=medium
+
+  [ Jeffrey LeBlanc ]
+  * Making UnregisteredSyncClass error handling less verbose.
+
+  [ Sam Hartman ]
+  * Clean up error handling
+
+  [ Jeffrey LeBlanc ]
+  * Pass websocket close event into callback.
+
+  [ Sam Hartman ]
+  * Fix Unregistered Sync Class Error handling
+
+ -- Jeff LeBlanc <jeff.leblanc@hadronindustrie.com>  Thu, 30 Apr 2020 12:03:08 -0400
+
 hadron-entanglement (0.19) unstable; urgency=medium
 
   [ Sam Hartman ]
