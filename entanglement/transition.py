@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-# Copyright (C) 2017, 2018, Hadron Industries, Inc.
+# Copyright (C) 2017, 2018, 2020, Hadron Industries, Inc.
 # Entanglement is free software; you can redistribute it and/or modify
 # it under the terms of the GNU Lesser General Public License version 3
 # as published by the Free Software Foundation. It is distributed
@@ -104,7 +104,7 @@ class TransitionTrackerMixin (interface.Synchronizable):
             operation = info['operation']
             manager = info['manager']
             primary_keys = cls.sync_primary_keys
-            pkey_values = tuple(map( lambda x: cls._sync_properties[x].decoderfn(msg, x, msg[x]), primary_keys))
+            pkey_values = tuple(map( lambda x: cls._sync_properties[x].decoderfn(msg[x]), primary_keys))
         except KeyError:
             #Either primary key not found, or one of the info members is not found such as when we're called synthesizing from a SyncDeleted
             return super().sync_construct(msg, **info)

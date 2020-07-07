@@ -12,41 +12,23 @@ from sqlalchemy import DateTime, DATETIME, BLOB, BINARY, Float, Integer
 from datetime import timezone
 from ..util import GUID
 
-def type_encoder(t):
-    def encode(obj, propname):
-        val = getattr(obj, propname, None)
-        if val is None: return None
-        return t(val)
-    return encode
-
-def type_decoder(t):
-    def decode(obj, propname, val):
-        if val is None:
-            return None
-        return t(val)
-    return decode
 
 
-def binary_encoder(obj, propname):
-    val = getattr(obj,propname, None)
-    if val is None: return
+def binary_encoder(val):
     return str(base64.b64encode(val), 'utf-8')
 
 
-def  binary_decoder(obj, propname, val):
+def  binary_decoder( val):
     return base64.b64decode(val)
 
 
-def datetime_encoder(obj, propname):
-    dt = getattr(obj,propname,None)
-    if dt is None: return
+def datetime_encoder(dt):
     if dt.tzinfo:
         dt = dt.astimezone(timezone.utc)
     return dt.isoformat()
 
 
-
-def datetime_decoder(obj, propname, value):
+def datetime_decoder(value):
     return iso8601.parse_date(value)
 
 
@@ -57,11 +39,10 @@ def register_type(typ, encoder, decoder):
 
     
 
-def uuid_encoder(obj, propname):
-    val = getattr(obj, propname, None)
+def uuid_encoder(val):
     if val is not None: return str(val)
 
-def uuid_decoder(obj, propname, val):
+def uuid_decoder( val):
     if val: return uuid.UUID(val)
 
 
@@ -70,5 +51,5 @@ register_type(DATETIME, datetime_encoder, datetime_decoder)
 register_type(BLOB, binary_encoder, binary_decoder)
 register_type(BINARY, binary_encoder, binary_decoder)
 register_type(GUID, uuid_encoder, uuid_decoder)
-register_type(Float, type_encoder(float), type_decoder(float))
-register_type(Integer, type_encoder(int), type_decoder(int))
+register_type(Float, float, float)
+register_type(Integer, int, int)

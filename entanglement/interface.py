@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-# Copyright (C) 2017, 2018, Hadron Industries, Inc.
+# Copyright (C) 2017, 2018, 2020, Hadron Industries, Inc.
 # Entanglement is free software; you can redistribute it and/or modify
 # it under the terms of the GNU Lesser General Public License version 3
 # as published by the Free Software Foundation. It is distributed
@@ -10,11 +10,6 @@
 import asyncio, contextlib, types
 
 
-def default_encoder(obj, propname):
-    "Default function used when encoding a sync_property; retrieves the property from an object"
-    val = getattr(obj, propname, NotPresent)
-    if hasattr(val,'sync_encode_value'): val = val.sync_encode_value()
-    return val
 
 
 class EphemeralUnflooded:
@@ -59,8 +54,7 @@ class SynchronizableMeta(type):
                     ns[k] = v.wraps
                 else: del ns[k]
                 del v.wraps
-                if not v.encoderfn: v.encoderfn = default_encoder
-                if not v.decoderfn: v.decoderfn = lambda obj, propname, val: val
+                if not v.decoderfn: v.decoderfn = lambda  val: val
             elif isinstance(v, no_sync_property):
                 if v.wraps is not None:
                     ns[k] = v.wraps
@@ -109,11 +103,11 @@ object using its default JSON representation
 
     manager =sync_property()
     @manager.encoder
-    def manager(obj, propname):
-        return obj.manager_id
+    def manager(manager):
+        return manager.id
     @manager.decoder
-        def manager(obj, propname, value):
-        return Manager.get_by_id(value)
+        def manager(id):
+        return Manager.get_by_id(id)
 
     '''
 
@@ -130,13 +124,26 @@ object using its default JSON representation
             if hasattr(wraps, '__doc__'):
                 self.__doc__ = wraps.__doc__
 
+    def _encode_value(self, obj, propname):
+        val = getattr(obj, propname, NotPresent)
+        if val is NotPresent or val is None: return val
+        if self.encoderfn:
+            val = self.encoderfn(val)
+        elif hasattr(val,'sync_encode_value'): val = val.sync_encode_value()
+        return val
+
+    def _decode_value(self, v):
+        if v is None or v is NotPresent: return v
+        if self.decoderfn: return self.decoderfn(v)
+        return v
+
     def encoder(self, encoderfn):
-        "If encoderfn(instance, propname) returns non-None, then the value returned will be encoded for this property"
+        "The return of the encoder function will be used as the value to encode"
         self.encoderfn = encoderfn
         return self
 
     def decoder(self, decoderfn):
-        "If the property is specified, then decoderfn(obj, propname, value_from_json) will be called.  If it returns non-None, then setattr(obj, prop_name, return_value) will be called. If constructor is not False, obj may be None"
+        "If the property is specified, then decoderfn( value_from_json) will be called.  If it returns non-None, then setattr(obj, prop_name, return_value) will be called. "
         self.decoderfn = decoderfn
         return self
 
@@ -186,13 +193,13 @@ the latest synchronized version will be sent.
     
     def to_sync(self, attributes = None):
 
-        '''Return a dictionary containing the attributes of self that should be synchronized.  Attributes can be passed in; if so, then the list of attributes will be limited to tohse passed in.'''
+        '''Return a dictionary containing the attributes of self that should be synchronized.  Attributes can be passed in; if so, then the list of attributes will be limited to those passed in.'''
         d = {}
         if hasattr(self, 'sync_owner') and self.sync_owner is not None:
             d['_sync_owner'] = self.sync_owner.sync_encode_value()
         for k,v in self.__class__._sync_properties.items():
             if attributes and k not in attributes: continue
-            try: val = v.encoderfn(self, k)
+            try: val = v._encode_value(self, k)
             except BaseException as e:
                 raise ValueError("Failed encoding {} using encoder from class {}".format(k, v.declaring_class)) from e
             if val is not NotPresent: d[k] = val
@@ -206,7 +213,7 @@ the latest synchronized version will be sent.
         if not set(cls.sync_primary_keys).issubset(msg.keys()):
             raise SyncBadEncodingError("Encoding must contain primary keys: {}".format(cls.sync_primary_keys))
         for k in cls.sync_primary_keys:
-            d[k] = cls._sync_properties[k].decoderfn(None, k, msg[k])
+            d[k] = cls._sync_properties[k]._decode_value(msg[k])
         return d
 
     @classmethod
@@ -239,8 +246,8 @@ the latest synchronized version will be sent.
             if k in msg:
                 try:
                     if v.constructor is not True: #it's an int
-                        args[v.constructor-1] = v.decoderfn(None, k, msg[k])
-                    else: kwargs[k] = v.decoderfn(None, k, msg[k])
+                        args[v.constructor-1] = v._decode_value(msg[k])
+                    else: kwargs[k] = v._decode_value(msg[k])
                     del msg[k]
                 except Exception as e:
                     raise SyncBadEncodingError("Error decoding {}".format(k), msg = msg) from e
@@ -263,7 +270,7 @@ the latest synchronized version will be sent.
                 if k.startswith('_'): continue
                 raise SyncBadEncodingError('{} unknown property in sync encoding'.format(k), msg = msg)
             try:
-                setattr(self, k, cls._sync_properties[k].decoderfn(self, k, v))
+                setattr(self, k, cls._sync_properties[k]._decode_value(v))
             except Exception as e:
                 raise SyncBadEncodingError("Failed to decode {}".format(k),
                                            msg = msg) from e
@@ -375,7 +382,7 @@ class SyncRegistry:
         self.registry[type_name] = cls
 
     def register_operation(self, operation, op):
-        "Add the <operation> operation to the set of operations this class accepts on input.  Either pass in a <handle_incoming> function passing the same arguments as sync_receive.  Note that self is not explicitly passed; pass in a bound method or use functools.partial if needed. or a SyncOperation instance"
+        "Add the *operation* operation to the set of operations this class accepts on input.  Either pass in a *handle_incoming* function passing the same arguments as sync_receive.  Note that self is not explicitly passed; pass in a bound method or use functools.partial if needed. or a SyncOperation instance"
         from . import operations
         if not isinstance(op, operations.SyncOperation):
             op = operations.MethodOperation(operation, op)
@@ -455,18 +462,25 @@ class SyncError(RuntimeError, Synchronizable):
 
     args = sync_property()
     network_msg = sync_property()
-    context = sync_property()
-    @context.encoder
-    def context(obj, propname):
-        if obj.__context__ and not obj.__cause__: return str(obj.__context__)
-        else: return default_encoder(obj, propname)
 
-    cause = sync_property()
-    @cause.encoder
-    def cause(obj, propname):
-        if obj.__cause__: return str(obj.__cause__)
-        else: return default_encoder(obj, propname)
+    # use an explicit descriptor not *property* so that instances can override
+    class context:
 
+        def __get__(self,instance, owner):
+            val = getattr(instance, "__context__", None)
+            if val: val = str(val)
+            return val
+
+    context = sync_property(context())
+
+    class cause:
+
+        def __get__(self, instance, owner):
+            val = getattr(instance, "__cause__", None)
+            if val: val = str(val)
+            return val
+    cause = sync_property(cause())
+    
     sync_registry = error_registry
     sync_primary_keys = Unique
 
