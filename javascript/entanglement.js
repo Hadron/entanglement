@@ -8,6 +8,7 @@ if (!('WebSocket' in this)) {
     var WebSocket =require('websocket').w3cwebsocket;
 }
 
+
 class SyncManager {
 
     constructor(url) {
@@ -172,9 +173,153 @@ class SyncManager {
 
 }
 
+class SyncRegistry {
+
+    constructor() {
+        this.registry = new Map();
+        this.bases = {};
+        this.event_handlers = {
+            received: [],
+            sync: [],
+            transition: [],
+            delete: [],
+            forward: []
+        };
+    }
+
+    _schemaItem(name, keys, attrs) {
+        this.bases[name] = function(base) {
+            let result = class extends base {
+            }
+            Object.defineProperties(
+                result,                                    {
+                    name: {configureable: false,
+                           writable: false,
+                           enumerable: false,
+                           value: name},
+                    _sync_attributes: {configurable: false,
+                                       writable: false,
+                                       enumerable: true,
+                                       value: attrs},
+                    syncPrimaryKeys: {
+                        enumerable: true,
+                        writable: false,
+                        configurable: false,
+                        value: keys},
+                    syncType: {
+                        configurable: false,
+                        writable: false,
+                        enumerable: true,
+                        value: name},
+                })
+            if (! (base instanceof Synchronizable)) 
+                Synchronizable._mixinSynchronizable(result);
+            return result
+        }
+    }
+
+    register(cls) {
+        for (let k of ['syncType', '_syncAttributes', 'syncPrimaryKeys']) {
+            if (cls[k] === undefined)
+                throw new TypeError(`${cls} is not Synchronizable`);
+        }
+        let sync_type = cls.syncType;
+        if(this.registry.has(sync_type))
+            throw new TypeError( `${cls} is already registered.`);
+        this.registry.add(sync_type, cls);
+    }
+
+    _finalize() {
+        for (let k in this.bases) {
+            if (! this.registry.has(k))
+                this.registry.add(k, this.bases[k](Synchronizable))
+        }
+    }
+
+    async syncReceive(msg, options) {
+        let sync_type = msg._sync_type
+        let cls = this.registry.get(sync_type)
+        if (cls === undefined)
+            throw new TypeError( `${sync_type} is not registered`)
+        options.operation = msg._sync_operation || 'sync';
+        options.registry = this;
+        let obj = await Promise.resolve(cls.syncConstruct(msg, options));
+        return await Promise.resolve(obj.syncReceive(msg, options));
+    }
+    
+            
+    
+}
+
+class Synchronizable {
+
+    toSync(options) {
+        options = options || {}
+        let attributes = options.attributes || this.constructor._sync_attributes
+        let res = {}
+        if (this.sync_owner !== undefined)
+            res['_sync_owner'] = this.sync_owner
+        res['_sync_type'] = this.sync_type
+        for (let attr of attributes) {
+            res[attr] = this[attr]
+        }
+        return res
+    }
+
+    static syncConstruct(msg, options) {
+        let res = Object.create(this.prototype)
+        // This method can be overridden
+        // It is reasonable for overrides to remove properties from msg that are set as primary keys etc.
+        //override for database lookups etc
+        return res
+    }
+
+    syncReceive(msg, options) {
+        // Don't use Object.assign to deal better with Vue or other reactive frameworks
+        let orig = {}
+        for (let k in msg) {
+            orig[k] = this[k]
+            this[k] = msg[k]
+        }
+        this._orig = Object.freeze(orig)
+        return this
+    }
+
+    static _mixinSynchronizable(target) {
+        function mix(t, o) {
+            
+            let exclusions = new Set(['name', 'prototype', 'constructor'])
+            let obj = t
+            while (obj  !== Object.prototype) {
+                for (let k of Reflect.ownKeys(obj)) {
+                    exclusions.add(k)
+                }
+                obj = Reflect.getPrototypeOf(obj)
+            }
+        
+            for (let k of Reflect.ownKeys(o)) {
+                if (!exclusions.has(k)) {
+                    Object.defineProperty(t,
+                                          k, Reflect.getOwnPropertyDescriptor(o, k))
+                }
+            }
+        }
+        mix(target,Synchronizable)
+        mix(target.prototype, Synchronizable.prototype)
+        return target
+    }
+    
+}
+
+
+        
+        
 try {
     module.exports = {        
-        SyncManager: SyncManager,
+        SyncManager,
+        SyncRegistry,
+        Synchronizable,
+        default: SyncManager
     }
 } catch (err) { }
 

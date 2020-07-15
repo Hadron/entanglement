@@ -1,4 +1,4 @@
-# Copyright (C) 2018, 2019, Hadron Industries, Inc.
+# Copyright (C) 2018, 2019, 2020, Hadron Industries, Inc.
 # Entanglement is free software; you can redistribute it and/or modify
 # it under the terms of the GNU Lesser General Public License version 3
 # as published by the Free Software Foundation. It is distributed
@@ -24,6 +24,9 @@ from sqlalchemy import Column, String, ForeignKey
 from entanglement.util import GUID
 from tests.utils import *
 ioloop = tornado.ioloop.IOLoop.current()
+
+js_test_path = os.path.abspath(os.path.dirname(__file__))
+
 # SQL declaration
 Base = sql_sync_declarative_base()
 
@@ -76,20 +79,29 @@ class JsTest(threading.Thread):
         except Exception as e:
             self.future.set_exception(e)
 
+def run_js_test(test, session_maker= None):
+    # This code is shared between unittest and pytest tests.
+    uri = "ws://localhost:{}/ws".format(test_port+2)
+    test = os.path.join(js_test_path, test)
+    if session_maker is None:
+        session_maker = Base.registry.sessionmaker
+    sess = session_maker()
+    q = sess.query(SyncOwner).all()
+    owner = str(q[0].id)
+    t = JsTest(test, uri, owner)
+    t.start()
+    return asyncio.futures.wrap_future(t.future)
+
 
 def javascriptTest(test_name, method_name):
+    # This is the unittest only parts of run_js_test
     def testMethod(self):
-        uri = "ws://localhost:{}/ws".format(test_port+2)
-        sess = Base.registry.sessionmaker()
-        q = sess.query(SyncOwner).all()
-        owner = str(q[0].id)
-        t = JsTest(test_name, uri, owner)
-        t.start()
+        future = run_js_test(test_name)
         helper_method = getattr(self, 'helper_'+method_name, None)
         if helper_method:
             ioloop.add_callback(helper_method)
         
-        self.loop.run_until_complete(asyncio.futures.wrap_future(t.future))
+        self.loop.run_until_complete(future)
     return testMethod
     
 
@@ -180,8 +192,7 @@ class TestWebsockets(SqlFixture, unittest.TestCase):
         manager_registry.register_operation('transition', operations.transition_operation)
 
 
-    js_test_path = os.path.abspath(os.path.dirname(__file__))
-    for t in glob.glob(js_test_path+"/test*.js"):
-        test_method_name = t[len(js_test_path)+1:-3]
+    for t in glob.glob(js_test_path+"/wstest*.js"):
+        test_method_name = t[len(js_test_path)+3:-3]
         locals()[test_method_name] = javascriptTest(t, test_method_name)
 
