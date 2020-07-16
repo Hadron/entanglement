@@ -1,6 +1,6 @@
 "use strict";
 /*
-*  Copyright (C) 2017 by Hadron Industries
+*  Copyright (C) 2017, 2020 by Hadron Industries
 * All rights Reserved; distributed under license
 */
 
@@ -197,7 +197,7 @@ class SyncRegistry {
                            writable: false,
                            enumerable: false,
                            value: name},
-                    _sync_attributes: {configurable: false,
+                    _syncAttributes: {configurable: false,
                                        writable: false,
                                        enumerable: true,
                                        value: attrs},
@@ -226,13 +226,13 @@ class SyncRegistry {
         let sync_type = cls.syncType;
         if(this.registry.has(sync_type))
             throw new TypeError( `${cls} is already registered.`);
-        this.registry.add(sync_type, cls);
+        this.registry.set(sync_type, cls);
     }
 
     _finalize() {
         for (let k in this.bases) {
             if (! this.registry.has(k))
-                this.registry.add(k, this.bases[k](Synchronizable))
+                this.registry.set(k, this.bases[k](Synchronizable))
         }
     }
 
@@ -255,7 +255,7 @@ class Synchronizable {
 
     toSync(options) {
         options = options || {}
-        let attributes = options.attributes || this.constructor._sync_attributes
+        let attributes = options.attributes || this.constructor._syncAttributes
         let res = {}
         if (this.sync_owner !== undefined)
             res['_sync_owner'] = this.sync_owner
@@ -278,11 +278,16 @@ class Synchronizable {
         // Don't use Object.assign to deal better with Vue or other reactive frameworks
         let orig = {}
         for (let k in msg) {
+            if (k[0] == "_")
+                continue;
             orig[k] = this[k]
             this[k] = msg[k]
         }
-        this._orig = Object.freeze(orig)
-        return this
+        Object.defineProperty(this, '_orig',
+                              {value: Object.freeze(orig),
+                               writable: false,
+                               enumerable: false});
+        return this;
     }
 
     static _mixinSynchronizable(target) {
