@@ -11,11 +11,19 @@ if (!('WebSocket' in this)) {
 
 class SyncManager {
 
-    constructor(url) {
-        this.receivers = {}
+    constructor(options) {
+        if (typeof options == "string") {
+            // Old format where it is a url
+            let url = options;
+            options = {url: url};
+        }
+                this.receivers = {};
         this._open = false;
         this._backoff = 256;
-        this.url = url;
+        this.url = options.url;
+        for (let r of options.registries || []) {
+            r.associateManager(this);
+        }
         this._connect();
     }
 
@@ -218,6 +226,14 @@ class SyncRegistry {
         }
     }
 
+    associateManager(manager) {
+        this._finalize();
+        for (let [k,v] of this.registry) {
+            manager.on_receive(k, this.syncReceive.bind(this));
+        }
+    }
+        
+
     register(cls) {
         for (let k of ['syncType', '_syncAttributes', 'syncPrimaryKeys']) {
             if (cls[k] === undefined)
@@ -237,8 +253,10 @@ class SyncRegistry {
     }
 
     async syncReceive(msg, options) {
-        let sync_type = msg._sync_type
-        let cls = this.registry.get(sync_type)
+        if (options === undefined)
+            options = {};
+        let sync_type = msg._sync_type;
+        let cls = this.registry.get(sync_type);
         if (cls === undefined)
             throw new TypeError( `${sync_type} is not registered`)
         options.operation = msg._sync_operation || 'sync';

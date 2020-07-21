@@ -216,4 +216,14 @@ def test_sync_registry(loop):
     
 def test_sync_receive_registry(layout_module):
     layout = layout_module
+    future = run_js_test('testSyncReceiveRegistry.js')
+    def send_obj(connected_future):
+        ti = TableInherits()
+        ti.info = 90
+        ti.info2 = 20
+        layout.server.session.add(ti)
+        layout.server.session.commit()
+    layout.server.websocket_destination.connected_future.add_done_callback(send_obj)
+    layout.loop.run_until_complete(future)
+    print(future.result())
     
