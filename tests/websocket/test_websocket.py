@@ -8,8 +8,10 @@
 
 import sys, os.path
 sys.path = list(filter(lambda p: p != os.path.abspath(os.path.dirname(__file__)), sys.path))
+import pytest
 import asyncio, concurrent.futures, glob, json, threading, subprocess, unittest, uuid
 from tornado.platform.asyncio import AsyncIOMainLoop
+import sqlalchemy.exc
 
 try: AsyncIOMainLoop().install()
 except: pass
@@ -24,6 +26,15 @@ from sqlalchemy import Column, String, ForeignKey
 from entanglement.util import GUID
 from tests.utils import *
 ioloop = tornado.ioloop.IOLoop.current()
+
+@pytest.fixture(scope = 'module')
+def requested_layout(requested_layout):
+    requested_layout['server']['websocket'] = True
+    return requested_layout
+
+@pytest.fixture(scope = 'module')
+def registries():
+    return [Base]
 
 js_test_path = os.path.abspath(os.path.dirname(__file__))
 
@@ -86,8 +97,11 @@ def run_js_test(test, session_maker= None):
     if session_maker is None:
         session_maker = Base.registry.sessionmaker
     sess = session_maker()
-    q = sess.query(SyncOwner).all()
-    owner = str(q[0].id)
+    try:
+        q = sess.query(SyncOwner).all()
+        owner = str(q[0].id)
+    except sqlalchemy.exc.UnboundExecutionError:
+        owner = ""
     t = JsTest(test, uri, owner)
     t.start()
     return asyncio.futures.wrap_future(t.future)
@@ -196,3 +210,10 @@ class TestWebsockets(SqlFixture, unittest.TestCase):
         test_method_name = t[len(js_test_path)+3:-3]
         locals()[test_method_name] = javascriptTest(t, test_method_name)
 
+def test_sync_registry(loop):
+    future =  run_js_test("testSyncRegistry.js")
+    loop.run_until_complete(future)
+    
+def test_sync_receive_registry(layout_module):
+    layout = layout_module
+    

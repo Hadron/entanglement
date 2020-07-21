@@ -1,4 +1,4 @@
-# Copyright (C) 2018, 2019, Hadron Industries, Inc.
+# Copyright (C) 2018, 2019, 2020, Hadron Industries, Inc.
 # Entanglement is free software; you can redistribute it and/or modify
 # it under the terms of the GNU Lesser General Public License version 3
 # as published by the Free Software Foundation. It is distributed
@@ -8,7 +8,7 @@
 
 import asyncio, copy, gc, unittest, random, warnings, weakref
 from sqlalchemy import create_engine
-from entanglement import SyncManager, SyncServer, certhash_from_file, interface
+from entanglement import SyncManager, SyncServer, certhash_from_file, interface, SyncDestination
 import entanglement.sql as sql
 from entanglement.sql import SqlSyncDestination, sync_session_maker, SqlSyncRegistry, SqlSyncSession, SqlSynchronizable
 from unittest import mock
@@ -16,6 +16,9 @@ from entanglement import transition
 from entanglement import pki
 import pytest
 from .utils import test_port, settle_loop
+@pytest.fixture()
+def loop():
+    return asyncio.get_event_loop()
 
 @pytest.fixture(scope = 'module')
 def registries():
@@ -116,6 +119,22 @@ def setup_manager(name, le, registries):
     ctx.connections = le.get('connections', [])
     ctx.session.manager = ctx.manager
     ctx.destinations = []
+    ctx.websocket = le.get('websocket', False)
+    if le.get('websocket', False):
+        def find_sync_destination( request, *args, **kwargs):
+            return ctx.websocket_destination
+        ctx.websocket_destination = SyncDestination(b'n' * 32, 'websocket')
+        ctx.websocket_destination.connected_future = asyncio.get_event_loop().create_future()
+        ctx.websocket_destination.on_connect(lambda: ctx.websocket_destination.connected_future.set_result(True))
+        import tornado.web
+        import tornado.httpserver
+        from entanglement.websocket import SyncWsHandler
+        ctx.web_app = tornado.web.Application([(r'/ws', SyncWsHandler)])
+        ctx.http_server = tornado.httpserver.HTTPServer(ctx.web_app)
+        ctx.http_server.listen(test_port+2) # right now run_js_test hard codes this
+        ctx.web_app.sync_manager = ctx.manager
+        ctx.web_app.find_sync_destination = find_sync_destination
+
     return ctx
 
 
@@ -158,6 +177,8 @@ def layout_fn(registries, requested_layout):
     yield layout
     for e in layout.layout_entries:
         e.session.close()
+        if e.websocket:
+            e.http_server.stop()
         e.manager.close()
     layout_dict.clear()
     settle_loop(asyncio.get_event_loop())
@@ -169,6 +190,7 @@ pki_dir = "."
 @pytest.fixture()
 def layout(registries, requested_layout):
     yield from layout_fn(registries = registries, requested_layout = requested_layout)
+
 @pytest.fixture(scope = 'module')
 def layout_module(registries, requested_layout):
     yield from layout_fn(registries = registries, requested_layout = requested_layout)
