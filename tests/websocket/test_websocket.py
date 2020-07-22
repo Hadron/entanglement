@@ -227,3 +227,26 @@ def test_sync_receive_registry(layout_module):
     layout.loop.run_until_complete(future)
     print(future.result())
     
+
+def test_sync_orig(layout_module):
+    layout = layout_module
+    # This test also tests that syncConstruct works  correctly.
+    future = run_js_test('testSyncOrig.js')
+    ti = TableInherits()
+    def send_obj(connected_future):
+        nonlocal ti
+        ti.info2 = 19
+        ti.info = 99
+        layout.server.session.add(ti)
+        layout.server.session.commit()
+    loop = layout.loop
+    connected_future = layout.server.websocket_destination.connected_future = loop.create_future()
+    connected_future.add_done_callback(send_obj)
+    loop.run_until_complete(asyncio.wait([connected_future], timeout=1))
+    ti.info = 0
+    # Now we send with only some attributes to make sure _orig caches old values
+    layout.server.manager.synchronize(ti, operation = 'forward',
+                                          attributes_to_sync = {'id', 'info'})
+    loop.run_until_complete(future)
+    print(str(future.result(), 'utf-8'))
+    

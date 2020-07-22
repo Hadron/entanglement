@@ -222,7 +222,7 @@ class SyncRegistry {
                 })
             if (! (base instanceof Synchronizable)) 
                 Synchronizable._mixinSynchronizable(result);
-            return result
+            return result;
         }
     }
 
@@ -289,21 +289,25 @@ class Synchronizable {
         // This method can be overridden
         // It is reasonable for overrides to remove properties from msg that are set as primary keys etc.
         //override for database lookups etc
+        // It is intentional that this bypasses the constructor.  The constructor may have arguments to initialize new objects.
+        // If you need constructor behavior (including calling the constructor), override this method.
         return res
     }
 
     syncReceive(msg, options) {
         // Don't use Object.assign to deal better with Vue or other reactive frameworks
-        let orig = {}
+        let orig = Object.assign({},
+                                 this._orig || {});
         for (let k in msg) {
             if (k[0] == "_")
                 continue;
-            orig[k] = this[k]
-            this[k] = msg[k]
+            orig[k] = msg[k];
+            this[k] = msg[k];
         }
         Object.defineProperty(this, '_orig',
                               {value: Object.freeze(orig),
                                writable: false,
+                               configurable: true,
                                enumerable: false});
         return this;
     }
