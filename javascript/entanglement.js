@@ -187,7 +187,7 @@ class SyncRegistry {
         this.registry = new Map();
         this.bases = {};
         this.event_handlers = {
-            received: [],
+            receive: [],
             sync: [],
             transition: [],
             delete: [],
@@ -195,6 +195,35 @@ class SyncRegistry {
         };
     }
 
+    addEventListener(event, handler) {
+        let handlers = this.event_handlers[event];
+        if (handlers === undefined)
+            throw new TypeError("Illegal event");
+        if (!handlers.includes(handler))
+            handlers.push(handler);
+        return handler;
+    }
+
+    removeEventListener(event, handler) {
+        let handlers = this.event_handlers[event];
+        if (handlers === undefined)
+            throw new TypeError("Illegal event");
+        this.event_handlers[event] = handlers.filter((i) => i != handler);
+    }
+
+    _dispatchEvent(event, ...rest) {
+        let handlers = this.event_handlers[event];
+        for (let h of handlers) {
+            try {
+                Promise.resolve(h(...rest)) .catch((e) => {
+                    console.error(`${e} handling ${event} event`);
+                });
+            } catch(e) {
+                console.error( `${e} dispatching to ${event} event`);
+            }
+        }
+    }
+    
     _schemaItem(name, keys, attrs) {
         this.bases[name] = function(base) {
             let result = class extends base {
@@ -262,12 +291,18 @@ class SyncRegistry {
         options.operation = msg._sync_operation || 'sync';
         options.registry = this;
         let obj = await Promise.resolve(cls.syncConstruct(msg, options));
-        return await Promise.resolve(obj.syncReceive(msg, options));
+        await Promise.resolve(obj.syncReceive(msg, options));
+        this._dispatchEvent('receive', obj, msg);
+        if (options.operation in this.event_handlers)
+            this._dispatchEvent(options.operation, obj, msg);
+        return obj;
     }
+    
+}
     
             
     
-}
+
 
 class Synchronizable {
 

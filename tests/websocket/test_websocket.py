@@ -250,3 +250,16 @@ def test_sync_orig(layout_module):
     loop.run_until_complete(future)
     print(str(future.result(), 'utf-8'))
     
+def test_sync_events(layout_module):
+    layout = layout_module
+    future = run_js_test('testSyncEvents.js')
+    def send_obj(connected_future):
+        ti = TableInherits()
+        ti.info = 90
+        ti.info2 = 20
+        layout.server.session.add(ti)
+        layout.server.session.commit()
+    connected_future = layout.server.websocket_destination.connected_future = layout.loop.create_future()
+    layout.server.websocket_destination.connected_future.add_done_callback(send_obj)
+    layout.loop.run_until_complete(future)
+    print(future.result())
