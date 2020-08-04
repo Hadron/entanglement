@@ -55,8 +55,6 @@ class _SqlMetaRegistry(SyncRegistry):
                 self.handle_you_have(obj, sender, manager)
             elif isinstance(obj,IHave):
                 sender.i_have_task = manager.loop.create_task(self.handle_i_have(obj, sender, manager))
-            elif isinstance(obj, WrongEpoch):
-                self.handle_wrong_epoch(obj, sender, manager)
             elif isinstance(obj, MyOwners):
                 sender.my_owners = obj.owners
                 manager.loop.create_task(self.handle_my_owners(obj, manager, sender))
@@ -78,12 +76,16 @@ class _SqlMetaRegistry(SyncRegistry):
         session = context.session
         assert obj in session
         session.commit()
+        if getattr(obj, 'request_clear', False):
+            logger.info( f'Received new epoch for {obj}; clearing all objects')
+            del obj.request_clear
+            obj.clear_all_objects(manager)
+            
         session.refresh(obj)
         try: sender.my_owners.append(obj.id)
         except AttributeError: pass
         i_have = IHave()
         i_have.serial = obj.incoming_serial
-        i_have.epoch = obj.incoming_epoch
         i_have._sync_owner = obj.id
         manager.synchronize(i_have, destinations = [sender],
                             operation = 'forward')
@@ -96,13 +98,6 @@ class _SqlMetaRegistry(SyncRegistry):
             session = manager.session
             if sender.dest_hash not in manager._connections: return
             owner = obj.sync_owner
-            if owner.outgoing_epoch.tzinfo is None:
-                outgoing_epoch = owner.outgoing_epoch.replace(tzinfo = datetime.timezone.utc)
-            else: outgoing_epoch = owner.outgoing_epoch
-            if outgoing_epoch != obj.epoch:
-                logger.info("{} had wrong epoch for {}; asking to delete all objects and perform full synchronization".format( sender, owner))
-                return manager.synchronize( WrongEpoch(owner, owner.outgoing_epoch),
-                                            destinations = [sender])
             max_serial = obj.serial
             logger.info("{s} has serial {n} for {o}; synchronizing changes since then".format( o = owner,
                                                                                                   n = max_serial,
@@ -118,7 +113,12 @@ class _SqlMetaRegistry(SyncRegistry):
                             d.sync_type, owner))
                         owner.outgoing_epoch = datetime.datetime.now(datetime.timezone.utc)
                         session.commit()
-                        yield from self.handle_i_have(self, obj, sender, manager)
+                        owner_dest = manager.dest_by_hash(owner.dest_hash)
+                        if owner_dest:
+                            owner_dest = [owner_dest]
+                        else: owner_dest = []
+                        manager.synchronize(owner, exclude=owner_dest, operation='sync')
+                        return
                     d.registry = registry
                     manager.synchronize(d, operation = 'delete',
                                         destinations = [sender],
@@ -146,7 +146,6 @@ class _SqlMetaRegistry(SyncRegistry):
             if max_serial <= obj.serial: return
             you_have = YouHave()
             you_have.serial =max_serial
-            you_have.epoch = owner.outgoing_epoch
             you_have._sync_owner = owner.id
             you_have.sync_owner = owner
             manager.synchronize(you_have,
@@ -164,7 +163,6 @@ class _SqlMetaRegistry(SyncRegistry):
                 d = owner,
                 obj = obj.serial))
         owner.incoming_serial = max(owner.incoming_serial, obj.serial)
-        owner.incoming_epoch = obj.epoch
         logger.debug("We have serial {s} from {d}".format(
             s = obj.serial,
             d = owner))
@@ -176,21 +174,6 @@ class _SqlMetaRegistry(SyncRegistry):
         manager.session.commit()
             
 
-    def handle_wrong_epoch(self, obj,  sender, manager):
-        manager.session.rollback()
-        if sender not in manager.session: manager.session.add(sender)
-        owner = manager.session.merge(obj.owner)
-        owner.clear_all_objects(manager)
-        owner.incoming_epoch = obj.new_epoch
-        owner.incoming_serial = 0
-        manager.session.commit()
-        i_have = IHave()
-        i_have.serial = 0
-        i_have.epoch = owner.incoming_epoch
-        i_have._sync_owner = owner.id
-        manager.synchronize( i_have,
-                             operation = 'forward',
-                             destinations = [sender])
 
     @asyncio.coroutine
     def handle_my_owners(self, obj, manager, sender):
@@ -237,11 +220,9 @@ def populate_owner_from_msg(msg, obj, session):
 
 
 class IHave(Synchronizable):
-    sync_primary_keys = ('serial','epoch', '_sync_owner')
+    sync_primary_keys = ('serial', '_sync_owner')
     sync_registry = sql_meta_messages
     serial = sync_property()
-    epoch = sync_property(encoder = encoders.datetime_encoder,
-                          decoder = encoders.datetime_decoder)
     _sync_owner = sync_property(
         encoder = encoders.uuid_encoder,
         decoder = encoders.uuid_decoder,)
@@ -265,35 +246,6 @@ class YouHave(IHave):
 
 
 
-class WrongEpoch(SyncError):
-    sync_registry = sql_meta_messages
-    new_epoch = sync_property(constructor = 2,
-                              encoder = encoders.datetime_encoder,
-                              decoder = encoders.datetime_decoder)
-    _sync_owner = sync_property(
-        constructor = 1, encoder = encoders.uuid_encoder,
-        decoder = encoders.uuid_decoder)
-
-
-    def __init__(self, owner, newepoch, **args):
-        self.new_epoch = newepoch
-        if isinstance(owner, base.SyncOwner):
-            self._sync_owner = owner.id
-        else: self._sync_owner = owner
-        super().__init__(*args)
-
-    def sync_receive_constructed(self, msg, manager, **info):
-        super().sync_receive_constructed(msg, manager = manager, **info)
-        populate_owner_from_msg(msg, self, manager.session)
-        # It's not really true that we're owned by that SyncOwner;
-        # it's more that we're about that sync_owner.  We still use
-        # populate_owner_from_msg, but we'd like the owner in a
-        # different attribute
-        self.owner = self.sync_owner
-        self.sync_owner = interface.EphemeralUnflooded
-        if self.owner.sync_is_local:
-            raise interface.SyncBadOwner("{} flooded a WrongEpoch for our own owner to us".format(info['sender']))
-        return self
 
 class MyOwners(Synchronizable):
 

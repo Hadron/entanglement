@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-# Copyright (C) 2018, Hadron Industries, Inc.
+# Copyright (C) 2018, 2020, Hadron Industries, Inc.
 # Entanglement is free software; you can redistribute it and/or modify
 # it under the terms of the GNU Lesser General Public License version 3
 # as published by the Free Software Foundation. It is distributed
@@ -224,7 +224,7 @@ class TestSql(SqlFixture, unittest.TestCase):
         self.d1.connect_at = 0
         self.server.session.add(self.d2)
         with entanglement_logs_disabled(), \
-             wait_for_call(self.loop, sql.internal.sql_meta_messages, "handle_wrong_epoch"):
+             wait_for_call(self.loop, sql.base.SyncOwner, "clear_all_objects"):
             sync_manager_destinations(self.server, force_resync = True)
 
     def testDelete(self):

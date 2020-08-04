@@ -1,4 +1,4 @@
-# Copyright (C) 2018, 2019, Hadron Industries, Inc.
+# Copyright (C) 2018, 2019, 2020, Hadron Industries, Inc.
 # Entanglement is free software; you can redistribute it and/or modify
 # it under the terms of the GNU Lesser General Public License version 3
 # as published by the Free Software Foundation. It is distributed
@@ -124,7 +124,7 @@ class TestGateway(SqlFixture, unittest.TestCase):
         self.client.add_destination(self.client_to_server)
         with wait_for_call(self.loop,
                            sql.internal.sql_meta_messages,
-                           'handle_i_have', 6):
+                           'handle_i_have', 4):
             self.client.run_until_complete(asyncio.wait(self.client._connecting.values()))
         self.client_session = client_registry.sessionmaker()
         self.client_session.manager = self.client

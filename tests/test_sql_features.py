@@ -208,7 +208,29 @@ def test_float_set_as_string(layout_module):
     settle_loop(layout.loop)
     t1_server = layout.server.session.query(T1).filter_by(id = t1.id).first()
     assert isinstance(t1_server.f1, float)
-    
+
+def test_no_force_resync_always(layout, monkeypatch):
+    "Confirm that we do not do forced resyncs when unnecessary)"
+    assert_tripped = False
+    def raise_assert(*args, **kwargs):
+        nonlocal assert_tripped
+        assert_tripped = True
+        raise AssertionError("Should not be called")
+    t1 = T1()
+    t1.x2 = uuid.uuid4()
+    layout.disconnect_all()
+    monkeypatch.setattr(SyncOwner, "clear_all_objects", raise_assert)
+    settle_loop(layout.loop)
+    layout.server.session.add(t1)
+    assert layout.server.session.manager is layout.server.manager
+    layout.server.session.commit()
+    layout.connect_all()
+    settle_loop(layout.loop)
+    assert not assert_tripped, "Unexpected forced resync"
+    # But let's also make sure the new object got synchronized.
+    t1_client = layout.client.session.query(T1).filter_by(id = t1.id).one()
+    assert t1_client == t1
+
     
     
 logging.getLogger('entanglement.protocol').setLevel(10)

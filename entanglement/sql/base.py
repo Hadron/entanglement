@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-# Copyright (C) 2017, 2018, 2019, Hadron Industries, Inc.
+# Copyright (C) 2017, 2018, 2019, 2020, Hadron Industries, Inc.
 # Entanglement is free software; you can redistribute it and/or modify
 # it under the terms of the GNU Lesser General Public License version 3
 # as published by the Free Software Foundation. It is distributed
@@ -18,6 +18,7 @@ from ..util import DestHash, SqlDestHash, get_or_create, GUID
 from .. import interface, network, operations
 from ..protocol import logger
 from . import internal as _internal
+from . import encoders as _encoders
 
 warnings.filterwarnings("ignore", message = ".*normally configured.*", category = sqlalchemy.exc.SAWarning)
 
@@ -535,7 +536,7 @@ class SqlSynchronizable(interface.Synchronizable):
 
     '''
     A SQLAlchemy mapped class that can be synchronized.  By default
-    every column becomes e sync_property.  You can explicitly set
+    every column becomes a sync_property.  You can explicitly set
     sync_property around a Column if you need to override the encoder
     or decoder, although see entanglement.sql.encoder for a
     type map that can be used in most cases.  The sync_should_send
@@ -646,6 +647,42 @@ backref = sqlalchemy.orm.backref('owners',
         'with_polymorphic': '*'
     }
 
+    #We need to treat epoch differently for incoming and outgoing
+    #synchronizations.  We don't want to actually keep epoch entirely
+    #synchronized, because for example if we change which upstream we
+    #get a given SyncOwner from, we want to ask all our downstreams to
+    #deleate objects and resynchronize, even though the upstream may
+    #not wish to do that.  Similarly we might wish to change the epoch
+    #to force a downstream resync if we suspect inconsistency.  There
+    #is an epoch sync property.  On write (that is in processing
+    #sync_receive_constructed) this updates incoming_epoch (the epoch
+    #we expect from upstream).  On read, this reads outgoing_epoch.
+
+    @property
+    def epoch(self):
+        return self.outgoing_epoch
+
+    @epoch.setter
+    def epoch(self, v):
+        self.incoming_epoch = v
+
+    epoch = interface.sync_property(epoch,
+                          encoder = _encoders.datetime_encoder,
+                          decoder = _encoders.datetime_decoder)
+
+    def sync_receive_constructed(self, msg, **options):
+        operation = options.get('operation', 'sync')
+        try:
+            old_epoch = self.incoming_epoch.replace(tzinfo = datetime.timezone.utc)
+        except AttributeError: old_epoch = None
+        super().sync_receive_constructed(msg, **options)
+        if operation == 'sync':
+            if old_epoch != self.incoming_epoch:
+                self.incoming_serial_number = 0
+                # Actually clearing objects in sync_receive_constructed seems dangerous; the incoming function from the registry could raise an error.
+                # So instead we have an interface shared with the registry
+                self.request_clear = True
+            
     def __repr__(self):
         try:
             destination = getattr(self,'destination',getattr(self,'sql_destination'))
@@ -717,12 +754,12 @@ backref = sqlalchemy.orm.backref('owners',
             assert getattr(session, 'manager', None) is None
             logger.info("Deleting all objects from {}".format(self))
             session.rollback()
-        for c, r  in _internal.classes_in_registries(registries):
+        for c, r  in reversed(list(_internal.classes_in_registries(registries))):
             if c is SyncOwner or issubclass(c, SyncOwner): continue
             for o in session.query(c).filter(c.sync_owner_id == self.id):
                 o.sync_owner_id = None
                 session.delete(o)
-            session.flush()
+                session.flush()
 
     def sync_encode_value(self):
         return str(self.id)

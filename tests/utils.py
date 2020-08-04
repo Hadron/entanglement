@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-# Copyright (C) 2017, 2018, 2019, Hadron Industries, Inc.
+# Copyright (C) 2017, 2018, 2019, 2020, Hadron Industries, Inc.
 # Entanglement is free software; you can redistribute it and/or modify
 # it under the terms of the GNU Lesser General Public License version 3
 # as published by the Free Software Foundation. It is distributed
@@ -81,7 +81,7 @@ class SqlFixture(unittest.TestCase):
         self.manager.add_destination(self.d1)
         with wait_for_call(self.loop,
                            sql.internal.sql_meta_messages,
-                           'handle_i_have', 4):
+                           'handle_i_have', 2):
             self.manager.run_until_complete(asyncio.wait(self.manager._connecting.values(), timeout = 1.0))
 
 
