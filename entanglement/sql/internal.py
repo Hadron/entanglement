@@ -179,11 +179,6 @@ class _SqlMetaRegistry(SyncRegistry):
     def handle_my_owners(self, obj, manager, sender):
         session = manager.session
         session.rollback()
-        sender.first_owner = obj.owners[0]
-        first_owner = session.query(base.SyncOwner).get(sender.first_owner)
-        if first_owner.dest_hash != sender.dest_hash:
-            raise SyncUnauthorized("{} is not one of {}'s owners".format(
-                first_owner, sender))
         old_owners = session.query(base.SyncOwner).filter(base.SyncOwner.dest_hash == sender.dest_hash, base.SyncOwner.id.notin_(obj.owners))
         try: del sender.my_owners
         except AttributeError: pass

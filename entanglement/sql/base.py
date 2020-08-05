@@ -10,7 +10,7 @@
 import contextlib, datetime, json, sqlalchemy, uuid, warnings
 from datetime import timezone
 
-from sqlalchemy import Column, Table, String, Integer, DateTime, ForeignKey, inspect, TEXT, Index
+from sqlalchemy import Column, Table, String, Integer, DateTime, ForeignKey, inspect, TEXT, Index, select
 from sqlalchemy.orm import load_only
 import sqlalchemy.exc
 import sqlalchemy.orm, sqlalchemy.ext.declarative, sqlalchemy.ext.declarative.api
@@ -93,11 +93,23 @@ class SqlSyncSession(sqlalchemy.orm.Session):
     def _handle_dirty(session, internal = None, instances = None, expunge_nonlocal = False):
         serial_insert = Serial.__table__.insert().values(timestamp = datetime.datetime.now())
         serial_flushed = False
+        owner_stmt = select([SyncOwner.id]) \
+            .where(SyncOwner.dest_hash == None)
+        local_owner = None
         for inst in session.new | session.dirty:
             if isinstance(inst, SqlSynchronizable) and session.is_modified(inst):
+                if inst.sync_owner_id is None and not isinstance(inst, SyncOwner):
+                    if local_owner is None:
+                        local_owner = session.execute(owner_stmt).scalar()
+                    if local_owner: inst.sync_owner_id = local_owner
                 inspect_inst = inspect(inst)
                 modified_attrs = frozenset(inst.__class__._sync_properties.keys()) - frozenset(inspect_inst.unmodified)
                 session.sync_dirty.add((inst, modified_attrs))
+                #By this point sync_owner_id can only be None if there
+                #are no local SyncOwners. That's probably not going to
+                #end up so good if the object is received by an
+                #SqlSynchronizable attached to an SQLSyncRegistry, but
+                #we don't actually catch that here.
                 if (inst.sync_owner_id is None and inst.sync_owner is None) or inst.sync_is_local:
                     if not serial_flushed:
                         new_serial = session.execute(serial_insert).lastrowid
@@ -738,7 +750,6 @@ backref = sqlalchemy.orm.backref('owners',
     @classmethod
     def find_from_msg(self, session, dest, msg):
         if '_sync_owner' in msg: id = msg['_sync_owner']
-        elif hasattr(dest, 'first_owner'): id = dest.first_owner
         else: raise interface.SyncBadOwner("Unable to find owner for message")
         try: return session.query(SyncOwner).get(id)
         except sqlalchemy.orm.exc.NoResultFound:

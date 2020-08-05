@@ -89,7 +89,7 @@ class TestSql(SqlFixture, unittest.TestCase):
         self.assertEqual(t.ch, DestHash(b'o' *32))
         as_sync = t.to_sync()
         self.assertEqual(set(as_sync.keys()),
-                         {'id', 'ch', 'sync_serial'})
+                         {'id', 'ch', 'sync_serial', '_sync_owner'})
 
     def testSendObject(self):
         self.session.manager = self.manager
