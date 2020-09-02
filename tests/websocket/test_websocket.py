@@ -18,6 +18,7 @@ except: pass
 import tornado.web, tornado.websocket, tornado.ioloop, tornado.testing, tornado.httpserver
 import entanglement.protocol
 from entanglement import SyncServer, SyncDestination, operations
+import entanglement.javascript_schema
 from entanglement.util import entanglement_logs_disabled
 from entanglement.sql import sql_sync_declarative_base, SqlSyncRegistry, SyncOwner
 from entanglement.sql.transition import SqlTransitionTrackerMixin
@@ -29,6 +30,8 @@ ioloop = tornado.ioloop.IOLoop.current()
 
 @pytest.fixture(scope = 'module')
 def requested_layout(requested_layout):
+    # We'll take this opportunity to output schemas as well.
+    entanglement.javascript_schema.output_js_schemas(js_test_path+"/schemas")
     requested_layout['server']['websocket'] = True
     return requested_layout
 
@@ -40,6 +43,7 @@ js_test_path = os.path.abspath(os.path.dirname(__file__))
 
 # SQL declaration
 Base = sql_sync_declarative_base()
+entanglement.javascript_schema.javascript_registry(Base.registry, "websocket_test")
 
 class TableBase(Base):
     __tablename__ = "base_table"
@@ -263,3 +267,18 @@ def test_sync_events(layout_module):
     layout.server.websocket_destination.connected_future.add_done_callback(send_obj)
     layout.loop.run_until_complete(future)
     print(future.result())
+
+def test_schemas(loop, layout_module):
+    layout = layout_module
+    future = run_js_test("testSchemas.js")
+    def send_obj(connected_future):
+        ti = TableInherits()
+        ti.info = 90
+        ti.info2 = 20
+        layout.server.session.add(ti)
+        layout.server.session.commit()
+    connected_future = layout.server.websocket_destination.connected_future = layout.loop.create_future()
+    layout.server.websocket_destination.connected_future.add_done_callback(send_obj)
+    layout.loop.run_until_complete(future)
+    print(future.result())
+    

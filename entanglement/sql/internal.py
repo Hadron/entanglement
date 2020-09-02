@@ -15,6 +15,8 @@ from .. import interface, operations
 from ..network import logger
 from ..util import get_or_create
 from sqlalchemy import inspect
+from ..javascript_schema import javascript_registry
+
 
 class _SqlMetaRegistry(SyncRegistry):
 
@@ -201,7 +203,7 @@ class _SqlMetaRegistry(SyncRegistry):
 
 
 sql_meta_messages = _SqlMetaRegistry()
-
+javascript_registry(sql_meta_messages, "sql_meta")
 
 def populate_owner_from_msg(msg, obj, session):
     owner = msg.get('_sync_owner', None)
