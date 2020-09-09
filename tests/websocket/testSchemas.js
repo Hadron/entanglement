@@ -1,5 +1,5 @@
 "use strict";
-var entanglement = require('../../javascript/entanglement.js');
+var entanglement = require('../../javascript/entanglement');
 var assert = require('assert');
 let sr = new entanglement.SyncRegistry();
 var websocket_schemas = require("./schemas/websocket_test");

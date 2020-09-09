@@ -487,7 +487,6 @@ class  SqlSyncDestination(_internal_base, network.SyncDestination):
         self.received_i_have = set()
         res = await super().connected(manager, *args, **kwargs)
         if hasattr(manager, 'session'):
-            if not self in manager.session: manager.session.add(self)
             manager.session.commit()
             await _internal.handle_connected(self, manager, manager.session)
         return res

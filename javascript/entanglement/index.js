@@ -120,7 +120,7 @@ class SyncManager {
         obj2['_sync_operation'] = operation;
         obj2._sync_owner = obj._sync_owner;
         if (obj.transition_id) {
-            obj2.transition_id = obj.transition_id
+            obj2.transition_id = obj.transition_id;
         }
         if (response === true) {
             obj2['_flags'] = 1;
@@ -190,8 +190,11 @@ class SyncRegistry {
             receive: [],
             sync: [],
             transition: [],
-            delete: [],
-            forward: []
+            delete: [this._incomingDelete],
+            forward: [],
+            // Not used directly by Synchronizable or SyncRegistry,
+            // but signaled by the persistence layer when an object is disappeared because an owner is deleted
+            disappear: [],
         };
     }
 
@@ -223,8 +226,15 @@ class SyncRegistry {
             }
         }
     }
+
+    async _incomingDelete(object, msg) {
+        if (object.persistDelete)
+            return await object.persistDelete();
+    }
     
     _schemaItem(name, keys, attrs) {
+        keys = Object.freeze(keys);
+        attrs = Object.freeze(attrs);
         this.bases[name] = function(base) {
             let result = class extends base {
             }
@@ -307,26 +317,26 @@ class SyncRegistry {
 class Synchronizable {
 
     toSync(options) {
-        options = options || {}
-        let attributes = options.attributes || this.constructor._syncAttributes
-        let res = {}
+        options = options || {};
+        let attributes = options.attributes || this.constructor._syncAttributes;
+        let res = {};
         if (this.sync_owner !== undefined)
-            res['_sync_owner'] = this.sync_owner
-        res['_sync_type'] = this.sync_type
+            res['_sync_owner'] = this.sync_owner;
+        res['_sync_type'] = this.constructor.syncType;
         for (let attr of attributes) {
-            res[attr] = this[attr]
+            res[attr] = this[attr];
         }
-        return res
+        return res;
     }
 
     static syncConstruct(msg, options) {
-        let res = Object.create(this.prototype)
+        let res = Object.create(this.prototype);
         // This method can be overridden
         // It is reasonable for overrides to remove properties from msg that are set as primary keys etc.
         //override for database lookups etc
         // It is intentional that this bypasses the constructor.  The constructor may have arguments to initialize new objects.
         // If you need constructor behavior (including calling the constructor), override this method.
-        return res
+        return res;
     }
 
     syncReceive(msg, options) {
@@ -334,7 +344,7 @@ class Synchronizable {
         let orig = Object.assign({},
                                  this._orig || {});
         for (let k in msg) {
-            if (k[0] == "_")
+            if (k[0] == "_" && (k != "_sync_owner"))
                 continue;
             orig[k] = msg[k];
             this[k] = msg[k];

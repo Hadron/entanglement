@@ -20,10 +20,10 @@ import entanglement.protocol
 from entanglement import SyncServer, SyncDestination, operations
 import entanglement.javascript_schema
 from entanglement.util import entanglement_logs_disabled
-from entanglement.sql import sql_sync_declarative_base, SqlSyncRegistry, SyncOwner
+from entanglement.sql import sql_sync_declarative_base, SqlSyncRegistry, SyncOwner, SqlSyncDestination
 from entanglement.sql.transition import SqlTransitionTrackerMixin
 from entanglement.websocket import SyncWsHandler
-from sqlalchemy import Column, String, ForeignKey
+from sqlalchemy import Column, String, Integer, ForeignKey
 from entanglement.util import GUID
 from tests.utils import *
 ioloop = tornado.ioloop.IOLoop.current()
@@ -68,7 +68,20 @@ class TableTransition(TableInherits, SqlTransitionTrackerMixin):
     __mapper_args__ = {
         'polymorphic_identity': 'transition'
         }
-    
+
+class TestPhase(Base):
+
+    __tablename__ = "test_phase"
+
+    id = Column(GUID, primary_key = True,
+                default = lambda: uuid.uuid4())
+
+    phase = Column(Integer, nullable = False)
+
+    def sync_receive_constructed(self, *args, **kwargs):
+        super().sync_receive_constructed(*args, **kwargs)
+            
+        
 manager_registry = SqlSyncRegistry()
 manager_registry.registry = Base.registry.registry
 
@@ -84,7 +97,7 @@ class JsTest(threading.Thread):
 
     def run(self):
         try:
-            output = subprocess.check_output(['nodejs', self.testname,
+            output = subprocess.check_call(['nodejs', self.testname,
                                                    self.uri, self.owner],
                                                   timeout = 3.0,
                                                   cwd = os.path.dirname(self.testname))
@@ -279,6 +292,20 @@ def test_schemas(loop, layout_module):
         layout.server.session.commit()
     connected_future = layout.server.websocket_destination.connected_future = layout.loop.create_future()
     layout.server.websocket_destination.connected_future.add_done_callback(send_obj)
+    layout.loop.run_until_complete(future)
+    print(future.result())
+    
+def test_persistence(loop, layout_module, monkeypatch):
+    entanglement.protocol.protocol_logger.setLevel(10)
+
+    layout = layout_module
+    future = run_js_test("testPersistence.js")
+    phase = TestPhase()
+    phase.phase = 1
+    layout.server.session.add(phase)
+    layout.server.session.commit()
+    websocket_destination = SqlSyncDestination(b'Q'*32, "sql websocket")
+    monkeypatch.setattr(layout.server, "websocket_destination", websocket_destination)
     layout.loop.run_until_complete(future)
     print(future.result())
     

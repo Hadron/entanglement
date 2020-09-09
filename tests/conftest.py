@@ -120,7 +120,7 @@ def setup_manager(name, le, registries):
     ctx.session.manager = ctx.manager
     ctx.destinations = []
     ctx.websocket = le.get('websocket', False)
-    if le.get('websocket', False):
+    if ctx.websocket:
         def find_sync_destination( request, *args, **kwargs):
             return ctx.websocket_destination
         ctx.websocket_destination = SyncDestination(b'n' * 32, 'websocket')

@@ -1,5 +1,5 @@
 "use strict";
-var entanglement = require('../../javascript/entanglement.js');
+var entanglement = require('../../javascript/entanglement');
 var sm = new entanglement.SyncManager(process.argv[2]);
 
 var test_obj = {'_sync_type': 'TableTransition',
