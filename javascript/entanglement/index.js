@@ -233,11 +233,24 @@ class SyncRegistry {
     }
     
     _schemaItem(name, keys, attrs) {
+        if (this.bases[name]) {
+            console.warn(`${name} already registered`);
+            return;
+        }
         keys = Object.freeze(keys);
         attrs = Object.freeze(attrs);
-        this.bases[name] = function(base) {
-            let result = class extends base {
-            }
+        this.bases[name] = function(base, extend = true) {
+            // By default we extend the base class with a new class
+            // But internally if register is called with something
+            // that is a Synchronizable, has a name in our schema, but
+            // does not have the syncattributes etc, we add those
+            // properties directly to it.  See what happens in
+            // entanglement.persistence.setupPersistence as an example
+            
+            let result;
+            if (extend)
+                result = class extends base { }
+            else result = base;
             Object.defineProperties(
                 result,                                    {
                     name: {configureable: false,
@@ -274,9 +287,14 @@ class SyncRegistry {
         
 
     register(cls) {
+        if ((!('syncType' in cls)) && (cls.name in this.bases) && (cls.prototype instanceof Synchronizable)) {
+            // We assume that the intent is for us to add the schema items to the class in this instance.
+            this.bases[cls.name](cls, false);
+        }
+            
         for (let k of ['syncType', '_syncAttributes', 'syncPrimaryKeys']) {
             if (cls[k] === undefined)
-                throw new TypeError(`${cls} is not Synchronizable`);
+                throw new TypeError(`${cls.name} is not Synchronizable`);
         }
         let sync_type = cls.syncType;
         if(this.registry.has(sync_type))
