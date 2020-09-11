@@ -86,7 +86,10 @@ class SyncManager {
                 } );
             }
             if (message['_sync_type'] in this.receivers) {
-                this.receivers[message._sync_type].forEach( r => r(message));
+                this.receivers[message._sync_type].forEach( r => {
+                    Promise.resolve(r(message, {manager: this})).catch(
+                        (e) => console.error(`${e.stack || e.toString()} receiving a ${message._sync_type}`));
+                });
             }
         });
         this._out_counter = 0;
@@ -113,16 +116,32 @@ class SyncManager {
     onclose(fn) {this._onclose = fn;}
     onopen(fn) {this._onopen = fn;}
 
-    synchronize(obj, attributes, operation, response) {
+    synchronize(obj, options, ...rest) {
         var res;
+        if (Array.isArray(options)) {
+            // old attributes, operation, response calling convention.
+            let [operation, response] = rest;
+            options = {attributes: options,
+                       operation: operation,
+                       response: response};
+        }
+        
         var obj2 = {};
-        attributes.forEach( attr => obj2[attr] = obj[attr]);
-        obj2['_sync_operation'] = operation;
+        options.manager = this;
+            if (obj.toSync) {
+                obj2 = obj.toSync(options);
+            }else {
+                // no tosync
+                for (let a of options.attributes) {
+                    obj2[a] = obj[a];
+                }
+            }
+        obj2['_sync_operation'] = options.operation || 'sync';
         obj2._sync_owner = obj._sync_owner;
         if (obj.transition_id) {
             obj2.transition_id = obj.transition_id;
         }
-        if (response === true) {
+        if (options.response === true) {
             obj2['_flags'] = 1;
             res = new Promise((resolved, rejected) => {
             this.expected[this._out_counter] = {
@@ -338,12 +357,21 @@ class Synchronizable {
         options = options || {};
         let attributes = options.attributes || this.constructor._syncAttributes;
         let res = {};
-        if (this.sync_owner !== undefined)
-            res['_sync_owner'] = this.sync_owner;
+        if (this._sync_owner !== undefined)
+            res['_sync_owner'] = this._sync_owner;
         res['_sync_type'] = this.constructor.syncType;
         for (let attr of attributes) {
             res[attr] = this[attr];
         }
+        return res;
+    }
+
+    async syncClone() {
+        //Returns  results of SyncReceive ontoSync
+        // In the persistence case, this is going to be a new object not in the storage map.
+        // Needs to be async so that SyncReceive can be async
+        let res = Object.create(this.constructor.prototype, {});
+        await res.syncReceive(this.toSync({}), {operation: 'clone'});
         return res;
     }
 
