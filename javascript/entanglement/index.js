@@ -8,6 +8,32 @@ if (!('WebSocket' in this)) {
     var WebSocket =require('websocket').w3cwebsocket;
 }
 
+function promiseAnyPolyfill(promises) {
+    // Sort of like Promise.any (which node.js does not support)
+    // Except no Aggrigate error support
+    let result_found = false;
+    let rejections = 0;
+    promises = Array.from(promises); // So we know the length
+    function inner(resolve, reject) {
+        if (promises.length == 0) {
+            reject(null);
+        }
+        for (let p of promises) {
+            p.then((result) => {
+                if (!result_found) {
+                    result_found = true;
+                    resolve(result);
+                }
+            }). catch(
+                (rejection) => {
+                    rejections++;
+                    if (rejections == promises.length)
+                        reject(rejection);
+                });
+        }
+    }
+    return new Promise(inner);
+}
 
 class SyncManager {
 
@@ -74,22 +100,23 @@ class SyncManager {
                     }
                 });
             }
-            if (!(message._resp_for === undefined)) {
-                message._resp_for.forEach( r => {
-                    if( Number(r) in this.expected) {
-                        var prom = this.expected[r];
-                        if (message._sync_is_error === undefined) {
-                            prom.resolved(message);
-                        } else {prom.rejected(message);}
-                        delete this.expected[r];
-                    }
-                } );
-            }
+            let result_promises = [];
             if (message['_sync_type'] in this.receivers) {
                 this.receivers[message._sync_type].forEach( r => {
-                    Promise.resolve(r(message, {manager: this})).catch(
-                        (e) => console.error(`${e.stack || e.toString()} receiving a ${message._sync_type}`));
+                    result_promises.push(
+                        Promise.resolve(r(message, {manager: this})). catch(
+                            (e) => console.error(`${e.stack || e.toString()} receiving a ${message._sync_type}`)));
                 });
+            }
+            if (!(message._resp_for === undefined)) {
+                // If any of the receivers returns a value, pass that
+                // into the response handler.  If there are no
+                // receivers or they all reject, pass in the message
+                // itself.
+                promiseAnyPolyfill(result_promises).then (
+                    (result) => this._handleRespFor(message, result)). catch(
+                        (error) => this._handleRespFor(message, message));
+                
             }
         });
         this._out_counter = 0;
@@ -97,6 +124,23 @@ class SyncManager {
         this.expected = {}
     }
 
+    _handleRespFor(message, result) {
+        message._resp_for.forEach( r => {
+            if( Number(r) in this.expected) {
+                try {
+                    var prom = this.expected[r];
+                    if (message._sync_is_error === undefined) {
+                        prom.resolved(result ||message);
+                    } else {prom.rejected(message);}
+                }
+                catch(e) {
+                    console.error(`${e.stack} handling response`);
+                }
+                delete this.expected[r];
+            }
+        } );
+    }
+    
     _disconnect(event) {
         if (this.socket === undefined) return;
         if (this._open) {
