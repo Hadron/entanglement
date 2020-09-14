@@ -78,6 +78,7 @@ class SqlFixture(unittest.TestCase):
         self.d2 = self.to_client = SqlSyncDestination(certhash_from_file("host2.pem"),
                                   "manager")
         self.server.add_destination(self.d2)
+        self.server.session.add(self.d2)
         self.manager.add_destination(self.d1)
         with wait_for_call(self.loop,
                            sql.internal.sql_meta_messages,
