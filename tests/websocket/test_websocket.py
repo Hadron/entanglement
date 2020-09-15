@@ -265,7 +265,7 @@ def test_sync_orig(layout_module):
     layout.server.manager.synchronize(ti, operation = 'forward',
                                           attributes_to_sync = {'id', 'info'})
     loop.run_until_complete(future)
-    print(str(future.result(), 'utf-8'))
+
     
 def test_sync_events(layout_module):
     layout = layout_module

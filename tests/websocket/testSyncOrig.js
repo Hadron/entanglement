@@ -10,6 +10,7 @@ class TableInherits extends sr.bases.TableInherits(entanglement.Synchronizable) 
 
     syncReceive(msg, options) {
         try {
+            console.log(msg);
             super.syncReceive(msg, options);
                         incoming[options.operation](this);
             if (this.info == 0)

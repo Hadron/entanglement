@@ -8,7 +8,10 @@ var test_obj = {'_sync_type': 'TableTransition',
 	   };
 sm.onopen( event => {
     var res = sm.synchronize(test_obj, Object.keys(test_obj), 'create', true);
-    res.then(on_create_response, m => process.exit(1));
+    res.then(on_create_response, m => {
+        console.error(m);
+        process.exit(1);
+    });
 });
 
 function prep_transition(t) {
@@ -21,6 +24,7 @@ function prep_transition(t) {
 }
 
 function on_create_response(m) {
+    console.log("In on_create_response");
     m.info2 = 1;
     var m2 = prep_transition(m);
     var res = sm.perform_transition(m2, Object.keys(m2));
