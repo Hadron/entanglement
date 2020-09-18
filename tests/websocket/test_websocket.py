@@ -44,6 +44,7 @@ js_test_path = os.path.abspath(os.path.dirname(__file__))
 # SQL declaration
 Base = sql_sync_declarative_base()
 entanglement.javascript_schema.javascript_registry(Base.registry, "websocket_test")
+Base.registry.register_operation('transition', operations.transition_operation)
 
 class TableBase(Base):
     __tablename__ = "base_table"
@@ -80,7 +81,32 @@ class TestPhase(Base):
 
     def sync_receive_constructed(self, *args, **kwargs):
         super().sync_receive_constructed(*args, **kwargs)
+        operation = kwargs['operation']
+        manager = kwargs['manager']
+        context = kwargs['context']
+        registry = kwargs['registry']
+        if operation == 'forward' and self.phase in (4,5) and self.sync_is_local:
+            session = context.session
+            session.commit() # save ourselves to avoid locks
+            owner = self.sync_owner
+            session = registry.sessionmaker()
+            session.manager = manager
+            if self.phase == 4:
+                obj = session.query(TableTransition).filter_by(sync_owner = owner).one()
+                obj.info = "updated"
+                session.commit()
+            elif self.phase == 5:
+                #In phase 5 we delete our owner and clear all its objects.
+                owner.clear_all_objects(manager = manager)
+                #new session
+                owner = session.merge(owner)
+                session.delete(owner)
+                session.commit()
             
+            
+            
+            
+        
         
 manager_registry = SqlSyncRegistry()
 manager_registry.registry = Base.registry.registry
@@ -206,7 +232,6 @@ class TestWebsockets(SqlFixture, unittest.TestCase):
         tp = transitions_partitioned()
         tp.__enter__()
         self.addCleanup(tp.__exit__, None, None, None)
-        Base.registry.register_operation('transition', operations.transition_operation)
         manager_registry.register_operation('transition', operations.transition_operation)
         await self.client_destination.connected_future
         t = TableTransition(info = "test")
@@ -301,11 +326,13 @@ def test_persistence(loop, layout_module, monkeypatch):
     layout = layout_module
     future = run_js_test("testPersistence.js")
     phase = TestPhase()
+    phase.sync_owner = SyncOwner()
     phase.phase = 1
     layout.server.session.add(phase)
     layout.server.session.commit()
     websocket_destination = SqlSyncDestination(b'Q'*32, "sql websocket")
     monkeypatch.setattr(layout.server, "websocket_destination", websocket_destination)
-    layout.loop.run_until_complete(future)
+    with transitions_partitioned():
+        layout.loop.run_until_complete(future)
     print(future.result())
     
