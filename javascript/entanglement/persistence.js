@@ -66,7 +66,9 @@ static     get syncStorageMap() {
         cls.syncStorageMap.delete(cls.storageKey(this));
         if (is_disappear)
             registry._dispatchEvent("disappear", this, {});
-    }
+        if (this.constructor._dispatchEvent)
+            this.constructor._dispatchEvent('disappear', this, {});
+            }
 
     syncModified() {
         let attrs = new Set();
@@ -107,8 +109,14 @@ static     get syncStorageMap() {
             response: true
         });
     }
-    
-            
+
+    syncDelete(manager) {
+        return manager.synchronize(this, {
+            attributes: this.constructor.syncPrimaryKeys,
+            operation: 'delete',
+            response: true});
+    }
+                
     
 };
 
@@ -133,6 +141,7 @@ class SyncOwner extends PersistentSynchronizable {
 
         for (let [key, cls] of registry.registry) {
             if (cls.syncStorageMap !== undefined) {
+                if (cls.syncStorageMap === SyncOwner.syncStorageMap) continue;
                 for (let [ikey, inst] of cls.syncStorageMap) {
                     if (inst._sync_owner === this.id) {
                         // Stackoverflow seems to think that deleting from an ES6 map during iterations is okay

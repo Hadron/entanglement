@@ -35,6 +35,72 @@ function promiseAnyPolyfill(promises) {
     return new Promise(inner);
 }
 
+function EventHandlerMixin(obj, events = null) {
+    const methods = {
+        addEventListener(event, handler) {
+            let handlers = this.event_handlers[event];
+            if (handlers === undefined)
+                throw new TypeError("Illegal event");
+            if (!handlers.includes(handler))
+                handlers.push(handler);
+            return handler;
+        },
+
+        removeEventListener(event, handler) {
+            let handlers = this.event_handlers[event];
+            if (handlers === undefined)
+                throw new TypeError("Illegal event");
+            this.event_handlers[event] = handlers.filter((i) => i != handler);
+        },
+
+        _dispatchEvent(event, ...rest) {
+            let handlers = this.event_handlers[event];
+            for (let h of handlers) {
+                try {
+                    Promise.resolve(h(...rest)) .catch((e) => {
+                        console.error(`${e} handling ${event} event`);
+                    });
+                } catch(e) {
+                    console.error( `${e} dispatching to ${event} event`);
+                }
+            }
+        }
+    };
+    Object.assign(obj, methods);
+    if (events) {
+        Object.defineProperties(
+            obj,
+            {
+                handled_events: {
+                    enumerable: false,
+                    value: Object.freeze(Array.from(events))},
+                event_handlers: {
+                    enumerable: false,
+                    get: function() {
+                        if (eventHandlerMap.has(this))
+                            return eventHandlerMap.get(this);
+                        let res = {};
+                        for (let e of this.handled_events) {
+                            res[e] = [];
+                        }
+                        eventHandlerMap.set(this, res);
+                        return res;
+                    },
+                },
+            });
+    }
+}
+
+const eventHandlerMap = new WeakMap();
+
+const syncHandledEvents = Object.freeze(
+    ['sync', 'forward', 'create',
+     'transition', 'brokenTransition',
+     'delete',
+     // Disappear is dispatched for cases where owner removal or epoch change causes an object to be cleared.
+     'disappear']);
+
+        
 class SyncManager {
 
     constructor(options) {
@@ -221,13 +287,40 @@ class SyncManager {
         } else {
             result = obj.transition_promise;
         }
-        var sync_result = this.synchronize(obj, attributes, 'transition', first_transition);
+        if (attributes === undefined) {
+            attributes = obj.syncModified();
+            for (let a of obj.constructor.syncPrimaryKeys)
+                attributes.add(a);
+        }
+        var sync_result = this.synchronize(obj, {
+            attributes: attributes,
+            operation: 'transition',
+            response: first_transition});
         if (first_transition) {
             Object.defineProperty(obj, 'transition_promise', {
-                config: true,
+                configurable: true,
                 enumerable: false,
                 value: sync_result});
             result = sync_result;
+            if (obj._orig) {
+                Object.defineProperty(obj, '_orig_pre_transition',
+                                      {enumerable: false,
+                                       configurable: true,
+                                       value: {},
+                                      });
+            }
+            sync_result.catch(() => true).finally(() => {
+                if (obj.transition_promise == sync_result) {
+                    delete obj.transition_promise;
+                    delete obj.transition_id;
+                    if (obj._orig_pre_transition)
+                        delete obj._orig_pre_transition;
+                }
+            });
+        }
+        if (obj._orig_pre_transition) {
+            for (let a of attributes)
+                obj._orig_pre_transition[a] = obj._orig[a];
         }
         return result;
     }
@@ -249,50 +342,18 @@ class SyncRegistry {
     constructor() {
         this.registry = new Map();
         this.bases = {};
-        this.event_handlers = {
-            receive: [],
-            sync: [],
-            transition: [],
-            delete: [this._incomingDelete],
-            forward: [],
-            // Not used directly by Synchronizable or SyncRegistry,
-            // but signaled by the persistence layer when an object is disappeared because an owner is deleted
-            disappear: [],
-        };
+        this.event_handlers = {};
+        for (let e of syncHandledEvents)
+            this.event_handlers[e] = [];
+        this.event_handlers.receive = [];
+        this.addEventListener('delete', this._incomingDelete.bind(this));
     }
 
-    addEventListener(event, handler) {
-        let handlers = this.event_handlers[event];
-        if (handlers === undefined)
-            throw new TypeError("Illegal event");
-        if (!handlers.includes(handler))
-            handlers.push(handler);
-        return handler;
-    }
 
-    removeEventListener(event, handler) {
-        let handlers = this.event_handlers[event];
-        if (handlers === undefined)
-            throw new TypeError("Illegal event");
-        this.event_handlers[event] = handlers.filter((i) => i != handler);
-    }
-
-    _dispatchEvent(event, ...rest) {
-        let handlers = this.event_handlers[event];
-        for (let h of handlers) {
-            try {
-                Promise.resolve(h(...rest)) .catch((e) => {
-                    console.error(`${e} handling ${event} event`);
-                });
-            } catch(e) {
-                console.error( `${e} dispatching to ${event} event`);
-            }
-        }
-    }
 
     async _incomingDelete(object, msg) {
         if (object.persistDelete)
-            return await object.persistDelete();
+            return await object.persistDelete(this);
     }
     
     _schemaItem(name, keys, attrs) {
@@ -384,17 +445,19 @@ class SyncRegistry {
         let obj = await Promise.resolve(cls.syncConstruct(msg, options));
         await Promise.resolve(obj.syncReceive(msg, options));
         this._dispatchEvent('receive', obj, msg);
-        if (options.operation in this.event_handlers)
-            this._dispatchEvent(options.operation, obj, msg);
+        if (options.operation in this.event_handlers) {
+            this._dispatchEvent(options.operation, obj, msg, options);
+            obj.constructor._dispatchEvent(options.operation, obj, msg, options);
+        }
         return obj;
     }
     
 }
-    
+
+EventHandlerMixin(SyncRegistry.prototype);
+
             
     
-
-
 class Synchronizable {
 
     toSync(options) {
@@ -430,13 +493,22 @@ class Synchronizable {
     }
 
     syncReceive(msg, options) {
-        // Don't use Object.assign to deal better with Vue or other reactive frameworks
+        if (this.transition_id && (this.transition_id != msg.transition_id)) {
+            if (this._orig_pre_transition) {
+                for (let a in this._orig_pre_transition) {
+                    if (a in msg) continue;
+                    this[a] = this._orig_pre_transition[a];
+                }
+            }
+            this.constructor._dispatchEvent("brokenTransition", this, msg, this.transition_id);
+        }
         let orig = Object.assign({},
                                  this._orig || {});
         for (let k in msg) {
             if (k[0] == "_" && (k != "_sync_owner"))
                 continue;
             orig[k] = msg[k];
+            // Don't use Object.assign to deal better with Vue or other reactive frameworks
             this[k] = msg[k];
         }
         Object.defineProperty(this, '_orig',
@@ -472,6 +544,8 @@ class Synchronizable {
     }
     
 }
+
+EventHandlerMixin(Synchronizable, syncHandledEvents);
 
 
         
