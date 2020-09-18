@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-# Copyright (C) 2017, 2018, Hadron Industries, Inc.
+# Copyright (C) 2017, 2018, 2020, Hadron Industries, Inc.
 # Entanglement is free software; you can redistribute it and/or modify
 # it under the terms of the GNU Lesser General Public License version 3
 # as published by the Free Software Foundation. It is distributed
@@ -77,6 +77,17 @@ class SqlTransitionTrackerMixin(TransitionTrackerMixin, SqlSynchronizable):
             if isinstance(a, CompositeProperty):
                 try: del self.__dict__[a.key]
                 except KeyError: pass
+
+    def _sync_commit_hook(self, session):
+        manager = session.manager
+        if getattr(self, 'transition_id', None): return
+        if not manager: return
+        key = self.transition_key()
+        if key in self.transition_tracked_objects:
+            obj = self.transition_tracked_objects[key]
+            if obj is not self:
+                obj._broken_transition(manager)
                 
+            
 
 class DirtyTransitionError(SyncError): pass

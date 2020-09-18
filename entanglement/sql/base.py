@@ -230,6 +230,12 @@ class SqlSyncSession(sqlalchemy.orm.Session):
                 sqlalchemy.orm.session.make_transient(o)
                 sqlalchemy.orm.session.make_transient_to_detached(o)
                 o.sync_future = future #new object after merge
+                sync_commit_hook = getattr(o, '_sync_commit_hook', None)
+                if sync_commit_hook:
+                    try: sync_commit_hook(self)
+                    except Exception:
+                        logger.exception( f'Calling sync_commit hook for {o}')
+                        
                 if forward_dest:
                     forward_objects.append((o, forward_dest, modified_attrs))
                 else: objects.append(o)
