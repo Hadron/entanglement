@@ -26,6 +26,14 @@ Conflicts: python3-hadron-entanglement
 Description: CLI scripts for entanglement
 
 Package: libjs-entanglement
+Section: proprietary/oldlibs
+Architecture: all
+Multi-Arch: foreign
+Suggests: python3-entanglement
+Description: Deprecated Entanglement Javascript Libraries
+
+
+Package: node-entanglement
 Section: proprietary/libs
 Architecture: all
 Multi-Arch: foreign
