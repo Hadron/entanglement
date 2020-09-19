@@ -1,5 +1,5 @@
 "use strict";
-var entanglement = require('../../javascript/entanglement');
+var entanglement = require('../../javascript');
 var assert = require('assert');
 let sr = new entanglement.SyncRegistry();
 
