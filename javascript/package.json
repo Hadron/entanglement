@@ -1,0 +1,11 @@
+{
+  "name": "entanglement",
+  "version": "0.21.0",
+  "description": "Entanglement State Synchronization Protocol",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Sam Hartman",
+  "license": "SEE LICENSE IN LICENSE"
+}
