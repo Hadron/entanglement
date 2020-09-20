@@ -11,8 +11,9 @@
 * has not been implemented yet.
 */
 
-var entanglement = require('./index');
-var classStorageMaps = new WeakMap();
+const entanglement = require('./index');
+const util = require('./util')
+const classStorageMaps = new WeakMap();
 
 class PersistentSynchronizable extends entanglement.Synchronizable {
 
@@ -210,6 +211,199 @@ function setupPersistence(registry) {
     registry.register(MyOwners);
 }
 
+/*40*
+* Relationship machinery
+*/
+
+const relationship_delete_ops = Object.freeze(new Set([
+     'delete',
+    'disappear',
+]));
+const relationship_add_ops = Object.freeze(new Set([
+    'sync'
+]));
+
+var relationship_observer = null;
+/**
+   * Indicate a relationship between two :class:`Synchronizables`.
+   * The *local* class is the one that in a database would have a
+   * foreign key constraint; the one with a higher sync_priority.
+   * This supports one-to-one and one-to-many relationships.
+   *
+   * :param local: The local class
+   * :param options: A set of options for the relationship:
+   *
+   * uselist
+   *    Defaults to true; if true, then the target side of the relationship is a list (one-to-many).
+   *
+   * target
+   *    Class that is the other side of the relationship
+   *
+   * keys
+   *    An array of key names mapping to the local columns that hold the target's :meth:`yncPrimaryKeys`
+   *
+   * local_prop
+   *    The The local name of a property to use; defaults to downcased target name.
+   *
+   * target_prop
+   *    Same for target.  Defaults to downcased local name possibly with 's' added.
+   */
+function relationship(local, target, options) {
+    if (!options.keys)
+        throw new TypeError("keys option is required");
+    if(!Array.isArray(options.keys))
+        options.keys = [options.keys];
+    const keys = Object.freeze(options.keys);
+        if (options.uselist === undefined)
+            options.uselist = true;
+    const uselist = options.uselist;
+    const order = options.order;
+    const debug = options.debug || false;
+    const local_prop = options.local_prop ||util.downFirst(target.name);
+    let target_prop;
+    if (options.target_prop === undefined) {
+        target_prop = util.downFirst(local.name);
+        if (uselist) target_prop = target_prop+'s';
+    } else target_prop = options.target_prop;
+
+    if (debug)
+        console.log(`Relationship from ${local.name} to ${target.name} local_prop: ${local_prop} target_prop: ${target_prop}`);
+
+    const local_map = new WeakMap();
+    const target_map = new WeakMap();
+    let add;
+    let remove;
+    if (uselist)  {
+        add = function add(key, obj){
+            let target_obj = target.syncStorageMap.get(key);
+            if (target_obj === undefined) {
+                console.warn(`${target.name} with key ${key} not found for ${local.name} relationship`);
+                return;
+            }
+            let res = target_map.get(target_obj);
+            if (res === undefined) {
+                res = [];
+                res.sort_required = true;
+                if (relationship_observer) res = relationship_observer(res);
+                target_map.set(target_obj, res);
+            }
+            if (res.indexOf(obj) == -1) {
+                res.push(obj);
+                res.sort_required = true;
+            }
+        }
+        remove = function remove(key, obj) {
+            let target_obj = target.syncStorageMap.get(key);
+            if (target_obj === undefined) return;
+            let res = target_map.get(target_obj);
+            if (res === undefined)
+                return;
+            let idx = res.indexOf(obj);
+            if (idx != -1)
+                res.splice(idx, 1);
+        }
+    }else  {
+        add = function add(key, obj) {
+            let target_obj = target.syncStorageMap.get(key);
+            if (target_obj === undefined) {
+                console.warn(`${target.name} with key ${key} not found for ${local.name} relationship`);
+                return;
+            }
+            target_map.set(target, obj);
+        }
+        remove = function remove(key, obj) {
+            let target_obj = target.syncStorageMap.get(key);
+            if (target_obj)
+                target_map.delete(target_obj);
+        }
+    }
+    function key(local_obj) {
+        let ko = {};
+        for (let i = 0; i < keys.length; i++) {
+            if (local_obj[keys[i]] == undefined) // or null
+                return undefined;
+            ko[target.syncPrimaryKeys[i]] = local_obj[keys[i]];
+        }
+        return target.storageKey(ko);
+    }
+
+    function addOperationHandler(lobj) {
+        // An add operation that may add an object to target's relation is fired
+        let old_key = local_map.get(lobj);
+        let new_key = key(lobj);
+        if (debug)
+            console.log(`Relation ${local.name}->${target.name} old_key: ${old_key} new_key: ${new_key}`);
+        if (new_key !== old_key) {
+            if (old_key)
+                remove(old_key, lobj);
+            if (new_key) {
+                add(new_key, lobj);
+                local_map.set(lobj, new_key);
+            }            else local_map.delete(lobj);
+        }
+    }
+
+    
+    function deleteOperationHandler(lobj) {
+        let old_key = local_map.get(lobj);
+        if (old_key)
+            remove(old_key, lobj);
+        local_map.delete(lobj);
+    }
+
+    for (let o of relationship_add_ops)
+        local.addEventListener(o, addOperationHandler);
+    for (let o of relationship_delete_ops)
+        local.addEventListener(o, deleteOperationHandler);
+
+    Object.defineProperty(
+        local.prototype, local_prop,
+        {enumerable: true,
+         configurable: true,
+         get: function() {
+             let local_key = key(this);
+             if (debug)
+                 console.log(`get ${local.name} key: ${local_key}`);
+             return target.syncStorageMap.get(local_key);
+         },
+         set: function(v) {
+             if (!(v instanceof target))
+                 throw new TypeError(`${local_prop} must be a ${target.name}`);
+             let new_key = target.storageKey(v);
+             if (new_key === undefined)
+                 return;
+             let old_key = local_map.get(this);
+             if (old_key)
+                 remove(old_key, this);
+             add(new_key, v);
+             for (let i =0; i < keys.length; i++)
+                 this[keys[i]] = v[target.syncPrimaryKeys[i]];
+             return target.syncStorageMap.get(new_key);
+         },
+        });
+    Object.defineProperty(
+        target.prototype, target_prop,
+        {configurable: true,
+         enumerable: true,
+         get: function() {
+             let res = target_map.get(this);
+             if (uselist && order &&res && res.sort_required ) {
+                 res.sort(order);
+                 res.sort_required = false;
+             }
+             return res;
+         },
+        });
+
+}
+
+function relationshipObserver(o) {
+    relationship_observer = o;
+}
+
+                 
+             
+   
 try {
     module.exports = {
         SyncOwner,
@@ -218,5 +412,8 @@ try {
         MyOwners,
         PersistentSynchronizable,
         setupPersistence,
+        relationship,
+        relationshipObserver,
+        
     };
 } catch (e) { }
