@@ -126,7 +126,7 @@ class SyncOwner extends PersistentSynchronizable {
     async syncReceive(msg, options) {
         let orig = this._orig || {};
         super.syncReceive(msg, options);
-        if (orig.epoch && orig.epoch != this.epoch) {
+        if (orig.epoch && (orig.epoch != this.epoch)) {
             this.incoming_serial = 0;
             await this.clearAllObjects(options.registry);}
         this.incoming_serial = this.incoming_serial || 0;
@@ -165,8 +165,8 @@ SyncOwner.syncStorageMap = SyncOwner.syncStorageMap; //All classes extending Syn
 
 class YouHave extends entanglement.Synchronizable {
 
-    async SyncReceive(msg, options) {
-        await super.SyncReceive(msg, options);
+    async syncReceive(msg, options) {
+        await super.syncReceive(msg, options);
         let owner_id = this._sync_owner;
         let owner = SyncOwner.syncStorageMap.get(owner_id);
         if (!owner) {
