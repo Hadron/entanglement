@@ -1,5 +1,7 @@
 "use strict";
 var entanglement = require('../../javascript');
+var filter = require('../../javascript/filter');
+
 var assert = require('assert');
 let sr = new entanglement.SyncRegistry();
 var websocket_schemas = require("./schemas/websocket_test");
@@ -10,6 +12,7 @@ var persistence = require('../../javascript/persistence');
 persistence.setupPersistence(sr);
 
 var permit_success = false;
+var missing_node_test_ok = false;
 
 class TestPhase extends sr.bases.TestPhase(persistence.PersistentSynchronizable) {
 
@@ -65,6 +68,8 @@ persistence.relationship(TestPhase,persistence.SyncOwner,
 
 TestPhase.addEventListener( 'disappear', (obj, msg) => {
     assert.equal(permit_success, true);
+    assert.equal(missing_node_test_ok, true);
+    
     process.exit(0);
 });
 
@@ -72,10 +77,17 @@ class TableInherits extends sr.bases.TableInherits(persistence.PersistentSynchro
 }
 class TableTransition extends sr.bases.TableTransition(TableInherits) { }
 
+class Referencing extends sr.bases.Referencing(persistence.PersistentSynchronizable) { }
+
+class Referenced extends sr.bases.Referenced(persistence.PersistentSynchronizable) { }
+
 sr.register(TableInherits);
 
 sr.register(TestPhase);
 sr.register(TableTransition);
+sr.register(Referencing)
+sr.register(Referenced)
+
             var sm = new entanglement.SyncManager({
     url: process.argv[2],
     registries: [sr],
@@ -149,4 +161,31 @@ async function testBreakingTransition(owner, phase, trans_obj) {
     await phase.syncUpdate(sm);
 }
 
+// Testing relationships and missing node support.
+class MissingReferenced {}
+
+persistence.relationship(
+    Referencing, Referenced, {
+        use_list: false,
+        keys: 'referenced',
+        local_prop: "referencedObj",
+        missing_node: () => new MissingReferenced,
+    });
+const referencing_filter = filter.filter({
+    target: Referencing,
+    filter: () => true,
+    debug: true});
+
+referencing_filter.onAdd = async (obj) => {
+    console.log("Found referencing");
+    let referenced = obj.referencedObj;
+    if (!(referenced instanceof MissingReferenced))
+        throw new TypeError("Expecting a ReferencedMissing");
+    let resolved = await referenced.loadedPromise;
+    assert.equal(obj.referencedObj, resolved);
+    assert.equal(obj.referencedObj.referencing, obj);
+    missing_node_test_ok = true;
+};
+
+    
 setTimeout(() => process.exit(2), 10000);

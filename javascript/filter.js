@@ -3,6 +3,7 @@
 *  Copyright (C) 2017, 2020 by Hadron Industries
 * All rights Reserved; distributed under license
 */
+
 const util = require('./util');
 
 const default_delete_ops = Object.freeze(new Set([
@@ -191,7 +192,7 @@ function mapFilter(options) {
    * :param local: The local class
    * :param options: A set of options for the relationship:
    *
-   * uselist
+   * use_list
    *    Defaults to true; if true, then the remote side of the relationship is a list (one-to-many).  If "object" then an object is used and "object_key" contains the key in the local object to use to populate the object stored in remote_prop in the remote.
    *
    * remote
@@ -212,15 +213,16 @@ function relationship(local, remote, options) {
     if(!Array.isArray(options.keys))
         options.keys = [options.keys];
     const keys = Object.freeze(options.keys);
-        if (options.uselist === undefined)
-            options.uselist = true;
-    const uselist = options.uselist;
+        if (options.use_list === undefined)
+            options.use_list = true;
+    const use_list = options.use_list;
     const debug = options.debug || false;
+    const missing_node = options.missing_node || null;
     const local_prop = options.local_prop ||util.downFirst(remote.name);
     let remote_prop;
     if (options.remote_prop === undefined) {
         remote_prop = util.downFirst(local.name);
-        if (uselist) remote_prop = remote_prop+'s';
+        if (use_list) remote_prop = remote_prop+'s';
     } else remote_prop = options.remote_prop;
 
     let merge_options = {};
@@ -229,9 +231,16 @@ function relationship(local, remote, options) {
         console.log(`Relationship from ${local.name} to ${remote.name} local_prop: ${local_prop} remote_prop: ${remote_prop}`);
         merge_options.debug_name = `Relationship (${local.name}->${remote.name})`;
     }
+
+    let missing_remote_promises;
+    let missing_remote_resolvers;
+    if (missing_node) {
+        missing_remote_promises =new Map();
+        missing_remote_resolvers = new Map();
+    }
     
-    if (!uselist) {
-        merge_options.empty_node = () => {};
+    if (!use_list) {
+        merge_options.empty_node = () => {return {}};
         merge_options.add_item = (n,o) => n.value = o;
         merge_options.delete_item = (n,o) => n.value = undefined;
         merge_options.get_item = (n) => n.value;
@@ -248,11 +257,11 @@ function relationship(local, remote, options) {
     }
 
     const filter = mapFilter({
-        ...options,
         ...merge_options,
         target: local,
         filter: key,
         collection: local.syncStorageMap,
+                ...options,
     });
     
 
@@ -264,7 +273,18 @@ function relationship(local, remote, options) {
              let local_key = key(this);
              if (debug)
                  console.log(`get ${local.name} key: ${local_key}`);
-             return remote.syncStorageMap.get(local_key);
+             let res =  remote.syncStorageMap.get(local_key);
+             if ((res !== undefined) || !missing_node) return res;
+             res = missing_node(local_key, this);
+             let promise = missing_remote_promises.get(local_key);
+             if (promise === undefined) {
+                 promise = new Promise((resolve) => {
+                     missing_remote_resolvers.set(local_key, resolve);
+                 });
+                 missing_remote_promises.set(local_key, promise);
+             }
+             res.loadedPromise = promise;
+             return res;
          },
          set: function(v) {
              if (!(v instanceof remote))
@@ -286,11 +306,25 @@ function relationship(local, remote, options) {
         {configurable: true,
          enumerable: true,
          get: function() {
-             let res = filter.get(key(this));
+             let res = filter.get(remote.storageKey(this));
              return res;
          },
         });
 
+    if (missing_node) {
+        function checkNodeFound(obj) {
+            let key = remote.storageKey(obj);
+            let resolver = missing_remote_resolvers.get(key);
+            if (resolver) {
+                resolver(obj);
+                missing_remote_resolvers.delete(key);
+                missing_remote_promises.delete(key);
+            }
+        }
+        for (let o of filter.add_ops)
+            remote.addEventListener(o, checkNodeFound);
+    }
+    
 }
 
 module.exports = {

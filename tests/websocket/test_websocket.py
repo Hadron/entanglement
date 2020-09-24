@@ -85,6 +85,10 @@ class TestPhase(Base):
         manager = kwargs['manager']
         context = kwargs['context']
         registry = kwargs['registry']
+        if operation == 'forward' and self.phase == 3:
+            referenced = Referenced(id = TestPhase.referencing.referenced)
+            TestPhase.server_session.add(referenced)
+            TestPhase.server_session.commit()
         if operation == 'forward' and self.phase in (4,5) and self.sync_is_local:
             session = context.session
             session.commit() # save ourselves to avoid locks
@@ -103,7 +107,19 @@ class TestPhase(Base):
                 session.delete(owner)
                 session.commit()
             
-            
+
+class Referencing(Base):
+    __tablename__ = 'referencing'
+    id = Column(GUID, primary_key = True,
+                default = lambda: uuid.uuid4())
+
+    referenced = Column(GUID, nullable = False)
+
+class Referenced(Base):
+    __tablename__ = "referenced"
+    id = Column(GUID, primary_key = True,
+                default = lambda: uuid.uuid4())
+
             
             
         
@@ -329,7 +345,19 @@ def test_persistence(loop, layout_module, monkeypatch):
     phase.sync_owner = SyncOwner()
     phase.phase = 1
     layout.server.session.add(phase)
+    referencing = Referencing()
+    #We start by referencing a non-existent object that we'll create later.
+    # This allows the other side to test out missing_node support in relationships
+    referencing.referenced = uuid.uuid4()
+    referencing.sync_owner = phase.sync_owner
+    layout.server.session.add(referencing)
     layout.server.session.commit()
+    # This is gross and hackish
+    # We want to be able to create a Referenced and commit it to the server session by the time we get to phase 3
+    # Easiest place to do that is in  sync_receive_constructed in TestPhase
+    # But we need the session and the referenceing uuid there
+    TestPhase.server_session = layout.server.session
+    TestPhase.referencing = referencing
     websocket_destination = SqlSyncDestination(b'Q'*32, "sql websocket")
     monkeypatch.setattr(layout.server, "websocket_destination", websocket_destination)
     with transitions_partitioned():
