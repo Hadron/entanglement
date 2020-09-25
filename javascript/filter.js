@@ -138,9 +138,10 @@ function filter(options) {
     const filter_result = [];
     filter_result.sort_required = false;
     const filter = new FilterBase(
-        {...options,
+        { 
          add: (obj) => addList(filter_result, obj),
-         remove: (obj) => removeList(filter_result, obj),
+            remove: (obj) => removeList(filter_result, obj),
+            ...options
         });
     Object.defineProperty(
         filter, 'result',
@@ -154,7 +155,7 @@ function mapFilter(options) {
     const empty_node = options.empty_node || (() => []);
     const addItem = options.add_item || addList;
     const deleteItem = options.delete_item ||removeList;
-    const getItem = options.get_item || getList;
+    const getItem = options.get_item || ((l) => getList(l, options.order));
     const filter = new FilterBase({
         ...options,
         add: (obj, key) => {
