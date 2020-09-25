@@ -174,9 +174,20 @@ function mapFilter(options) {
         filter,
         {
             get(k)  {
-                const res = filter_result.get(k);
+                let res = filter_result.get(k);
                 if (res !== undefined)
                     return getItem(res);
+                // This might need revisiting as there is no resource
+                // cleanup, but a lot of code expects empty lists
+                // rather than undefined.  One possibility would be to
+                // return a new empty list all the time, but in
+                // environments like vue 2 where that might be mutated
+                // to observe, that would be problematic.  For direct
+                // use of mapFilter we have the onAdd method etc.  But
+                // for relationships it is more complex.
+                res = empty_node(k);
+                filter_result.set(k, res);
+                return res;
             },
             has(k) {return filter_result.has(k)},
         });
