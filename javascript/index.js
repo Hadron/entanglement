@@ -171,7 +171,7 @@ class SyncManager {
                 this.receivers[message._sync_type].forEach( r => {
                     result_promises.push(
                         Promise.resolve(r(message, {manager: this})). catch(
-                            (e) => console.error(`${e.stack || e.toString()} receiving a ${message._sync_type}`)));
+                            (e) => console.error(`${e.toString()}: ${e.stack||""} a ${message._sync_type}`)));
                 });
             }
             if (!(message._resp_for === undefined)) {
@@ -483,14 +483,26 @@ class Synchronizable {
     }
 
     static syncConstruct(msg, options) {
-        let res = Object.create(this.prototype);
-        // This method can be overridden
-        // It is reasonable for overrides to remove properties from msg that are set as primary keys etc.
-        //override for database lookups etc
-        // It is intentional that this bypasses the constructor.  The constructor may have arguments to initialize new objects.
-        // If you need constructor behavior (including calling the constructor), override this method.
+        let res = this.syncEmptyObject();
+        // Override to look up in a database or stable map or similar.
         return res;
     }
+
+    static syncEmptyObject() {
+        // Produce an empty object.  We try using the constructor
+        // because it may set locally managed attributes, but that may
+        // not work because the constructor may require arguments.
+        // This approach is potentially fragile and if this is
+        // inappropriate for a given class, override this method.
+        let res;
+        try {
+            res = new this;
+        } catch (e) {
+            res = Object.create(this.prototype);
+        }
+        return res;
+    }
+    
 
     syncReceive(msg, options) {
         if (this.transition_id && (this.transition_id != msg.transition_id)) {
