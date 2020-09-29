@@ -9,4 +9,4 @@ override_dh_auto_test:
 
 override_dh_install:
 dh_install
-install -m644 javascript/index.js debian/libjs-entanglement/usr/share/javascript/entanglement/entanglement.js/entanglement.js
+	install -m644 javascript/index.js debian/libjs-entanglement/usr/share/javascript/entanglement/entanglement.js/entanglement.js
