@@ -1,3 +1,39 @@
+hadron-entanglement (0.21) UNRELEASED; urgency=medium
+
+  * Encoder Simplifications
+  * Entanglement: SyncRegistry and Synchronizable
+  * javascript syncRegistry fixes
+  * Allow websocket tests from pytest infrastructure
+  * Test new SyncReceive code.
+  * Test _orig in the javascript:
+  * Javascript SyncRegistry events
+  * Update Ihave Protocol
+  * Remove first_owner logic
+  * Javascript Schema Generator
+  * SqlSyncDestination add to session
+  * Javascript Persistence layer
+  * SyncRegistry: adjust unregistered classes on register
+  * Entanglement Javascript usability
+  * javascript: Response handler gets cooked object
+  * Misc test fixes
+  * Break transitions on local change
+  * Fix event handling
+  * Finish tests for JS persistence layer
+  * Make into valid node module
+  * Rearrange paths for javascript; package for node
+  * Update javascript paths
+  * Persistence: relationship
+  * Persistence tests
+  * Fix packaging typo
+  * Fix YouHave javascript handling
+  * Javascript filter logic
+  * relationships: missing_node
+  * javascript filter: support ordering relationships
+  * Return empty nodes on no key
+  * Try to use constructor when we can
+
+ -- Sam Hartman <hartmans@debian.org>  Tue, 29 Sep 2020 12:50:37 -0400
+
 hadron-entanglement (0.20) unstable; urgency=medium
 
   [ Jeffrey LeBlanc ]
