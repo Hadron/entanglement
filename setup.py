@@ -19,6 +19,7 @@ setup(
     setup_requires = ['pytest-runner'],
     tests_require = ['pytest'],
     packages = ["entanglement", "entanglement.sql",
+                'entanglement.javascript_schema',
                 'entanglement.protocol'],
     package_data = {
         'entanglement.sql': ['alembic', 'alembic/*', 'alembic/versions/*'],
