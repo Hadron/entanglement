@@ -1,4 +1,4 @@
-hadron-entanglement (0.21) UNRELEASED; urgency=medium
+hadron-entanglement (0.21) unstable; urgency=medium
 
   * Encoder Simplifications
   * Entanglement: SyncRegistry and Synchronizable
@@ -32,7 +32,7 @@ hadron-entanglement (0.21) UNRELEASED; urgency=medium
   * Return empty nodes on no key
   * Try to use constructor when we can
 
- -- Sam Hartman <hartmans@debian.org>  Tue, 29 Sep 2020 12:50:37 -0400
+ -- Sam Hartman <hartmans@debian.org>  Thu, 15 Oct 2020 12:47:31 -0400
 
 hadron-entanglement (0.20) unstable; urgency=medium
 
