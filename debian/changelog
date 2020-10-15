@@ -1,4 +1,4 @@
-hadron-entanglement (0.21) unstable; urgency=medium
+hadron-entanglement (0.21) unstable-aces-proposed; urgency=medium
 
   * Encoder Simplifications
   * Entanglement: SyncRegistry and Synchronizable
