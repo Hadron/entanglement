@@ -32,7 +32,10 @@ class SyncWsHandler(tornado.websocket.WebSocketHandler):
             self.set_status(403)
             self.finish("Not authorized destination")
             return
-        return await super().get(*args, **kwargs)
+        res =  super().get(*args, **kwargs)
+        if res is not None:
+            return await res
+        else: return res
 
     def open(self, *args, **kwargs):
         if self.dest in self.manager.destinations:
