@@ -304,10 +304,6 @@ function relationship(local, remote, options) {
              let new_key = remote.storageKey(v);
              if (new_key === undefined)
                  return;
-             let old_key = local_map.get(this);
-             if (old_key)
-                 remove(this, old_key);
-             add(v, new_key);
              for (let i =0; i < keys.length; i++)
                  this[keys[i]] = v[remote.syncPrimaryKeys[i]];
              return v;
