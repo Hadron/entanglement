@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-# Copyright (C) 2017, 2018, 2020, Hadron Industries, Inc.
+# Copyright (C) 2017, 2018, 2020, 2021, Hadron Industries, Inc.
 # Entanglement is free software; you can redistribute it and/or modify
 # it under the terms of the GNU Lesser General Public License version 3
 # as published by the Free Software Foundation. It is distributed
@@ -28,5 +28,5 @@ setup(
     scripts = ['bin/entanglement-cli',
                'bin/entanglement-pki'],
     test_suite = "tests",
-    version = "0.21",
+    version = "0.22",
 )

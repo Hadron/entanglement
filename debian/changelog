@@ -1,3 +1,13 @@
+hadron-entanglement (0.22) unstable; urgency=medium
+
+  * Main point of this release is for bullseye
+  * Tornado is now native async; needed for bullseye
+  * Fix websocket require
+  * Don't delete object from list on update
+  * Update cleanup detection
+
+ -- Sam Hartman <hartmans@debian.org>  Mon, 04 Jan 2021 18:21:47 -0500
+
 hadron-entanglement (0.21) unstable-aces-proposed; urgency=medium
 
   * Encoder Simplifications
