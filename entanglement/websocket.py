@@ -1,4 +1,4 @@
-# Copyright (C) 2017, Hadron Industries, Inc.
+# Copyright (C) 2017, 2021, Hadron Industries, Inc.
 # Entanglement is free software; you can redistribute it and/or modify
 # it under the terms of the GNU Lesser General Public License version 3
 # as published by the Free Software Foundation. It is distributed
@@ -24,8 +24,7 @@ class SyncWsHandler(tornado.websocket.WebSocketHandler):
     below needs to be overridden.
 '''
 
-    @tornado.web.asynchronous
-    def get(self, *args, **kwargs):
+    async def get(self, *args, **kwargs):
         if getattr(self, 'manager', None) is None:
             self.manager = self.application.sync_manager
         self.dest = self.find_sync_destination(*args, **kwargs)
@@ -33,7 +32,7 @@ class SyncWsHandler(tornado.websocket.WebSocketHandler):
             self.set_status(403)
             self.finish("Not authorized destination")
             return
-        return super().get(*args, **kwargs)
+        return await super().get(*args, **kwargs)
 
     def open(self, *args, **kwargs):
         if self.dest in self.manager.destinations:
