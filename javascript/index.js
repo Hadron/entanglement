@@ -3,10 +3,14 @@
 *  Copyright (C) 2017, 2020 by Hadron Industries
 * All rights Reserved; distributed under license
 */
-
-if (!('WebSocket' in this)) {
-    var WebSocket =require('websocket').w3cwebsocket;
+var WebSocket;
+try {
+    WebSocket = window.WebSocket;
+} catch(e) {
+    WebSocket =require('websocket').w3cwebsocket;
 }
+
+
 
 function promiseAnyPolyfill(promises) {
     // Sort of like Promise.any (which node.js does not support)
