@@ -121,6 +121,13 @@ async function testDelete(result) {
 
 async function testUsTransitioning(owner) {
     let obj = new TableTransition();
+    // This is messy because Node seems to resolve the finally on the sync_transition_promise after returning from our await.
+    let cleanup_resolve, cleanup_reject;
+    let cleanup_promise = new Promise((resolve, reject) => {
+        cleanup_resolve = resolve;
+        cleanup_reject = reject;
+    });
+    
     obj.info = 40;
     obj._sync_owner = owner;
     obj = await obj.syncCreate(sm);
@@ -133,8 +140,15 @@ async function testUsTransitioning(owner) {
     obj.syncUpdate(sm).catch( (e) => console.error(e));
     await transition_promise;
     assert.equal(obj.info2, 90);
-    if (obj.transition_id || obj._orig_pre_transition)
-        throw new TypeError("Transition cleanup failed");
+    setTimeout(() => {
+        if (obj.transition_id || obj._orig_pre_transition) {
+            console.log(obj.transition_id);
+            console.log(obj._orig_pre_transition);
+            cleanup_reject( new TypeError("Transition cleanup failed"));
+        }
+        cleanup_resolve(true);
+    }, 40);
+    await cleanup_promise;
     return obj;
 }
 
