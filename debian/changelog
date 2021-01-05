@@ -1,3 +1,10 @@
+hadron-entanglement (0.23) unstable; urgency=medium
+
+  * Update timeouts because buster was no longer working after the
+    bullseye fixes.
+
+ -- Sam Hartman <hartmans@debian.org>  Mon, 04 Jan 2021 19:30:07 -0500
+
 hadron-entanglement (0.22) unstable; urgency=medium
 
   * Main point of this release is for bullseye
