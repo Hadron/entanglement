@@ -52,7 +52,7 @@ class TestPhase extends sr.bases.TestPhase(persistence.PersistentSynchronizable)
                     assert.equal(permit_success, true);
                     this.phase = 5;
                     this.syncUpdate(sm);
-                }, 150);
+                }, 250);
                 
                 break;
             }
@@ -169,7 +169,7 @@ async function testBreakingTransition(owner, phase, trans_obj) {
         setTimeout(() => {
             assert.equal(trans_obj.info2, 90);
             permit_success = true;
-        }, 9);
+        }, 40);
         
     });
     await phase.syncUpdate(sm);
