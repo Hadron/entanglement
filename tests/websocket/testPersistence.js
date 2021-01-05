@@ -11,7 +11,12 @@ sql_meta_schema(sr);
 var persistence = require('../../javascript/persistence');
 persistence.setupPersistence(sr);
 
-var permit_success = false;
+var success_resolve,success_reject, success_timer;;
+var success_promise = new Promise((resolve, reject) => {
+    success_resolve =resolve;
+    success_reject = reject;
+});
+
 var missing_node_test_ok = false;
 
 class TestPhase extends sr.bases.TestPhase(persistence.PersistentSynchronizable) {
@@ -48,11 +53,9 @@ class TestPhase extends sr.bases.TestPhase(persistence.PersistentSynchronizable)
                 // Phase 5 causes this object to disappear.
                 break;
             case 4:
-                setTimeout(() => {
-                    assert.equal(permit_success, true);
-                    this.phase = 5;
-                    this.syncUpdate(sm);
-                }, 250);
+                await success_promise;
+                this.phase = 5;
+                this.syncUpdate(sm);
                 
                 break;
             }
@@ -67,7 +70,6 @@ persistence.relationship(TestPhase,persistence.SyncOwner,
                          });
 
 TestPhase.addEventListener( 'disappear', (obj, msg) => {
-    assert.equal(permit_success, true);
     assert.equal(missing_node_test_ok, true);
     
     process.exit(0);
@@ -158,6 +160,15 @@ async function testBreakingTransition(owner, phase, trans_obj) {
     // revert
     trans_obj.info2 = "wrong";
     let promise = sm.perform_transition(trans_obj);
+    let oldSyncReceive = trans_obj.syncReceive;
+    trans_obj.syncReceive = async function(...rest) {
+        let res = await oldSyncReceive.apply(trans_obj, rest);
+        assert.equal(trans_obj.info2, 90);
+        success_resolve(true);
+        clearTimeout(success_timer);
+        return res;
+    };
+    success_timer = setTimeout(() => success_reject("timed out"), 2000);
     // phase 4 will cause the server to find our object and re-synchronize it.
     console.log(trans_obj._orig_pre_transition);
     phase.phase = 4;
@@ -166,10 +177,7 @@ async function testBreakingTransition(owner, phase, trans_obj) {
         process.exit(3);
     }, (r) => {
         assert.equal(r._sync_type, 'BrokenTransition');
-        setTimeout(() => {
-            assert.equal(trans_obj.info2, 90);
-            permit_success = true;
-        }, 40);
+                                   
         
     });
     await phase.syncUpdate(sm);
