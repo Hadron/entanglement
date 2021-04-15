@@ -120,6 +120,7 @@ class SyncManager {
         for (let r of options.registries || []) {
             r.associateManager(this);
         }
+        this._connection_attempt_error_count = 0;
         this._connect();
     }
 
@@ -152,6 +153,7 @@ class SyncManager {
         this.socket.addEventListener('open', event => {
             if (this._onopen) this._onopen(this);
             this._open = true;
+            this._connection_attempt_error_count = 0;
             setTimeout(() => {
                 if (this._open) this._backoff = 256;
             }, this._backoff);
@@ -212,6 +214,14 @@ class SyncManager {
     }
     
     _disconnect(event) {
+
+        if(event.type=='error'){
+            if(this._on_connection_setup_failed){
+                this._on_connection_setup_failed(this._connection_attempt_error_count,event);
+            }
+            this._connection_attempt_error_count += 1;
+        }
+
         if (this.socket === undefined) return;
         if (this._open) {
             this._open = false;
@@ -229,6 +239,7 @@ class SyncManager {
 
     onclose(fn) {this._onclose = fn;}
     onopen(fn) {this._onopen = fn;}
+    on_connection_setup_failed(fn) {this._on_connection_setup_failed = fn;}
 
     synchronize(obj, options, ...rest) {
         var res;
