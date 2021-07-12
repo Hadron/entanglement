@@ -12,7 +12,7 @@ from setuptools import setup
 
 setup(
     name = "entanglement",
-    license = "proprietary",
+    license = "LGPL-3",
     maintainer = "Sam Hartman",
     maintainer_email = "sam.hartman@hadronindustries.com",
     url = "http://www.hadronindustries.com/",
