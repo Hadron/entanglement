@@ -7,7 +7,7 @@
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "author": "Sam Hartman",
-  "license": "SEE LICENSE IN LICENSE",
+  "license": "LGPL-3",
   "dependencies": {
     "websocket": "^1.0.32"
   }
