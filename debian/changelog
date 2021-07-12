@@ -1,3 +1,9 @@
+hadron-entanglement (0.26) UNRELEASED; urgency=medium
+
+  * Missed 0.25 changelog commit in  migration
+
+ -- Sam Hartman <hartmans@debian.org>  Mon, 12 Jul 2021 14:33:37 -0600
+
 hadron-entanglement (0.24) unstable; urgency=medium
 
   * Rebuild with test robustness fix
