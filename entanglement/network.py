@@ -10,6 +10,7 @@
 
 
 import asyncio, logging, ssl, time, weakref
+import functools
 from . import protocol
 from .util import DestHash, certhash_from_file
 from .bandwidth import BwLimitProtocol
@@ -556,7 +557,7 @@ class SyncDestinationBase:
 
     def connection_lost(self, manager):
         for cb in self._on_connection_lost_cbs:
-            manager.loop.call_soon(lambda: cb(manager))
+            manager.loop.call_soon(functools.partial(cb,manager))
 
 
 class SyncDestination(SyncDestinationBase):
