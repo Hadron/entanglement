@@ -1,3 +1,16 @@
-Copyright (C) 2017 by Hadron Industries
-All rights reserved.
-Proprietary; subject to license
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: Entanglement
+Upstream-Contact: Sam Hartman <sam.hartman@hadronindustries.com>
+Source: https://github.com/hadron/entanglement
+
+
+Files: *
+Copyright: 
+  2017-2021, Hadron Industries, Inc.
+License: LGPL-3
+ Entanglement is distributed under the terms of the GNU Lesser General
+ Public License, version 3.
+ .
+ On Debian systems, the full text of the GNU Lesser General Public
+ License can be found in /usr/share/common-licenses/LGPL-3. 
+
