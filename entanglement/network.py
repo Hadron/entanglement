@@ -17,6 +17,8 @@ from .bandwidth import BwLimitProtocol
 from .interface import WrongSyncDestination, UnregisteredSyncClass, SyncNotConnected
 from . import interface
 from .operations import SyncOperation
+from ssl import SSLCertVerificationError
+
 logger = protocol.logger
 
 no_traceback_connection_failures = (OSError, EOFError)
@@ -59,6 +61,27 @@ class SyncManager:
         self.registries = set(self.registries) # Remove duplicates
         self.port = port
         for r in self.registries: r.associate_with_manager(self)
+
+        # Setup asyncio SSL Error Handling
+        old_handler = loop.get_exception_handler()
+        assert old_handler is None
+        def handle_async_exceptions(_loop, ctx):
+            exception = ctx.get('exception')
+            if isinstance(exception,SSLCertVerificationError):
+                _message = ctx.get('message')
+                _transport = ctx.get('transport')
+                _protocol = ctx.get('protocol')
+                _peername = _transport.get_extra_info('peername')
+                self.on_ssl_client_error(_peername,exception.verify_message,exception)
+            else:
+                raise exception
+        loop.set_exception_handler(handle_async_exceptions)
+
+    def on_ssl_client_error(self, peername, message, raw_exception):
+        print('on_ssl_client_error:')
+        print('* peername:',peername)
+        print('* message:',message)
+        print('* exception:',raw_exception)
 
     def _new_ssl(self, cert, key, capath, cafile):
         sslctx = ssl.create_default_context(cafile = cafile, capath = capath)
