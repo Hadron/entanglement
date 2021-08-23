@@ -2,8 +2,8 @@ Entanglement
 ============
 
 **Entanglement** is a state synchronization protocol for Python and
- Javascript objects loosely based on lessons learned by the `Mosh
- <https://mosh.org/>`__ developers.  You can read our `documentation <https://entanglement.readthedocs.io/>`__.
+Javascript objects loosely based on lessons learned by the `Mosh
+<https://mosh.org/>`__ developers.  You can read our `documentation <https://entanglement.readthedocs.io/>`__.
 
 Entanglement was motivated  by a desire to synchronize user interface objects across the world with wildly variable network conditions.  Within a room, bandwidth and latency may be low.  Between sites, latency will be higher and bandwidth may be limited over satellite or radio links.  Connectivity may be intermittent.
 
