@@ -96,6 +96,8 @@ if TypeDecorator:
     class SqlDestHash(TypeDecorator):
         impl = String(60)
 
+        cache_ok = True
+
         def process_bind_param(self, value, dialect):
             if value is None: return None
             return str(DestHash(value))
@@ -112,6 +114,8 @@ class GUID(TypeDecorator):
     # http://docs.sqlalchemy.org/en/latest/core/custom_types.html#backend-agnostic-guid-type
     
     impl = String
+
+    cache_ok = True
 
     def process_bind_param(self, value, dialect):
         if value is None:
