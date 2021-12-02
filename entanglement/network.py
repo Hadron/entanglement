@@ -184,7 +184,7 @@ class SyncManager:
                         host = dest.endpoint_desc))
                     dest.connect_at = time.time()+delta
                     return transport, protocol
-                except (asyncio.futures.CancelledError, GeneratorExit):
+                except (asyncio.CancelledError, GeneratorExit):
                     logger.debug("Connection to {dest} canceled".format(dest = dest))
                     raise
                 except (SyntaxError, TypeError, LookupError, ValueError, WrongSyncDestination) as e:
