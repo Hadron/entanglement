@@ -1,8 +1,22 @@
-hadron-entanglement (0.26) UNRELEASED; urgency=medium
+hadron-entanglement (0.26) unstable; urgency=medium
 
+  [ Sam Hartman ]
   * Missed 0.25 changelog commit in  migration
+  * Update debian copyright file
+  * Wordwrap
+  * Add readme
+  * Readthedocs config
+  * Version tuning
+  * Fix requires
+  * Add documentation link
 
- -- Sam Hartman <hartmans@debian.org>  Mon, 12 Jul 2021 14:33:37 -0600
+  [ Matthew Burton ]
+  * fixing leading spaces in README
+
+  [ Jeffrey LeBlanc ]
+  * Fix bug so multiple destination disconnect callbacks can be used.
+
+ -- Jeff LeBlanc <jeff.leblanc@hadronindustries.com>  Wed, 15 Sep 2021 13:02:31 -0400
 
 hadron-entanglement (0.24) unstable; urgency=medium
 
