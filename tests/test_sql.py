@@ -102,7 +102,7 @@ class TestSql(SqlFixture, unittest.TestCase):
         t2 = self.server.session.query(Table1).get(t.id)
         assert t2 is not None
         assert t2.sync_owner.dest_hash is not None
-        self.session.refresh(t)
+        self.session.rollback()
         self.assertEqual(t2.ch, t.ch)
 
     def testGetOrCreate(self):
@@ -236,9 +236,10 @@ class TestSql(SqlFixture, unittest.TestCase):
         s.add(t)
         with wait_for_call(self.loop, sql.internal.sql_meta_messages, 'handle_you_have'):
             s.commit()
+        t_id = t.id
         s.delete(t)
         t2 = self.server.session.query( Table1).filter_by(
-                id = t.id).one()
+                id = t_id).one()
         assert t.ch == t2.ch
         m = mock.MagicMock( wraps= Base.registry.incoming_delete)
         with mock.patch.object(Base.registry, 'incoming_delete', new = m): 

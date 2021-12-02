@@ -13,7 +13,7 @@ from datetime import timezone
 from sqlalchemy import Column, Table, String, Integer, DateTime, ForeignKey, inspect, TEXT, Index, select
 from sqlalchemy.orm import load_only
 import sqlalchemy.exc
-import sqlalchemy.orm, sqlalchemy.ext.declarative, sqlalchemy.ext.declarative.api
+import sqlalchemy.orm, sqlalchemy.ext.declarative
 from ..util import DestHash, SqlDestHash, get_or_create, GUID
 from .. import interface, network, operations
 from ..protocol import logger
@@ -48,9 +48,9 @@ class SqlSyncSession(sqlalchemy.orm.Session):
         self._tb = traceback.extract_stack()
         self.sync_dirty = set()
         self.sync_deleted = set()
-        sqlalchemy.events.event.listens_for(self, "before_flush")(self._handle_dirty)
+        sqlalchemy.event.listens_for(self, "before_flush")(self._handle_dirty)
 
-        @sqlalchemy.events.event.listens_for(self, 'after_flush')
+        @sqlalchemy.event.listens_for(self, 'after_flush')
         def receive_after_flush(session, flush_context):
             # This is a bit of a mess.  When a new object is created,
             # we need to make sure that we have the SyncOwner
@@ -71,7 +71,7 @@ class SqlSyncSession(sqlalchemy.orm.Session):
 
 
 
-        @sqlalchemy.events.event.listens_for(self, "after_commit")
+        @sqlalchemy.event.listens_for(self, "after_commit")
         def receive_after_commit(session):
             try:
                 if self.manager:
@@ -84,7 +84,7 @@ class SqlSyncSession(sqlalchemy.orm.Session):
                 logger.exception("after_commit fails")
                 raise
 
-        @sqlalchemy.events.event.listens_for(self, 'after_rollback')
+        @sqlalchemy.event.listens_for(self, 'after_rollback')
         def after_rollback(session):
             session.sync_dirty.clear()
             session.sync_deleted.clear()
@@ -217,6 +217,7 @@ class SqlSyncSession(sqlalchemy.orm.Session):
                     future = self.manager.loop.create_future()
                     o.sync_future = future
                 o_new = s_new.merge(o)
+                if o_new.sync_owner: o_new.sync_owner.dest_hash
                 # Now preserve any non-sqlalchemy attributes
                 ins_new = inspect(o_new)
                 attributes = set(o.__class__._sync_properties.keys())- set(ins_new.attrs.keys())
@@ -281,7 +282,7 @@ def sync_session_maker(*args, **kwargs):
     "Like sql.orm.sessionmaker for SqlSyncSessions"
     return sqlalchemy.orm.sessionmaker(class_ = SqlSyncSession, *args, **kwargs)
 
-class SqlSyncMeta(interface.SynchronizableMeta, sqlalchemy.ext.declarative.api.DeclarativeMeta):
+class SqlSyncMeta(interface.SynchronizableMeta, sqlalchemy.ext.declarative.DeclarativeMeta):
 
     def __new__(cls, name, bases, ns):
         registry = None
@@ -511,7 +512,7 @@ class SyncDeleted( _internal_base):
     sync_serial = Column(Integer, nullable = False)
     _table_args = (Index("sync_deleted_serial_idx", sync_owner_id, sync_serial))
 
-    sync_owner = sqlalchemy.orm.relationship('SyncOwner', passive_deletes = 'all')
+    sync_owner = sqlalchemy.orm.relationship('SyncOwner', passive_deletes = 'all' )
 
     @property
     def _obj(self):
@@ -564,24 +565,24 @@ class SqlSynchronizable(interface.Synchronizable):
 
     '''
 
-    @sqlalchemy.ext.declarative.api.declared_attr
+    @sqlalchemy.ext.declarative.declared_attr
     def    sync_serial(self):
         if hasattr(self,'__table__'): return
         return    Column(Integer, nullable=False, index = True)
 
     sync_serial = interface.sync_property(wraps = sync_serial)
 
-    @sqlalchemy.ext.declarative.api.declared_attr
+    @sqlalchemy.ext.declarative.declared_attr
     def sync_owner_id(self):
         if hasattr(self, '__table__'): return
         return Column(GUID, ForeignKey(SyncOwner.id, ondelete = 'cascade'), index = True)
 
-    @sqlalchemy.ext.declarative.api.declared_attr
+    @sqlalchemy.ext.declarative.declared_attr
     def sync_owner(self):
         if hasattr(self, '__table__') and not 'sync_owner_id' in self.__table__.columns: return
         if hasattr(self,'__table__'): return sqlalchemy.orm.relationship(SyncOwner, foreign_keys = [self.__table__.c.sync_owner_id],
                                                                          primaryjoin = SyncOwner.id == self.__table__.c.sync_owner_id, lazy = 'joined')
-        return sqlalchemy.orm.relationship(SyncOwner, foreign_keys = [self.sync_owner_id], lazy = 'joined', passive_deletes = True)
+        return sqlalchemy.orm.relationship(SyncOwner, foreign_keys = [self.sync_owner_id], lazy = 'joined', passive_deletes = True, cascade='save-update')
 
     sync_priority = _internal.SyncPriorityProperty()
 
