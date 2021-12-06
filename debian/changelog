@@ -1,3 +1,12 @@
+hadron-entanglement (0.27) unstable; urgency=medium
+
+  [ Sam Hartman ]
+  * CancelledError is no longer in asyncio.futures
+  * Note that our types can be cached
+  * Changes for Sqlalchemy 1.4
+
+ -- Jeff LeBlanc <jeff.leblanc@hadronindustries.com>  Mon, 06 Dec 2021 10:09:26 -0500
+
 hadron-entanglement (0.26) unstable; urgency=medium
 
   [ Sam Hartman ]
