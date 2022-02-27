@@ -11,7 +11,7 @@ X-Python3-Version: >= 3.5
 Package: python3-entanglement
 Architecture: all
 Multi-Arch: foreign
-Depends: ${misc:Depends}, ${python3:Depends}
+Depends: ${misc:Depends}, ${python3:Depends}, python3-sh
 Recommends: python3-tornado
 Breaks: python3-photon (<= 0.4.18)
 Description: Hadron State Synchronization Framework
