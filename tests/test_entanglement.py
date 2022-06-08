@@ -78,7 +78,7 @@ class LoopFixture:
     def __init__(self):
         self.transports = []
         self.loop = asyncio.new_event_loop()
-        self.sslctx_server = ssl.create_default_context()
+        self.sslctx_server = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
         self.sslctx_server.load_cert_chain('host1.pem','host1.key')
         self.sslctx_server.load_verify_locations(cafile='ca.pem')
         self.sslctx_server.check_hostname = False
@@ -133,7 +133,7 @@ def testOverUse(bwtest_protocol, loop):
 def testGradual(loop, bwtest_protocol):
     protocol = bwtest_protocol
     protocol.bw_used(900)
-    loop.call_soon(loop.stop())
+    loop.call_soon(loop.stop)
     loop.run_forever()
     assert protocol.used == 900
     assert protocol._paused is False
@@ -256,16 +256,12 @@ class TestSynchronization(unittest.TestCase):
         self.manager.synchronize(obj)
         assert self.cprotocol.task is not None
 
-    # This has to be an asyncio.coroutine because you cannot yield
-    # None (loop please just continue with someone else) from an async
-    # def
-    @asyncio.coroutine
-    def lots_of_updates(self):
+    async def lots_of_updates(self):
         while True:
             self.obj1.pos += 10
             self.obj1.serial += 1
             self.manager.synchronize(self.obj1)
-            yield
+            await asyncio.sleep(0)
 
     def testBwLimit(self):
         "Confirm that bandwidth limits apply"
@@ -277,6 +273,7 @@ class TestSynchronization(unittest.TestCase):
         self.obj1 = MockSyncable(1, 5)
         self.obj1.serial = 1
         approx_len = 4+len(json.dumps(self.obj1.to_sync()))
+        breakpoint()
         obj1_to_sync = self.obj1.to_sync
         with mock.patch.object(self.obj1, 'to_sync',
                                side_effect = record_call):

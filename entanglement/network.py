@@ -60,8 +60,8 @@ class SyncManager:
         self.port = port
         for r in self.registries: r.associate_with_manager(self)
 
-    def _new_ssl(self, cert, key, capath, cafile):
-        sslctx = ssl.create_default_context(cafile = cafile, capath = capath)
+    def _new_ssl(self, cert, key, capath, cafile, server=False):
+        sslctx = ssl.create_default_context(cafile = cafile, capath = capath, purpose=( ssl.Purpose.CLIENT_AUTH if server else ssl.Purpose.SERVER_AUTH))
         sslctx.load_cert_chain(cert, key)
         self.cert_hash = certhash_from_file(cert)
         return sslctx
@@ -417,7 +417,7 @@ class SyncServer(SyncManager):
             raise ValueError("You must construct the SyncServer with a valid certificate to listen for SSL")
         self.host = host
         self._ssl_server = self._new_ssl(self._cert, key = self._key, cafile = self._cafile,
-                                                 capath = self._capath)
+                                                 capath = self._capath, server=True)
         self._ssl_server.check_hostname = False
         self._servers.append(self.loop.run_until_complete(self.loop.create_server(
                     self._protocol_factory_server(),
