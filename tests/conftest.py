@@ -31,7 +31,8 @@ def entanglement_basic_config():
     warnings.filterwarnings('ignore', module = 'asyncio.sslproto')
     warnings.filterwarnings('ignore', module = 'asyncio.selector_events')
     sql.internal.sql_meta_messages.yield_between_classes = False
-
+    for name in ('host1', 'host2', 'host3'):
+        pki.host_cert(pki_dir, name,"")
 
 @pytest.fixture(scope = 'module')
 def requested_layout():
