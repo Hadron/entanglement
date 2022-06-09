@@ -62,6 +62,8 @@ class SyncManager:
 
     def _new_ssl(self, cert, key, capath, cafile, server=False):
         sslctx = ssl.create_default_context(cafile = cafile, capath = capath, purpose=( ssl.Purpose.CLIENT_AUTH if server else ssl.Purpose.SERVER_AUTH))
+        if server:
+            sslctx.verify_mode = ssl.VerifyMode.CERT_OPTIONAL
         sslctx.load_cert_chain(cert, key)
         self.cert_hash = certhash_from_file(cert)
         return sslctx

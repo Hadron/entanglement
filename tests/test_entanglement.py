@@ -273,7 +273,6 @@ class TestSynchronization(unittest.TestCase):
         self.obj1 = MockSyncable(1, 5)
         self.obj1.serial = 1
         approx_len = 4+len(json.dumps(self.obj1.to_sync()))
-        breakpoint()
         obj1_to_sync = self.obj1.to_sync
         with mock.patch.object(self.obj1, 'to_sync',
                                side_effect = record_call):
