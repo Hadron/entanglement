@@ -1,4 +1,4 @@
-# Copyright (C) 2018, 2019, 2020, Hadron Industries, Inc.
+# Copyright (C) 2018, 2019, 2020, 2022, Hadron Industries, Inc.
 # Entanglement is free software; you can redistribute it and/or modify
 # it under the terms of the GNU Lesser General Public License version 3
 # as published by the Free Software Foundation. It is distributed
@@ -6,7 +6,8 @@
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the file
 # LICENSE for details.
 
-import ssl, asyncio, asyncio.log, json, os, pytest, unittest, warnings
+from __future__ import annotations
+import ssl, asyncio, asyncio.log, json, os, pytest, unittest, uuid, warnings
 from unittest import mock
 
 
@@ -415,11 +416,11 @@ def test_unregistered_error_handling(layout, monkeypatch):
 
 
 
-if __name__ == '__main__':
-    import logging, unittest, unittest.main
-    #logging.basicConfig(level = 'ERROR')
-    logging.basicConfig(level = 10)
-    logging.getLogger('entanglement.protocol').setLevel(10)
-    unittest.main(module = "tests.entanglement")
-    
+def test_entanglement_type():
+    class c(Synchronizable):
+        id:uuid.UUID = sync_property()
+    from entanglement.types import uuid_encoder, uuid_decoder
+    sp = c._sync_meta['id']
+    assert sp.encoderfn == uuid_encoder
+    assert sp.decoderfn == uuid_decoder
     

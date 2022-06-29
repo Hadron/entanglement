@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-# Copyright (C) 2017, 2018, 2020, Hadron Industries, Inc.
+# Copyright (C) 2017, 2018, 2020, 2022, Hadron Industries, Inc.
 # Entanglement is free software; you can redistribute it and/or modify
 # it under the terms of the GNU Lesser General Public License version 3
 # as published by the Free Software Foundation. It is distributed
@@ -7,7 +7,9 @@
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the file
 # LICENSE for details.
 
-import asyncio, contextlib, types
+import asyncio, contextlib, sys, types
+from typing import get_type_hints
+from .types import type_map
 
 
 
@@ -26,6 +28,12 @@ class EphemeralUnflooded:
     @classmethod
     def sync_encode_value(cls): return None
     
+
+def process_annotation(annotation, ns):
+    # Internal function to eval if necessary
+    if not isinstance(annotation, str): return annotation
+    globals = sys.modules[ns['__module__']].__dict__
+    return eval(annotation, globals, ns)
 
 class SynchronizableMeta(type):
     '''A metaclass for capturing Synchronizable classes.  In python3.6, no metaclass will be needed; __init__subclass will be sufficient.'''
@@ -46,8 +54,15 @@ class SynchronizableMeta(type):
             ns['_sync_registry'] = ns['sync_registry']
             del ns['sync_registry']
         sync_meta = {}
+        annotations = ns.get('__annotations__', {})
         for k,v in list(ns.items()):
             if isinstance(v, sync_property):
+                # Handle foo:type = sync_property()
+                #And treat as foo:type = sync_property(type=type)
+                if (not v.encoderfn) or (not v.decoderfn):
+                    if k in annotations:
+                        annotation = process_annotation(annotations[k], ns)
+                        v._set_type(annotation)
                 sync_meta[k] = v
                 v.declaring_class = name
                 if v.wraps is not None:
@@ -114,16 +129,34 @@ object using its default JSON representation
     def __init__(self, wraps = None, doc = None, *,
                  encoder = None,
                  decoder = None,
-                 constructor = False):
+                 constructor = False,
+                 type=None):
+        '''
+        :param constructor: If true, pass in this property a a kwarg into the constructor rather than setting it on the resulting object.  If an integer, use that ordinal argument position.
+
+        :param type: The type of this property; if :meth:`entanglement.types.register_type` has been called to register an encoder and decoder, use those.  Can also be specified as an annotation::
+
+            uuid:uuid.UUID = sync_property()
+
+        '''
         self.wraps = wraps
         self.encoderfn =  encoder
         self.decoderfn = decoder
+        if type: self._set_type(type)
         self.constructor = constructor
         self.__doc__ = doc
         if wraps is not None and not doc:
             if hasattr(wraps, '__doc__'):
                 self.__doc__ = wraps.__doc__
 
+    def _set_type(self, t):
+        if t and t in type_map:
+            type_record = type_map[t]
+            if not self.encoderfn:
+                self.encoderfn = type_record['encoder']
+            if not self.decoderfn:
+                self.decoderfn = type_record['decoder']
+                
     def _encode_value(self, obj, propname):
         val = getattr(obj, propname, NotPresent)
         if val is NotPresent or val is None: return val

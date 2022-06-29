@@ -10,6 +10,7 @@
 import asyncio, datetime, iso8601, uuid
 
 from ..interface import Synchronizable, SyncRegistry, SyncError, sync_property, SyncBadEncodingError, SyncUnauthorized
+from ..types import type_map
 from . import encoders
 from .. import interface, operations
 from ..network import logger
@@ -291,8 +292,8 @@ async def gen_you_have_task(sender, manager):
 def process_column(name, col, wraps = True):
     d = {}
     if wraps: d['wraps'] = col
-    if col.type.__class__ in encoders.type_map:
-        entry = encoders.type_map[col.type.__class__]
+    if col.type.__class__ in type_map:
+        entry = type_map[col.type.__class__]
         d.update(encoder = entry['encoder'],
                  decoder = entry['decoder'])
     return sync_property(**d)

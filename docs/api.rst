@@ -25,6 +25,10 @@ API Reference
    :members:
    :undoc-members:
 
+.. automodule:: entanglement.types
+    :members:
+    :undoc-members:
+              
 Internals
 ---------
 

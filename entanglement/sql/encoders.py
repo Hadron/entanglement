@@ -8,42 +8,10 @@
 
 import base64, datetime, iso8601, uuid
 from sqlalchemy import DateTime, DATETIME, BLOB, BINARY, Float, Integer
-
-from datetime import timezone
+from ..types import *
 from ..util import GUID
 
 
-
-def binary_encoder(val):
-    return str(base64.b64encode(val), 'utf-8')
-
-
-def  binary_decoder( val):
-    return base64.b64decode(val)
-
-
-def datetime_encoder(dt):
-    if dt.tzinfo:
-        dt = dt.astimezone(timezone.utc)
-    return dt.isoformat()
-
-
-def datetime_decoder(value):
-    return iso8601.parse_date(value)
-
-
-type_map = {}
-def register_type(typ, encoder, decoder):
-    type_map[typ] = {'encoder': encoder,
-                      'decoder': decoder}
-
-    
-
-def uuid_encoder(val):
-    if val is not None: return str(val)
-
-def uuid_decoder( val):
-    if val: return uuid.UUID(val)
 
 
 register_type(DateTime, datetime_encoder, datetime_decoder)
