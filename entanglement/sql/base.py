@@ -221,6 +221,9 @@ class SqlSyncSession(sqlalchemy.orm.Session):
                 # Now preserve any non-sqlalchemy attributes
                 ins_new = inspect(o_new)
                 attributes = set(o.__class__._sync_properties.keys())- set(ins_new.attrs.keys())
+                # Long term we are likely to need a mechanism to handle other attributes that should be excluded
+                try: attributes.remove('_sync_owner')
+                except KeyError: pass
                 if attributes:
                     sd = o.to_sync(
                         attributes = attributes)
@@ -523,6 +526,7 @@ class SyncDeleted( _internal_base):
         msg['_sync_type'] =  self.sync_type
         msg['_sync_operation'] = 'delete'
         msg['sync_serial'] = self.sync_serial
+        del msg['_sync_owner']
         self._constructed_obj = cls.sync_receive(msg, context = self, operation = 'delete', sender = None)
         self._constructed_obj.sync_owner = self.sync_owner
         return self._constructed_obj
@@ -577,6 +581,16 @@ class SqlSynchronizable(interface.Synchronizable):
         if hasattr(self, '__table__'): return
         return Column(GUID, ForeignKey(SyncOwner.id, ondelete = 'cascade'), index = True)
 
+    @property
+    def _sync_owner(self):
+        return self.sync_owner.id
+    @_sync_owner.setter
+    def _sync_owner(self, val):
+        if val !=self._sync_owner:
+            raise ValueError('Cannot Change sync_owner this way')
+        
+    _sync_owner:GUID = interface.sync_property(_sync_owner)
+    
     @sqlalchemy.ext.declarative.declared_attr
     def sync_owner(self):
         if hasattr(self, '__table__') and not 'sync_owner_id' in self.__table__.columns: return
@@ -739,6 +753,9 @@ backref = sqlalchemy.orm.backref('owners',
                     obj, sender, obj.dest_hash))
             try: del msg['sync_owner_id']
             except KeyError: pass
+        try:
+            del msg['_sync_owner']
+        except KeyError: pass
         if not obj:
             obj = cls()
             try:

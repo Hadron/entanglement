@@ -228,10 +228,8 @@ the latest synchronized version will be sent.
 
         '''Return a dictionary containing the attributes of self that should be synchronized.  Attributes can be passed in; if so, then the list of attributes will be limited to those passed in.'''
         d = {}
-        if hasattr(self, 'sync_owner') and self.sync_owner is not None:
-            d['_sync_owner'] = self.sync_owner.sync_encode_value()
         for k,v in self.__class__._sync_properties.items():
-            if attributes and k not in attributes: continue
+            if attributes and k not in attributes and k != '_sync_owner': continue
             try: val = v._encode_value(self, k)
             except BaseException as e:
                 raise ValueError("Failed encoding {} using encoder from class {}".format(k, v.declaring_class)) from e
@@ -310,6 +308,7 @@ the latest synchronized version will be sent.
         return self
 
     sync_owner = EphemeralUnflooded
+    _sync_owner = sync_property()
 
     @property
     def sync_is_local(self):

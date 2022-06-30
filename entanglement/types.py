@@ -7,7 +7,6 @@
 # LICENSE for details.
 import base64, datetime, iso8601, uuid
 from datetime import timezone
-from .util import GUID
 
 def binary_encoder(val):
     return str(base64.b64encode(val), 'utf-8')
