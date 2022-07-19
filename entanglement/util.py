@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-# Copyright (C) 2017, 2018, 2019, Hadron Industries, Inc.
+# Copyright (C) 2017, 2018, 2019, 2022, Hadron Industries, Inc.
 # Entanglement is free software; you can redistribute it and/or modify
 # it under the terms of the GNU Lesser General Public License version 3
 # as published by the Free Software Foundation. It is distributed
@@ -8,7 +8,7 @@
 # LICENSE for details.
 
 
-import base64, contextlib, hashlib, logging, re, uuid
+import base64, contextlib, functools, hashlib, logging, re, uuid
 try:
     from OpenSSL import crypto as _crypto
 except ImportError:
@@ -157,3 +157,20 @@ def entanglement_logs_disabled():
     yield
     l.setLevel(oldlevel)
     
+class memoproperty:
+    "A property that only supports getting and that stores the result the first time on the instance to avoid recomputation"
+
+
+    def __init__(self, fun):
+        functools.update_wrapper(self, fun)
+        self.fun = fun
+        self.name = fun.__name__
+
+    def __get__(self, instance, owner):
+        if instance is None: return self
+        #Because we don't define set or del, we should not be called
+        #if name is already set on instance.  So if we set name we
+        #will be bypassed in the future
+        res = self.fun(instance)
+        setattr(instance, self.name, res)
+        return res
