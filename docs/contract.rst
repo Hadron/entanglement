@@ -1,11 +1,28 @@
+.. _contract:
+
 ##########################################
 Entanglement Security and Policy Contract
 ##########################################
 
-**Entanglement's** security and policy depend on a complex interaction of classes.  This describes the contract between these classes and callers of the Entanglement system.
+**Entanglement's** security and policy depend on a complex interaction of classes.  This describes the contract between these classes and callers of the Entanglement system.  In particular, this contract describes how to control:
+
+* What objects are sent where in an Entanglement system (*should_send*)
+
+* Which updates are received and accepted at various points in the system (*should_listen)*
+
+* How to get information about a connected endpoint to make policy decisions about it.
+
+
 
 Classes and Their Responsibilities
 ==================================
+
+`Synchronizable`
+----------------
+
+A Synchronizable is some object that can be synchronized.
+A Synchronizable type is responsible for any policy specific to that type.  In general it is best to minimize type-specific policy and instead put policy on a registry or destination; see below.
+
 
 `SyncManager` and `SyncServer`
 ------------------------------
@@ -28,7 +45,7 @@ The SyncDestination represents a connection to a  single endpoint.  It's the ide
 
 * Primary point for MAC policy
 
-* Path enforcement (for example making sure updates travel toward object owners)
+* Path enforcement (for example making sure updates travel toward object owners) and that non-owners do not impersonate owners.
 
 When used with an SQL instantiation, the *cls* parameter of :func:`!entanglement.sql.base.sync_manager_destinations()` can be used to override which class is used for SyncDestination to allow customization.
 
@@ -41,15 +58,19 @@ A SyncRegistry represents a coherent protocol comprized of a schema of `Synchron
 
 * Logic about what to do with an object after it is synchronized--the logic specific to an operation--goes here.
 
-`Synchronizable`
-----------------
-
-A Synchronizable type is responsible for any policy specific to that type.
 
 `SyncProtocol`
 --------------
 
-An entirely internal class used for the network operations.  No application should need to import from ``entanglement.protocol``.
+The protocol is mostly an internal class.  It does have a few methods
+that allow querying the remote certificate for TLS-based connections.
+The protocol also supports storing information about the request that
+initiated a websocket connection in websocket applications.  As an
+example, user identity or session identity via cookies can be accessed
+on the `ws_handler` protocol.
+
+
+No application should need to import from ``entanglement.protocol``.
 This class performs no ACL checking.  On send, all policy is enforced before calling the object synchronization method.  On receive. as soon as the JSON is decoded, the resulting dictionary is turned over to the SyncManager.
 
 Applications MUST NOT call object synchronization methods on a protocol.
@@ -64,6 +85,49 @@ This is responsible for defining SQL operations:
 * sync: floods a new or existing object's state out to recipients
 
 * forward: requests a set of changes (or a new object) be synchronized.  That is, a request to an object owner to consider creating or updating an object
+
+Overview
+========
+Both the *should_send* and *should_listen* workflows are codified in `SyncManager`::
+      def should_send(self, obj, destination, registry, sync_type, **info):
+        '''
+        1. destination.should_send( obj, **info):
+        2. registry.should_send( obj, **info):
+        3. obj.sync_should_send(**info):
+        '''
+
+    def should_listen(self, msg, cls, **info):
+        '''
+        1. sender.should_listen(msg, cls, **info) is not True:
+        2. registry.should_listen(msg, cls, **info)is not True:
+        3. cls.sync_should_listen(msg, **info) is not True:
+            * here cls is the entanglement object class
+        '''
+
+    def should_listen_constructed(self, obj, msg, **info):
+        '''
+        1. info['registry'].should_listen_constructed(obj, msg, **info)
+        2. obj.sync_should_listen_constructed(msg, **info)
+        '''
+
+Should_listen and Should_listen_constructed
+-------------------------------------------
+
+For the receive workflow, two sets of methods are provided:
+
+* *should_listen*
+
+* *should_listen_constructed*
+
+The first of these receives a message dictionary containing keys and their encoded values.  The class is available, but an instance of `Synchronizable` is not.
+The advantage of performing checks at this stage is that the attack surface can be reduced and performance increased if objects are rejected before they are constructed.
+
+The disadvantage is that many checks are easy to perform against constructed objects:
+
+* new values can be compared to old values
+
+* Database relationships are available; for example it is easy to look at the owner of an object.
+
 
 
 Receive Workflow
@@ -102,3 +166,11 @@ The should_listen methods  are passed the message dictionary not a constructed o
 
 Send workflow
 =============
+
+
+
+#. Destination::should_send
+#. SyncRegistry::should_send
+#. Object::sync_should_send
+
+The *should_send* methods can return ``True`` or ``False`` or raise.

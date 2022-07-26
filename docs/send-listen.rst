@@ -1,80 +1,18 @@
-Review of Entanglement Listen/Send Hooks
-========================================
-
-(1) Overview
-------------
-
-Entanglement has multiple hooks for controlling what messages are listened to and are sent to/from clients.
-
-Note that there are 4 main components involved
-
-* Object (a Synchronizable)
-* Destination
-* Protocol (ws_handler or socket)
-* SyncRegistry
-
-The root of this system can be seen in `network.py` for `SyncManager`, where the sequence of checks are:
-
-.. code-block:: python
-
-    def should_send(self, obj, destination, registry, sync_type, **info):
-        '''
-        1. destination.should_send( obj, **info):
-        2. registry.should_send( obj, **info):
-        3. obj.sync_should_send(**info):
-        '''
-
-    def should_listen(self, msg, cls, **info):
-        '''
-        1. sender.should_listen(msg, cls, **info) is not True:
-        2. registry.should_listen(msg, cls, **info)is not True:
-        3. cls.sync_should_listen(msg, **info) is not True:
-            * here cls is the entanglement object class
-        '''
-
-    def should_listen_constructed(self, obj, msg, **info):
-        '''
-        1. info['registry'].should_listen_constructed(obj, msg, **info)
-        2. obj.sync_should_listen_constructed(msg, **info)
-        '''
-
-
-(2) Sequence of checks
-----------------------
-
-The sequence of calls is the following:
-
-Incoming messages
-
-1. Destination::should_listen
-2. SyncRegistry::should_listen
-3. Object::sync_should_listen
-4. SyncRegistry::should_listen_constructed
-5. Object::sync_should_listen_constructed
-6. Object::sync_receive_constructed
-7. SyncRegistry:sync_receive
-
-Outgoing messages
-
-1. Destination::should_send
-2. SyncRegistry::should_send
-3. Object::sync_should_send
-
-
-(3) Example hooks
------------------
+Example Listen/Send hooks
+-------------------------
 
 The following 'skeleton' code shows the available methods that can be modified.
+See the `contract` for discussion of how these hooks are called.
 
 A few notes:
 
 * Use the super method on unhandled cases
-* Some methods return `True/False` while others should just raise `SyncUnauthorized` to reject
+* Send methods  return `True/False` while should_listen should just raise `SyncUnauthorized` to reject
 * Most methods have `**info/**kwargs` as input. These dictionaries have useful context info/references
 
 .. code-block:: python
 
-    class Registry:
+    class Registry(SyncRegistry):
 
         def should_listen(self, msg, cls, **info):
             # Custom code return True/False
@@ -84,16 +22,15 @@ A few notes:
             # Custom code return True/False
             return super().should_listen_constructed(obj,msg,**info)
 
-        def sync_receive(self, obj, operation, **info):
+        def incoming_sync(self, obj, operation, **info):
             # Custom code
-            super().sync_receive(obj, operation = operation, **info)
 
         def should_send(self, obj, destination, **info):
             # Custom code return True/False
             return super().should_send(obj, destination, **info)
 
 
-    class EntanglementObject:
+    class EntanglementObject(Synchronizable):
 
         @classmethod
         def sync_should_listen(cls, msg, **info):
@@ -121,7 +58,7 @@ A few notes:
             # Custom code return True/False
 
 
-    class Destination:
+    class Destination(SyncDestination):
 
         def should_listen(self, msg, cls, **info):
             protocol = info.get('protocol')
@@ -139,6 +76,9 @@ A few notes:
 
         async def connected(self, manager, *args, **kwargs):
             res = await super().connected(manager, *args, **kwargs)
+            # Note that until connected returns, outgoing syncs do not
+            # go to this destination unless the destination is
+            # explicitly listed in the call to synchronize
 
             ws_handler = self.protocol.ws_handler
             return res
