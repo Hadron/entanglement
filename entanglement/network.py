@@ -547,7 +547,7 @@ class SyncDestinationBase:
         manager's list of connections until this coroutine returns
         true.  However, incoming synchronizations will be processed
         and will result in calls to the destination's should_listen
-        method.  If this raises, the connection will be closed and aborted.
+        method.  If *connected* raises, the connection will be closed and aborted.
         '''
         self.protocol = protocol
         self.bwprotocol = bwprotocol
