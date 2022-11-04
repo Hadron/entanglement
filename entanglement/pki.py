@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-# Copyright (C) 2017, 2018, Hadron Industries, Inc.
+# Copyright (C) 2017, 2018, 2022, Hadron Industries, Inc.
 # Entanglement is free software; you can redistribute it and/or modify
 # it under the terms of the GNU Lesser General Public License version 3
 # as published by the Free Software Foundation. It is distributed
@@ -7,7 +7,7 @@
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the file
 # LICENSE for details.
 
-import sh, os, os.path
+import sh, os, os.path, tempfile
 from os.path import exists
 
 def gen_site_ca(pki_dir, ca_name = "Root CA"):
@@ -26,6 +26,14 @@ def gen_site_ca(pki_dir, ca_name = "Root CA"):
                    '-extensions', 'v3_ca',
                    '-out', ca_pem)
 
+def host_cert_exts(host):
+    return f'''
+basicConstraints=CA:FALSE
+subjectKeyIdentifier=hash
+authorityKeyIdentifier=keyid,issuer
+subjectAltName = DNS:{host}
+'''
+
 def host_cert(pki_dir, hostname, adl_subj, prefix = "", *,
               force = False):
     if prefix != "":
@@ -38,17 +46,19 @@ def host_cert(pki_dir, hostname, adl_subj, prefix = "", *,
     if force or (not (exists (hostfile + '.key') and exists(hostfile + '.pem'))):
         sh.openssl.genrsa('-out', '{}.key'.format(hostfile),
                           '2048')
-        sh.openssl.x509(
-            sh.openssl( 'req',
-                        '-new', '-subj', '{adl_subj}/CN={}'.format(hostname, adl_subj = adl_subj),
-                        '-key', '{}.key'.format(hostfile),
+        with tempfile.NamedTemporaryFile(dir=pki_dir, mode='w+t') as extfile:
+            extfile.write(host_cert_exts(hostname))
+            extfile.flush()
+            sh.openssl.x509(
+                sh.openssl( 'req',
+                            '-new', '-subj', '{adl_subj}/CN={}'.format(hostname, adl_subj = adl_subj),
+                            '-key', '{}.key'.format(hostfile),
             ),
             '-CAkey', ca_key,
             '-CA', ca_pem,
             '-CAcreateserial',
             '-out', '{}.pem'.format(hostfile),
             '-days', '400',
-            '-extensions', 'usr_cert',
-            "-extfile", "/etc/ssl/openssl.cnf",
-            '-req')
+                "-extfile", extfile.name,
+                '-req')
 
