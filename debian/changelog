@@ -1,3 +1,21 @@
+hadron-entanglement (0.28) unstable; urgency=medium
+
+  [ Sam Hartman ]
+  * Autogenerate certs
+  * Segregate client and server ssl contexts
+  * Request Certs in server context
+  * Allow type annotations:
+  * _sync_owner is less special
+
+  [ Jeffrey LeBlanc ]
+  * Adding send/listen hooks documentation.
+
+  [ Sam Hartman ]
+  * Merge contract and send_listen_hooks
+  * Include DNS SAN for host certs.
+
+ -- Sam Hartman <hartmans@debian.org>  Fri, 04 Nov 2022 11:02:54 -0600
+
 hadron-entanglement (0.27) unstable; urgency=medium
 
   [ Sam Hartman ]
