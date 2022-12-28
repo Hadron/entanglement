@@ -39,7 +39,7 @@ def wait_for_call(loop, obj, method, calls = 1, trap_exceptions = False):
                                new= cb):
             yield
             loop.run_until_complete(asyncio.wait_for(fut, 0.5))
-    except  asyncio.futures.TimeoutError:
+    except asyncio.TimeoutError:
         raise AssertionError("Timeout waiting for call to {} of {}".format(
             method, obj)) from None
 
@@ -84,8 +84,6 @@ class SqlFixture(unittest.TestCase):
                            sql.internal.sql_meta_messages,
                            'handle_i_have', 2):
             self.manager.run_until_complete(asyncio.wait(self.manager._connecting.values(), timeout = 1.0))
-
-
 
     def tearDown(self):
         self.manager.close()

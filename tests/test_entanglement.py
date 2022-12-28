@@ -302,7 +302,7 @@ class TestSynchronization(unittest.TestCase):
                 self.cprotocol.close()
                 self.manager._destinations[self.cert_hash].connect_at = 0
                 try:self.loop.run_until_complete(asyncio.wait_for(fut, 0.3))
-                except asyncio.futures.TimeoutError:
+                except asyncio.TimeoutError:
                     raise AssertionError("Connection failed to be made") from None
 
 
