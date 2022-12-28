@@ -93,9 +93,7 @@ class _SqlMetaRegistry(SyncRegistry):
         manager.synchronize(i_have, destinations = [sender],
                             operation = 'forward')
 
-
-    @asyncio.coroutine
-    def handle_i_have(self, obj, sender, manager):
+    async def handle_i_have(self, obj, sender, manager):
         from .base import SqlSynchronizable, SyncDeleted
         try:
             session = manager.session
@@ -131,7 +129,7 @@ class _SqlMetaRegistry(SyncRegistry):
             for c, r in classes_in_registries(manager.registries):
                 try:
                     if c is base.SyncOwner or issubclass(c, base.SyncOwner): continue
-                    if self.yield_between_classes: yield
+                    if self.yield_between_classes: await asyncio.sleep(0)
                     if not session.is_active: session.rollback()
                     to_sync = session.query(c).with_polymorphic('*') \
                                               .outerjoin(base.SyncOwner).filter(c.sync_serial > obj.serial, owner_condition).all()
@@ -142,7 +140,7 @@ class _SqlMetaRegistry(SyncRegistry):
                     max_serial = max(o.sync_serial, max_serial)
                     manager.synchronize(o,
                                         destinations = [sender])
-            yield from sender.protocol.sync_drain()
+            await sender.protocol.sync_drain()
             sender.received_i_have.add(owner.id)
             if not owner.sync_is_local:
                 max_serial = owner.incoming_serial
@@ -176,10 +174,7 @@ class _SqlMetaRegistry(SyncRegistry):
                 schedule_you_have(c.dest, manager)
         manager.session.commit()
             
-
-
-    @asyncio.coroutine
-    def handle_my_owners(self, obj, manager, sender):
+    async def handle_my_owners(self, obj, manager, sender):
         session = manager.session
         session.rollback()
         old_owners = session.query(base.SyncOwner).filter(base.SyncOwner.dest_hash == sender.dest_hash, base.SyncOwner.id.notin_(obj.owners))
@@ -190,7 +185,7 @@ class _SqlMetaRegistry(SyncRegistry):
             manager.synchronize(o, operation = 'delete', exclude = [sender])
             session.delete(o)
             session.commit()
-            yield
+            await asyncio.sleep(0)
 
     def should_listen(self, msg, cls, operation, **info):
         if operation == 'delete':
