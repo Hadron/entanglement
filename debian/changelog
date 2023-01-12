@@ -1,3 +1,11 @@
+hadron-entanglement (0.29) unstable; urgency=medium
+
+  [ Klee Dienes ]
+  * Use asyncio.TimeoutError
+  * Update from @asyncio.coroutine to async def
+
+ -- Sam Hartman <hartmans@debian.org>  Thu, 12 Jan 2023 09:29:56 -0700
+
 hadron-entanglement (0.28) unstable; urgency=medium
 
   [ Sam Hartman ]
