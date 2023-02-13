@@ -14,6 +14,7 @@ Contents:
 
    intro
    api
+   javascript
    contract
    send-listen
 
