@@ -204,10 +204,38 @@ Filters provide a way to be notified about changes, additions or removals of :cl
 
     Like *filter* except for maps instead of lists.  It's kind of complicated and we'll document later.  The map key is the category; the map value can either be a list or a singleton depending on configuration.
 
-.. function:: relationship(options)
+.. function:: relationship(local, remote, options)
 
     Sets up a foreign key relationship between two :class:`PersistentSynchronizable` classes.  Even supports promises when a child is received before a parent.
 
+    :param local: The child side of the relationship (the one with the foreign key constraint in a database)
+
+    :param remote: The :class:`PersistentSynchronizable` class that is the parent side of the relationship.
+    :param options: Options to configure the relationship:
+
+        keys
+            A list of attribute names corresponding to ``remote.syncPrimaryKeys``.  Must be the same length as ``syncPrimaryKeys``.
+
+        use_list
+            If true, then *remote_prop* is a list; there can be many *local* objects for each *remote* object.  If false, then this is a one-to-one relationship.
+
+        local_prop
+            The name of the property on *local* that will be added to refer to the parent remote object.
+
+        remote_prop
+            The name of the property to be added to *remote*.  If *use_list* is true, this contains a list of *local* objects; otherwise it contains a single *local* object.
+
+            If not specified, the default name is *local.name* with the first letter downcased; if *use_list* is true, a ``s`` is added to the name.
+
+        missing_node
+            :code:`function(key, local_obj){}`  A function returning the value of *local_prop* when no *remote* is found with key *key*.  This can be used for example to create a proxy UI object when some objects are still being loaded.  This could even be used to subscribe to a remote object outside of the current view.  Whatever is returned, the *loadedPromise* property will be set to a promise that will be resolved if a *remote* with key *key* is ever synchronized.  If this option is not set, *local_prop* will be ``undefined`` and missing nodes will not be tracked.
+
+                  
+
+
+            
+
+    
 Javascript API
 **************
 
