@@ -20,7 +20,7 @@ Entanglement has a Javascript interface that allows websocket clients to connect
 Javascript Schema Generator
 ***************************
 
-The set of primary keys and atcributes associated with :py:class:`~entanglement.Synchronizable` classes is exported from the Python code to Javascript.
+The set of primary keys and attributes associated with :py:class:`~entanglement.Synchronizable` classes is exported from the Python code to Javascript.
 If a class has no special behavior in Javascript, then Entanglement will automatically generate a Javascript class to represent the *Synchronizable*.  In typical usage, :ref:`javascript classes <javascript:registering>` are required to customize the behavior of the synchronized object.  The automatically generated class can serve as a base class to set up basic properties and primary keys.  Unfortunately, because of a :ref:`bug <javascript:persist_bug>`, the automatically generated base classes will not work for persistent objects unless a custom class extending PersistentSynchronizable is created for each synchronized class.
 
 
@@ -55,13 +55,13 @@ Then, run the schema generator:
 
     python3 -m entanglement.javascript_schema packages_containaing_registries
 
-For example if ``project.entanglement.schema``  containes several sync registries, you might run:
+For example if ``project.entanglement.schema``  contains several sync registries, you might run:
 
 .. code-block:: none
 
     python3 -mentanglement.javascript_schema project.entanglement.schema
 
-That would produce schema for any call to :py:func:`javascript_regstry` in the ``project.entanglement.schema`` package.  Generally, Entanglement Javascript projects also require the ``sql_meta.js`` schema produced by ``entanglement.sql.internal``.
+That would produce schema for any call to :py:func:`javascript_registry` in the ``project.entanglement.schema`` package.  Generally, Entanglement Javascript projects also require the ``sql_meta.js`` schema produced by ``entanglement.sql.internal``.
 
 Using a Schema
 **************
@@ -118,7 +118,7 @@ To define custom behavior, define a Javascript class with the same name as the P
         }
 
     // and register the class
-    registry.rregister(SomeSynchronizable)
+    registry.register(SomeSynchronizable)
 
 If a class is :meth:`registered <SyncRegistry.register>` that is  in a schema attached to the registry, then:
 
@@ -132,3 +132,109 @@ If a class is :meth:`registered <SyncRegistry.register>` that is  in a schema at
 
     There is support for schema classes that are auto generated rather than calling register explicitly.  Also, there is support for using an application specific base hierarchy so classes do not need to extend *PersistentSynchronizable*.  Unfortunately both items are buggy.  In particular,  if a class does not extend *PersistentSynchronizable*, then only the methods of *Synchronizable* will be included.  As a result, each time an instance is synchronized, a new instance will be generated.  All the :ref:`filters <javascript:filters>` will fail.  Also methods required for updating, creating and deleting objects will not be present.
 
+.. _javascript:filters
+
+Filters
+*******
+
+Filters provide a way to be notified about changes, additions or removals of :class:`PersistentSynchronisables <PersistentSynchronizable>` matching certain criteria.  For example foreign key :func:`relationships <relationship>` are implemented using filters.
+
+.. class:: FilterBase(options)
+
+    A *FilterBase* is a generic categorized filter.  It takes a filter function that maps objects into categories.  In simple usage, the filter function can return true for objects that the filter wants to track or false/undefined for objects that should be ignored.  But for example a foreign key relationship could categorize child objects based on which parent they belong to.
+
+    The *FilterBase*  calls an add function for the new category when an object is added to a category, and the remove function for the old category.  Internally the category is not used for anything else.  For example :func:`filter` implements a single-category filter that stores interesting objects in a list.  Its add function adds objects to the list; the remove function removes them from a list.
+
+    *FilterBase*'s constructor takes an object containing the following possible options:
+
+    :param target: The :class:`PersistentSynchronizable` that this *FilterBase* tracks.  Event listeners will be added to the target to track new and changed objects.
+
+    :param filter: :code:`function filter(obj) {}` Returns the category for a given object.  If ``undefined``/``false`` is returned, the object is ignored.
+
+    :param add: :code:`function add(obj, category) {}` A function called when an object is added to a category.  Objects are never added to the undefined category; when *filter* returns undefined, objects are ignored.
+
+    :param remove: :code:`function remove(obj, category) { }` Called when an object is removed from a category.
+
+    :param include_transitions:  If true, then the filter tracks Entanglement transition operations.
+
+    :param debug: If true, log debugging state to console
+
+
+    .. method:: close()
+
+        Shuts down the filter and removes event listeners from the *target*.
+
+    Events
+    ______
+    
+    .. method:: onObjectChange(obj)
+
+        Called whenever an object changes, even if it does not change categories.  
+
+    .. method:: onAdd(obj, category)
+
+        Called when an object is added to a category.
+
+    .. method:: onRemove(obj, category)
+
+        Called when an object is removed from a category.
+
+    .. method:: onChange(obj, old_category, new_category)
+
+        Called when an object's category changes.
+        
+
+.. function:: filter(options)
+
+    :returns: A :class:`FilterBase` that stores objects matching the filter function in a list.  The returned *FilterBase* will have a *result* property which is a list containing the current objects.
+
+    :param filter: A filter function returning true for objects that should be tracked.  It is important this function always return the same value for objects that are interesting.
+
+    :param target: The :class:`PersistentSynchronizable` that this filter applies to.
+
+    :param order: :code:`function(a,b) {}` A function that is a sort comparitor.  If supplied, whenever the result element is accessed, it will be sorted if needed.
+
+    Other options are also passed through to :class:`FilterBase`, but *add* and *remove* should not be set.
+
+    .. note::
+
+        For Vue3 it's probably desirable that the eventual result list be something that can be passed in as an option so that a reactive list can be used when desired.  For vue2 it is sufficient to call $vue.observer on the result, since that mutates the underlying object.
+
+.. function:: mapFilter(options)
+
+    Like *filter* except for maps instead of lists.  It's kind of complicated and we'll document later.  The map key is the category; the map value can either be a list or a singleton depending on configuration.
+
+.. function:: relationship(options)
+
+    Sets up a foreign key relationship between two :class:`PersistentSynchronizable` classes.  Even supports promises when a child is received before a parent.
+
+Javascript API
+**************
+
+.. class:: PersistentSynchronizable()
+
+    .. method:: set syncStorageMap()
+
+        Sets the map in which objects of this class are stored.  By default classes generate their own, but it may be desirable to have all classes below a certain point in the inheritance tree stored in the same map.  If this is done, then foreign key constraints can refer to any class implementing the right interface.
+
+    .. method:: syncModified()
+
+        :returns: A set of attributes modified since the object was received.
+
+    .. method:: syncUpdate(manager)
+
+        Send a *forward* of this object toward its owner using *manager*.  I.E. Save local  modifications.
+
+        :returns: A promise that resolves to the result of the forward operation.  Assuming :meth:`syncConstruct` is working typically, on success, the promise will resolve to *this*.  On failure the promise resolves to some *SyncError*.
+
+
+    .. method:: syncCreate(manager)
+
+        Creates this object on *manager*.  *_sync_owner* must already be set.
+
+        :returns: A promise that resolves to the created object.  Unlike for updates, that object is not typically *this*.
+
+    .. method:: syncDelete(manager)
+
+        Synchronizes a delete of *this* to *manager*.
+        
