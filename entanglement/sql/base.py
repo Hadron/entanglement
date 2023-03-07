@@ -112,7 +112,8 @@ class SqlSyncSession(sqlalchemy.orm.Session):
                 #we don't actually catch that here.
                 if (inst.sync_owner_id is None and inst.sync_owner is None) or inst.sync_is_local:
                     if not serial_flushed:
-                        new_serial = session.execute(serial_insert).lastrowid
+                        r = session.execute(serial_insert)
+                        new_serial = r.inserted_primary_key[0]
                         serial_flushed = True
                     inst.sync_serial = new_serial
                 else:
@@ -130,7 +131,8 @@ class SqlSyncSession(sqlalchemy.orm.Session):
                 if inst.sync_owner: inst.sync_owner.dest_hash   # get while we can
                 if (inst.sync_owner_id is None and inst.sync_owner is None) or inst.sync_is_local:
                     if not serial_flushed:
-                        new_serial = session.execute(serial_insert).lastrowid
+                        r = session.execute(serial_insert)
+                        new_serial = r.inserted_primary_key[0]
                         serial_flushed = True
                     inst.sync_serial = new_serial
                     deleted = SyncDeleted()
