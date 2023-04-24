@@ -27,14 +27,15 @@ def generate_schema_for(registry: SyncRegistry, f):
 
     js = json.dumps
     f.write('\
-function register_schema(registry) {\n')
+export function register_schema(registry) {\n')
     for name, c in registry.registry.items():
         attributes = list(c._sync_properties.keys())
         keys = c.sync_primary_keys
         f.write( f'\
         registry._schemaItem( {js(name)}, {js(keys)}, {js(attributes)})\n')
     f.write('}\n')
-    f.write(f'''\
+    if False:
+        f.write(f'''\
 module.exports = register_schema;
 ''')
 

@@ -110,7 +110,7 @@ const syncHandledEvents = Object.freeze(
      'disappear']);
 
         
-class SyncManager {
+export class SyncManager {
 
     constructor(options) {
         if (typeof options == "string") {
@@ -357,7 +357,7 @@ class SyncManager {
 
 }
 
-class SyncRegistry {
+export class SyncRegistry {
 
     constructor() {
         this.registry = new Map();
@@ -478,7 +478,7 @@ EventHandlerMixin(SyncRegistry.prototype);
 
             
     
-class Synchronizable {
+export class Synchronizable {
 
     toSync(options) {
         options = options || {};

@@ -139,7 +139,7 @@ class JsTest(threading.Thread):
 
     def run(self):
         try:
-            output = subprocess.check_call(['nodejs', self.testname,
+            output = subprocess.check_call(['nodejs', '--experimental-modules', self.testname,
                                                    self.uri, self.owner],
                                                   timeout = 3.0,
                                                   cwd = os.path.dirname(self.testname))

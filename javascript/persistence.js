@@ -16,11 +16,11 @@
 * has not been implemented yet.
 */
 
-const entanglement = require('./index');
-const util = require('./util')
+import { Synchronizable } from './index.js';
+
 const classStorageMaps = new WeakMap();
 
-class PersistentSynchronizable extends entanglement.Synchronizable {
+export class PersistentSynchronizable extends Synchronizable {
 
     static storageKey(msg) {
         // Returns the storage key for a given object either from an instance or an entanglement message
@@ -126,7 +126,7 @@ static     get syncStorageMap() {
     
 };
 
-class SyncOwner extends PersistentSynchronizable {
+export class SyncOwner extends PersistentSynchronizable {
 
     async syncReceive(msg, options) {
         let orig = this._orig || {};
@@ -168,7 +168,7 @@ class SyncOwner extends PersistentSynchronizable {
 
 SyncOwner.syncStorageMap = SyncOwner.syncStorageMap; //All classes extending SyncOwner get the same map
 
-class YouHave extends entanglement.Synchronizable {
+export class YouHave extends Synchronizable {
 
     async syncReceive(msg, options) {
         await super.syncReceive(msg, options);
@@ -183,7 +183,7 @@ class YouHave extends entanglement.Synchronizable {
 
 }
 
-class MyOwners extends entanglement.Synchronizable {
+export class MyOwners extends Synchronizable {
 
     async syncReceive(msg, options) {
         let registry = options.registry;
@@ -198,7 +198,7 @@ class MyOwners extends entanglement.Synchronizable {
 
 };
 
-class IHave extends entanglement.Synchronizable {
+export class IHave extends Synchronizable {
 
     constructor(o) {
         super();
@@ -207,7 +207,7 @@ class IHave extends entanglement.Synchronizable {
 
 };
  
-function setupPersistence(registry) {
+export function setupPersistence(registry) {
     if (registry.bases.SyncOwner === undefined)
         throw new TypeError("Must call the sql_internal schema setup function first");
     registry.register(SyncOwner);
@@ -216,13 +216,10 @@ function setupPersistence(registry) {
     registry.register(MyOwners);
 }
 
-
-
-                 
-
-var filter = require('./filter');
+if (0) {
+    var filter = require('./filter');
    
-module.exports = {
+    module.exports = {
         SyncOwner,
         IHave,
         YouHave,
@@ -231,3 +228,4 @@ module.exports = {
         setupPersistence,
     relationship:filter.relationship,
     };
+}

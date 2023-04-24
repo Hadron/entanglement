@@ -9,8 +9,10 @@
  *  LICENSE for details.
 */
 
-function downFirst(s) {
+export function downFirst(s) {
     return s[0].toLowerCase()+s.substring(1)
 }
-module.exports = {
-    downFirst}
+if (0) {
+    module.exports = {
+        downFirst}
+}
