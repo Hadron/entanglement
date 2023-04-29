@@ -17,7 +17,7 @@ def  binary_decoder( val):
 
 
 def datetime_encoder(dt):
-    if dt.tzinfo:
+    if getattr(dt, 'tzinfo', None):
         dt = dt.astimezone(timezone.utc)
     return dt.isoformat()
 
