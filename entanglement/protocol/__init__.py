@@ -183,21 +183,25 @@ class SyncProtocolBase:
         try:
             while True:
                 elt = self.current_dirty.pop()
-                try:self._send_sync_message(elt)
+                try:
+                    await self._send_sync_message(elt)
                 except:
                     logger.exception("Error sending {}".format(repr(elt.obj)))
                 if self.waiter: await self.waiter
         except StopIteration: #empty set
             self.task = None
-            self._send_sync_message(None) #Send metadata only message if useful
+            await self._send_sync_message(None) #Send metadata only message if useful
             if self.drain_future:
                 self.drain_future.set_result(True)
                 self.drain_future = None
                 self.current_dirty = self.dirty
                 if len(self.dirty) > 0:
                     self.task = self.loop.create_task(self._run_sync())
+        except:
+            logger.exception(f'error in _run_sync')
+            raise
 
-    def _send_sync_message(self, elt):
+    async def _send_sync_message(self, elt):
         flags = 0
         responses_to = None
         if elt and elt.response_for:
@@ -217,7 +221,7 @@ class SyncProtocolBase:
             sync_rep = {}
         new_flags = self._handle_meta_out(flags, sync_rep)
         if len(sync_rep) == 0: return
-        self._send_json(sync_rep, new_flags)
+        await self._send_json(sync_rep, new_flags)
         self._out_counter += 1
 
 
@@ -327,7 +331,7 @@ class SyncProtocol(SyncProtocolBase, asyncio.Protocol):
         self.reader = asyncio.StreamReader(loop = self.loop)
         self.reader_task = None
 
-    def _send_json(self, sync_rep, flags):
+    async def _send_json(self, sync_rep, flags):
         js = bytes(json.dumps(sync_rep), 'utf-8')
         protocol_logger.debug("#{c}: Sending `{js}' to {d} (flags {f})".format(
             js = js, d = self.dest,
