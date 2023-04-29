@@ -10,7 +10,13 @@
 import dataclasses, json, os, os.path
 from ..interface import SyncRegistry
 
-def generate_schema_for(registry: SyncRegistry, f):
+from enum import Enum, auto
+
+class ModuleFormat(Enum):
+    ESM = auto()
+    CJS = auto()
+
+def generate_schema_for(registry: SyncRegistry, f, format: ModuleFormat=ModuleFormat.ESM):
     ''':param registry:  A :class:`.SyncRegistry` to output javascript schema for.
 
     :param f: A file-like object to write the schema to.
@@ -26,17 +32,30 @@ def generate_schema_for(registry: SyncRegistry, f):
     '''
 
     js = json.dumps
-    f.write('\
-function register_schema(registry) {\n')
+
+    match format:
+        case ModuleFormat.ESM:
+            f.write('\nexport default function register_schema(registry) {\n')
+        case ModuleFormat.CJS:
+            f.write('\nfunction register_schema(registry) {\n')
+        case _:
+            raise ValueError(f'unsupported module format {format}')
+
     for name, c in registry.registry.items():
         attributes = list(c._sync_properties.keys())
         keys = c.sync_primary_keys
         f.write( f'\
         registry._schemaItem( {js(name)}, {js(keys)}, {js(attributes)})\n')
     f.write('}\n')
-    f.write(f'''\
-module.exports = register_schema;
-''')
+
+    match format:
+        case ModuleFormat.ESM:
+            pass
+        case ModuleFormat.CJS:
+            f.write(f'\nmodule.exports = register_schema;\n')
+        case _:
+            raise ValueError(f'unsupported module format {format}')
+
 
 _js_regmap = {}
 
@@ -55,13 +74,13 @@ def javascript_registry(registry, file):
 
 
 
-def output_js_schemas(directory):
+def output_js_schemas(directory, format: ModuleFormat=ModuleFormat.ESM):
     j = os.path.join
     os.makedirs(directory, exist_ok = True)
     for reg, entry in _js_regmap.items():
         os.makedirs(os.path.dirname(j(directory,entry.file)), exist_ok = True)
         with open(j(directory, entry.file), 'wt') as out:
-            generate_schema_for(reg, out)
+            generate_schema_for(reg, out, format=format)
 
     
 
