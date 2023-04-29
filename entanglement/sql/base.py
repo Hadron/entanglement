@@ -585,11 +585,12 @@ class SqlSynchronizable(interface.Synchronizable):
 
     @property
     def _sync_owner(self):
-        return self.sync_owner.id
+        return self.sync_owner and self.sync_owner.id
+
     @_sync_owner.setter
     def _sync_owner(self, val):
-        if val !=self._sync_owner:
-            raise ValueError('Cannot Change sync_owner this way')
+        if val != self._sync_owner:
+            raise ValueError('Cannot change sync_owner this way')
         
     _sync_owner:GUID = interface.sync_property(_sync_owner)
     
