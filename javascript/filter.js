@@ -203,14 +203,20 @@ function mapFilter(options) {
 /**
    * Indicate a relationship between two :class:`Synchronizables`.
    * The *local* class is the one that in a database would have a
-   * foreign key constraint; the one with a higher sync_priority.
-   * This supports one-to-one and one-to-many relationships.
+   * foreign key constraint; the one with a higher sync_priority
+   * (where higher sync_priority means that the local class is synced
+   * after the remote).  This supports one-to-one and one-to-many
+   * relationships.
    *
    * :param local: The local class
    * :param options: A set of options for the relationship:
    *
    * use_list
-   *    Defaults to true; if true, then the remote side of the relationship is a list (one-to-many).  If "object" then an object is used and "object_key" contains the key in the local object to use to populate the object stored in remote_prop in the remote.
+   *    Defaults to true; if true, then the remote side of the
+   *    relationship is a list (one-to-many).  If "object" then an
+   *    object is used and "object_key" contains the key in the local
+   *    object to use to populate the object stored in remote_prop in
+   *    the remote.
    *
    * remote
    *    Class that is the other side of the relationship
