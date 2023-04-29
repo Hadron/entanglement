@@ -1,6 +1,6 @@
 "use strict";
 /*
- * Copyright (C) 2017, 2020, Hadron Industries, Inc.
+ * Copyright (C) 2017, 2020, 2023 Hadron Industries, Inc.
  *  Entanglement is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU Lesser General Public License version 3
  *  as published by the Free Software Foundation. It is distributed
@@ -9,7 +9,7 @@
  *  LICENSE for details.
 */
 
-const util = require('./util');
+import { downFirst } from './util.js';
 
 const default_delete_ops = Object.freeze(new Set([
      'delete',
@@ -19,7 +19,7 @@ const default_add_ops = Object.freeze(new Set([
     'sync'
 ]));
 
-class FilterBase {
+export class FilterBase {
     constructor( options) {
         // Much of the logic is encapsulated here to provide
         // encapsulation and to make things easier for the compiler by
@@ -138,7 +138,7 @@ function getList(l, order) {
     return l;
 }
 
-function filter(options) {
+export function filter(options) {
     // Filter returning a result that is a list
     const filter_result = [];
     filter_result.sort_required = false;
@@ -155,7 +155,7 @@ function filter(options) {
     return filter;
 }
 
-function mapFilter(options) {
+export function mapFilter(options) {
     const filter_result = (options.map)?(new options.map):new Map;
     const empty_node = options.empty_node || (() => []);
     const addItem = options.add_item || addList;
@@ -230,7 +230,7 @@ function mapFilter(options) {
    * remote_prop
    *    Same for remote.  Defaults to downcased local name possibly with 's' added.
    */
-function relationship(local, remote, options) {
+export function relationship(local, remote, options) {
     if (!options.keys)
         throw new TypeError("keys option is required");
     if(!Array.isArray(options.keys))
@@ -241,10 +241,10 @@ function relationship(local, remote, options) {
     const use_list = options.use_list;
     const debug = options.debug || false;
     const missing_node = options.missing_node || null;
-    const local_prop = options.local_prop ||util.downFirst(remote.name);
+    const local_prop = options.local_prop ||downFirst(remote.name);
     let remote_prop;
     if (options.remote_prop === undefined) {
-        remote_prop = util.downFirst(local.name);
+        remote_prop = downFirst(local.name);
         if (use_list) remote_prop = remote_prop+'s';
     } else remote_prop = options.remote_prop;
 
@@ -345,10 +345,3 @@ function relationship(local, remote, options) {
     }
     
 }
-
-module.exports = {
-    FilterBase,
-    filter,
-    mapFilter,
-    relationship
-};

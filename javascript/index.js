@@ -1,6 +1,6 @@
 "use strict";
 /*
- * Copyright (C) 2017, 2020, 2023, Hadron Industries, Inc.
+ *  Copyright (C) 2017, 2020, 2023 Hadron Industries, Inc.
  *  Entanglement is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU Lesser General Public License version 3
  *  as published by the Free Software Foundation. It is distributed
@@ -15,9 +15,7 @@ try {
     WebSocket =require('websocket').w3cwebsocket;
 }
 
-
-
-function promiseAnyPolyfill(promises) {
+export function promiseAnyPolyfill(promises) {
     // Sort of like Promise.any (which node.js does not support)
     // Except no Aggrigate error support
     let result_found = false;
@@ -44,7 +42,7 @@ function promiseAnyPolyfill(promises) {
     return new Promise(inner);
 }
 
-function EventHandlerMixin(obj, events = null) {
+export function EventHandlerMixin(obj, events = null) {
     const methods = {
         addEventListener(event, handler) {
             let handlers = this.event_handlers[event];
@@ -100,9 +98,9 @@ function EventHandlerMixin(obj, events = null) {
     }
 }
 
-const eventHandlerMap = new WeakMap();
+export const eventHandlerMap = new WeakMap();
 
-const syncHandledEvents = Object.freeze(
+export const syncHandledEvents = Object.freeze(
     ['sync', 'forward', 'create',
      'transition', 'brokenTransition',
      'delete',
@@ -110,7 +108,7 @@ const syncHandledEvents = Object.freeze(
      'disappear']);
 
         
-class SyncManager {
+export class SyncManager {
 
     constructor(options) {
         if (typeof options == "string") {
@@ -357,7 +355,7 @@ class SyncManager {
 
 }
 
-class SyncRegistry {
+export class SyncRegistry {
 
     constructor(options) {
         options ||= {};
@@ -477,10 +475,8 @@ class SyncRegistry {
 }
 
 EventHandlerMixin(SyncRegistry.prototype);
-
-            
     
-class Synchronizable {
+export class Synchronizable {
 
     toSync(options) {
         options = options || {};
@@ -580,16 +576,3 @@ class Synchronizable {
 }
 
 EventHandlerMixin(Synchronizable, syncHandledEvents);
-
-
-        
-        
-try {
-    module.exports = {        
-        SyncManager,
-        SyncRegistry,
-        Synchronizable,
-        default: SyncManager
-    }
-} catch (err) { }
-
