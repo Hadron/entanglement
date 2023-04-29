@@ -1,6 +1,6 @@
 "use strict";
-var entanglement = require('../../javascript');
-var assert = require('assert');
+import * as entanglement from '../../javascript/index.js';
+import { strict as assert } from 'node:assert';
 let sr = new entanglement.SyncRegistry();
 sr._schemaItem('Fruit', ['id'], ['id', 'flavor']);
 sr._schemaItem('Circle',['id'], ['id', 'fill']);

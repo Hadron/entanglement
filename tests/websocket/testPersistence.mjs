@@ -1,14 +1,14 @@
 "use strict";
-var entanglement = require('../../javascript');
-var filter = require('../../javascript/filter');
+import * as entanglement from '../../javascript/index.js';
+import * as filter from '../../javascript/filter.js';
 
-var assert = require('assert');
+import { strict as assert } from 'node:assert';
 let sr = new entanglement.SyncRegistry();
-var websocket_schemas = require("./schemas/websocket_test");
+import websocket_schemas from "./schemas/websocket_test.mjs";
 websocket_schemas(sr);
-var sql_meta_schema = require('./schemas/sql_meta');
+import sql_meta_schema from "./schemas/sql_meta.mjs";
 sql_meta_schema(sr);
-var persistence = require('../../javascript/persistence');
+import * as persistence from '../../javascript/persistence.js';
 persistence.setupPersistence(sr);
 
 var success_resolve,success_reject, success_timer;;

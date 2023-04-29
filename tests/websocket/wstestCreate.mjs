@@ -1,5 +1,5 @@
 "use strict";
-var entanglement = require('../../javascript');
+import * as entanglement from '../../javascript/index.js';
 var sm = new entanglement.SyncManager(process.argv[2]);
 var test_obj = {'_sync_type': 'TableInherits',
 	    info: "33",

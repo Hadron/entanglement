@@ -1,8 +1,8 @@
 "use strict";
-var entanglement = require('../../javascript');
-var assert = require('assert');
+import * as entanglement from '../../javascript/index.js';
+import { strict as assert } from 'node:assert';
 let sr = new entanglement.SyncRegistry();
-var websocket_schemas = require("./schemas/websocket_test");
+import websocket_schemas from "./schemas/websocket_test.mjs";
 websocket_schemas(sr);
 class TableInherits extends sr.bases.TableInherits(entanglement.Synchronizable) {
 

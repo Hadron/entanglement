@@ -1,7 +1,8 @@
 "use strict";
-var entanglement = require('../../javascript');
-var sm = new entanglement.SyncManager(process.argv[2]);
 
+import * as entanglement from '../../javascript/index.js';
+
+var sm = new entanglement.SyncManager(process.argv[2]);
 
 function first_receive(m) {
     sm.remove_on_receive('TableTransition', first_receive);

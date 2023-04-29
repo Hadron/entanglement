@@ -31,7 +31,9 @@ ioloop = tornado.ioloop.IOLoop.current()
 @pytest.fixture(scope = 'module')
 def requested_layout(requested_layout):
     # We'll take this opportunity to output schemas as well.
-    entanglement.javascript_schema.output_js_schemas(js_test_path+"/schemas")
+    entanglement.javascript_schema.output_js_schemas(js_test_path+"/schemas", format=entanglement.javascript_schema.ModuleFormat.ESM)
+    os.rename(js_test_path+"/schemas/sql_meta.js", js_test_path+"/schemas/sql_meta.mjs")
+    os.rename(js_test_path+"/schemas/websocket_test.js", js_test_path+"/schemas/websocket_test.mjs")
     requested_layout['server']['websocket'] = True
     return requested_layout
 
@@ -151,6 +153,7 @@ class JsTest(threading.Thread):
 
 def run_js_test(test, session_maker= None):
     # This code is shared between unittest and pytest tests.
+    test = test.replace('.js', '.mjs')
     uri = "ws://localhost:{}/ws".format(test_port+2)
     test = os.path.join(js_test_path, test)
     if session_maker is None:
