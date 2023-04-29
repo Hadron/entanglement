@@ -293,8 +293,8 @@ def test_sync_orig(layout_module):
     ti = TableInherits()
     def send_obj(connected_future):
         nonlocal ti
-        ti.info = '99'
-        ti.info2 = 19
+        ti.info2 = '19'
+        ti.info = 99
         layout.server.session.add(ti)
         layout.server.session.commit()
     loop = layout.loop
