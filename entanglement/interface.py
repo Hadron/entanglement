@@ -213,14 +213,17 @@ class Synchronizable( metaclass = SynchronizableMeta):
 
     '''Represents a class that can be synchronized
 
-A *Synchronizable* can be synchronized between two     Entanglement `SyncManager`\ s.  Objects are synchronized by calling
-the :meth:`entanglement.network.SyncManager.synchronize` method on a SyncManager.  Synchronizables have one
-or more sync_properties.  The `sync_properties <sync_property>` are packaged up into
-a serialized representation by the to_sync method and
-reconstituted into an object by the `sync_construct`, `sync_receive`
-and `sync_receive_constructed` methods.  Objects may have primary keys set in the `sync_primary_keys` attribute.  Objects with the
-same sync_primary_keys may be coalesced during transmission; only
-the latest synchronized version will be sent.
+    A *Synchronizable* can be synchronized between two Entanglement
+    `SyncManager`s.  Objects are synchronized by calling the
+    :meth:`entanglement.network.SyncManager.synchronize` method on a
+    SyncManager.  Synchronizables have one or more sync_properties.
+    The `sync_properties <sync_property>` are packaged up into a
+    serialized representation by the to_sync method and reconstituted
+    into an object by the `sync_construct`, `sync_receive` and
+    `sync_receive_constructed` methods.  Objects may have primary keys
+    set in the `sync_primary_keys` attribute.  Objects with the same
+    sync_primary_keys may be coalesced during transmission; only the
+    latest synchronized version will be sent.
 
     '''
     
