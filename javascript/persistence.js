@@ -18,6 +18,8 @@
 
 import { Synchronizable } from './index.js';
 
+export { relationship } from './filter.js'
+
 const classStorageMaps = new WeakMap();
 
 export class PersistentSynchronizable extends Synchronizable {
