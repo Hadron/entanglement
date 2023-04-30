@@ -8,12 +8,32 @@
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the file
  *  LICENSE for details.
 */
-import WebSocket from '/usr/share/nodejs/ws/index.js';
-import crypto from 'crypto';
 
+let l_ws;
+let l_crypto;
 try {
-    WebSocket = window.WebSocket;
-} catch(e) {
+    l_ws = await import('/usr/share/nodejs/ws/index.js');
+    l_crypto = await import('crypto');
+} catch (e) {
+}
+
+function l_WebSocket(url) {
+    try {
+	return new window.WebSocket(url);
+    } catch (e) {
+	return new l_ws.default.WebSocket(url);
+    }
+}
+
+function l_randombytes(n) {
+    try {
+        a = new Uint8Array(16);
+        window.crypto.getRandomValues(a);
+	return a;
+    } catch (e) {
+	console.log(l_crypto);
+        return l_crypto.randomBytes(16);
+    }
 }
 
 export function promiseAnyPolyfill(promises) {
@@ -129,13 +149,7 @@ export class SyncManager {
     }
 
     genuuid4(){
-        let a;
-        try{
-            a = new Uint8Array(16);
-            window.crypto.getRandomValues(a);
-        }catch (err){
-            a = crypto.randomBytes(16);
-        }
+        let a = l_randombytes(16);
 
         // Mark as v4
         a[6] = (a[6] & 0x0f) | 0x40;
@@ -152,7 +166,7 @@ export class SyncManager {
 
     _connect() {
         console.log(`Entanglement connecting to ${this.url}`);
-        this.socket = new WebSocket(this.url);
+        this.socket = l_WebSocket(this.url);
         this.socket.addEventListener('open', event => {
             if (this._onopen) this._onopen(this);
             this._open = true;
