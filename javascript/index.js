@@ -8,11 +8,12 @@
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the file
  *  LICENSE for details.
 */
-var WebSocket;
+import WebSocket from '/usr/share/nodejs/ws/index.js';
+import crypto from 'crypto';
+
 try {
     WebSocket = window.WebSocket;
 } catch(e) {
-    WebSocket =require('websocket').w3cwebsocket;
 }
 
 export function promiseAnyPolyfill(promises) {
@@ -133,7 +134,6 @@ export class SyncManager {
             a = new Uint8Array(16);
             window.crypto.getRandomValues(a);
         }catch (err){
-            let crypto = require('crypto');
             a = crypto.randomBytes(16);
         }
 

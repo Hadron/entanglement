@@ -1,5 +1,6 @@
 {
   "name": "entanglement",
+  "type": "module",
   "version": "0.21.0",
   "description": "Entanglement State Synchronization Protocol",
   "main": "index.js",
