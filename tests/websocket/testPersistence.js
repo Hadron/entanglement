@@ -105,7 +105,7 @@ async function testCreates(owner) {
         throw new TypeError(`${result} is not a TableInherits`);
     }
     assert.equal(ti.info, result.info);
-    result.info2 = "barbaz";
+    result.info2 = 9091;
     let result2 = await result.syncUpdate(sm);
     assert.equal(result, result2);
     await testDelete(result);
@@ -158,7 +158,7 @@ async function testBreakingTransition(owner, phase, trans_obj) {
     // Now that we have an object, bring it back into transition, have
     // the other side break the transition, and confirm our changes
     // revert
-    trans_obj.info2 = "wrong";
+    trans_obj.info2 = -1;
     let promise = sm.perform_transition(trans_obj);
     let oldSyncReceive = trans_obj.syncReceive;
     trans_obj.syncReceive = async function(...rest) {

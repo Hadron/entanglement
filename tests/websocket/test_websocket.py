@@ -62,7 +62,7 @@ class TableInherits(TableBase):
                 ForeignKey(TableBase.id, ondelete = "cascade"),
                 primary_key = True)
     info = Column(String(30))
-    info2 = Column(String(30))
+    info2 = Column(Integer)
     __mapper_args__ = {'polymorphic_identity': "inherits"}
 
 class TableTransition(TableInherits, SqlTransitionTrackerMixin):
@@ -277,7 +277,7 @@ def test_sync_receive_registry(layout_module):
     future = run_js_test('testSyncReceiveRegistry.js')
     def send_obj(connected_future):
         ti = TableInherits()
-        ti.info = 90
+        ti.info = '90'
         ti.info2 = 20
         layout.server.session.add(ti)
         layout.server.session.commit()
@@ -293,8 +293,8 @@ def test_sync_orig(layout_module):
     ti = TableInherits()
     def send_obj(connected_future):
         nonlocal ti
+        ti.info = '99'
         ti.info2 = 19
-        ti.info = 99
         layout.server.session.add(ti)
         layout.server.session.commit()
     loop = layout.loop
@@ -313,7 +313,7 @@ def test_sync_events(layout_module):
     future = run_js_test('testSyncEvents.js')
     def send_obj(connected_future):
         ti = TableInherits()
-        ti.info = 90
+        ti.info = '90'
         ti.info2 = 20
         layout.server.session.add(ti)
         layout.server.session.commit()
@@ -327,7 +327,7 @@ def test_schemas(loop, layout_module):
     future = run_js_test("testSchemas.js")
     def send_obj(connected_future):
         ti = TableInherits()
-        ti.info = 90
+        ti.info = '90'
         ti.info2 = 20
         layout.server.session.add(ti)
         layout.server.session.commit()
