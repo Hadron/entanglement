@@ -1,4 +1,4 @@
-# Copyright (C) 2017, 2020, Hadron Industries, Inc.
+# Copyright (C) 2017, 2020, 2023 Hadron Industries, Inc.
 # Entanglement is free software; you can redistribute it and/or modify
 # it under the terms of the GNU Lesser General Public License version 3
 # as published by the Free Software Foundation. It is distributed
@@ -7,13 +7,11 @@
 # LICENSE for details.
 
 import base64, datetime, iso8601, uuid
-from sqlalchemy import DateTime, DATETIME, BLOB, BINARY, Float, Integer
+from sqlalchemy import DateTime, DATETIME, Date, BLOB, BINARY, Float, Integer
 from ..types import *
 from ..util import GUID
 
-
-
-
+register_type(Date, datetime_encoder, datetime_decoder)
 register_type(DateTime, datetime_encoder, datetime_decoder)
 register_type(DATETIME, datetime_encoder, datetime_decoder)
 register_type(BLOB, binary_encoder, binary_decoder)
