@@ -16,22 +16,22 @@ from .interface import SyncBadOwner, SyncBadEncodingError
 from .util import DestHash, memoproperty
 from . import operations
 
+def key_for(s):
+    keys = s.sync_primary_keys
+    assert isinstance(keys, tuple)
+    properties = s.__class__._sync_properties
+    res = []
+    for k in keys:
+        property = properties[k]
+        v = getattr(s, k) # raises if absent
+        res.append(v)
+    if len(res) == 1:
+        return res[0]
+    return tuple(res)
+
 
 class AbstractSyncStore(collections.abc.Mapping):
 
-    @staticmethod
-    def key_for(s):
-        keys = s.sync_primary_keys
-        assert isinstance(keys, tuple)
-        properties = s.__class__._sync_properties
-        res = []
-        for k in keys:
-            property = properties[k]
-            v = getattr(s, k) # raises if absent
-            res.append(v)
-        if len(res) == 1:
-            return res[0]
-        return tuple(res)
 
     @staticmethod
     def key_from_msg(cls: typing.Type[Synchronizable], msg):
@@ -47,17 +47,22 @@ class AbstractSyncStore(collections.abc.Mapping):
         return tuple(res)
 
     def add(self, s):
-        self.store[self.key_for(s)] = s
+        self.store[key_for(s)] = s
 
     def __getitem__(self, k):
+        try:
+            if isinstance(k,Synchronizable): hash(k)
+        except TypeError:
+            return self.store[key_for(k)]
         if k in self.store: return self.store[k]
         if isinstance(k, Synchronizable):
-            return self.store[self.key_for(k)]
+            return self.store[key_for(k)]
         raise KeyError
+
     def __delitem__(self, k):
         if k in self.store: del self.store[k]
         elif  isinstance(k, Synchronizable):
-            del self.store[self.key_for(k)]
+            del self.store[key_for(k)]
 
     def __len__(self):
         return len(self.store)
@@ -66,8 +71,12 @@ class AbstractSyncStore(collections.abc.Mapping):
         return iter(self.store)
     
     def remove(self, s:Synchronizable):
-        del self.store[self.key_for(s)]
+        del self.store[key_for(s)]
 
+    def __contains__(self, o):
+        if isinstance(o, Synchronizable):
+            return super().__contains__(key_for(o))
+        else: return super().__contains__(o)
 
     @classmethod
     @abstractmethod
@@ -84,9 +93,10 @@ class SyncStore(AbstractSyncStore):
     @classmethod
     def store_factory(cls):
         return dict()
+
 class StoreInSyncStoreMixin(Synchronizable):
 
-    #: The class to store this object with.  If None, this object gets its own store.  Objects should be stored together whetn they are subclasses that have overlapping primary keys and using code does not want to know the exact type to do a lookup.
+    #: The class to store this object with.  If None, this object gets its own store.  Objects should be stored together when they are subclasses that have overlapping primary keys and using code does not want to know the exact type to do a lookup.
     sync_store_with = None
 
     _sync_owner: uuid.UUID = sync_property()
@@ -174,7 +184,8 @@ class SyncOwner(StoreInSyncStoreMixin):
     dest_hash: typing.Optional[DestHash] = None
 
     sync_primary_keys = ('_sync_owner', )
-    
+    sync_priority = 2    
+
     @property
     def id(self) -> uuid.UUID: return self._sync_owner
 
