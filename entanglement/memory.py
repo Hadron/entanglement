@@ -148,6 +148,20 @@ class SyncStoreRegistry(SyncRegistry):
         store = self.store_for_class(type(obj))
         store.add(obj)
 
+    def get_or_create(self, _type, *keys):
+        assert len(keys) == len(_type.sync_primary_keys)
+        if len(keys) == 1:
+            lookup = keys[0]
+        else: lookup = keys
+        store = self.store_for_class(_type)
+        try: return store[lookup]
+        except KeyError:
+            obj = _type(
+                **{k:v for k,v in zip(_type.sync_primary_keys, keys)})
+            store.add(obj)
+            return obj
+        
+        
     def remove_from_store(self, obj):
         store = self.store_for_class(type(obj))
         store.remove(obj)
@@ -156,7 +170,9 @@ class SyncStoreRegistry(SyncRegistry):
         if getattr(obj, '_sync_owner', None) is None:
             obj._sync_owner = self.local_owner._sync_owner
         self.add_to_store(obj)
-        return self.manager.synchronize(obj, **kwargs)
+        if self.manager:
+            return self.manager.synchronize(obj, **kwargs)
+
     def incoming_sync(self, obj, **info):
         assert not obj.sync_is_local
         self.add_to_store(obj)
