@@ -65,13 +65,13 @@ class SynchronizableMeta(type):
                         v._set_type(annotation)
                 sync_meta[k] = v
                 v.declaring_class = name
-                if v.wraps is not None:
+                if v.wraps is not NoWraps:
                     ns[k] = v.wraps
                 else: del ns[k]
                 del v.wraps
                 if not v.decoderfn: v.decoderfn = lambda  val: val
             elif isinstance(v, no_sync_property):
-                if v.wraps is not None:
+                if v.wraps is not NoWraps:
                     ns[k] = v.wraps
                 else: del ns[k]
         ns['_sync_meta'] = sync_meta
@@ -103,6 +103,8 @@ class SynchronizableMeta(type):
         cls._sync_properties_cache = types.MappingProxyType(d)
         return cls._sync_properties_cache
 
+class NoWraps: pass
+
 class sync_property:
 
     '''Represents a property that can be synchronized.
@@ -126,7 +128,7 @@ object using its default JSON representation
 
     '''
 
-    def __init__(self, wraps = None, doc = None, *,
+    def __init__(self, wraps = NoWraps, doc = None, *,
                  encoder = None,
                  decoder = None,
                  constructor = False,
@@ -145,7 +147,7 @@ object using its default JSON representation
         if type: self._set_type(type)
         self.constructor = constructor
         self.__doc__ = doc
-        if wraps is not None and not doc:
+        if wraps is not NoWraps and not doc:
             if hasattr(wraps, '__doc__'):
                 self.__doc__ = wraps.__doc__
 
@@ -205,7 +207,7 @@ class no_sync_property:
 
     '''
 
-    def __init__(self, wraps = None):
+    def __init__(self, wraps = NoWraps):
         self.wraps = wraps
 
 
