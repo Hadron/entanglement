@@ -1,4 +1,4 @@
-# Copyright (C) 2017, 2020, 2022, Hadron Industries, Inc.
+# Copyright (C) 2017, 2020, 2022, 2023, Hadron Industries, Inc.
 # Entanglement is free software; you can redistribute it and/or modify
 # it under the terms of the GNU Lesser General Public License version 3
 # as published by the Free Software Foundation. It is distributed
@@ -25,6 +25,15 @@ def datetime_encoder(dt):
 def datetime_decoder(value):
     return iso8601.parse_date(value)
 
+def enum_encoder(value):
+    return value.name
+
+def build_enum_decoder(type):
+    def enum_decoder(value):
+        return type(value)
+    return enum_decoder
+
+    
 
 type_map = {}
 
@@ -43,8 +52,12 @@ def uuid_decoder( val):
 register_type(uuid.UUID, uuid_encoder, uuid_decoder)
 register_type(datetime.datetime, datetime_encoder, datetime_decoder)
 
+def register_enum(en):
+    register_type(en, enum_encoder, build_enum_decoder(en))
+
 __all__ = [
     'register_type',
+    'register_enum',
     'binary_encoder',
     'binary_decoder',
     'datetime_encoder',
