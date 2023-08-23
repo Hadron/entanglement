@@ -1,4 +1,4 @@
-# Copyright (C) 2018, 2019, 2020, Hadron Industries, Inc.
+# Copyright (C) 2018, 2019, 2020, 2023, Hadron Industries, Inc.
 # Entanglement is free software; you can redistribute it and/or modify
 # it under the terms of the GNU Lesser General Public License version 3
 # as published by the Free Software Foundation. It is distributed
@@ -16,6 +16,7 @@ from entanglement import transition
 from entanglement import pki
 import pytest
 from .utils import test_port, settle_loop
+
 @pytest.fixture()
 def loop():
     return asyncio.get_event_loop()
@@ -139,12 +140,12 @@ def setup_manager(name, le, registries):
     return ctx
 
 
-def connect_layout(layout):
+def connect_layout(layout, destination_class):
     for name, le in layout.items():
         for connect_to in le.connections:
             assert connect_to in layout
             connect_to = layout[connect_to] # get the object not just the name
-            d_out = SqlSyncDestination(certhash_from_file(connect_to.cert),
+            d_out = destination_class(certhash_from_file(connect_to.cert),
                                     "{}->{}".format(connect_to.name, le.name),
                                     host = "127.0.0.1" if connect_to.server else None,
                                     server_hostname = connect_to.name)
@@ -152,7 +153,7 @@ def connect_layout(layout):
             le.manager.add_destination(d_out)
             le.destinations.append(d_out)
             setattr(le, "to_"+connect_to.name, d_out)
-            d_in = SqlSyncDestination(certhash_from_file(le.cert),
+            d_in = destination_class(certhash_from_file(le.cert),
                                       "{}<-{}".format(connect_to.name, le.name),
                                    host = "127.0.0.1" if le.server else None,
                                    server_hostname = le.name)
@@ -166,9 +167,10 @@ def connect_layout(layout):
 
 def layout_fn(registries, requested_layout):
     layout_dict = {}
+    destination_class = requested_layout.pop('destination_class', SqlSyncDestination)
     for name, layout_entry in requested_layout.items():
         layout_dict[name] = setup_manager(name, layout_entry, registries)
-    connect_layout(layout_dict)
+    connect_layout(layout_dict, destination_class)
     layout_dict['layout_entries'] = tuple(layout_dict.values())
     layout = LayoutContext()
     layout.__dict__ = layout_dict
@@ -195,3 +197,4 @@ def layout(registries, requested_layout):
 @pytest.fixture(scope = 'module')
 def layout_module(registries, requested_layout):
     yield from layout_fn(registries = registries, requested_layout = requested_layout)
+    
