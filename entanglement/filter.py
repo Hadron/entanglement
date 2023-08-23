@@ -48,13 +48,17 @@ class FilteredMixin:
             if res is True:
                 send = True
             elif res is False:
-                return False
+                send = False
+                break
         # None is neutral
         if send is None: send = self.filter_default_permissive
         if send:
             if operation == 'sync':
                 self.all_sent_objects.add(obj)
             return True
+        if operation == 'sync' and obj in self.all_sent_objects:
+            manager = kwargs.get('manager')
+            if manager: synthesize_withdrawl(obj, manager=manager, destination=self)
         return False
     
     def withdraw_objects(self, manager):
@@ -173,16 +177,27 @@ class FilterBase:
 class Filter(FilterBase):
 
     def __init__(self, filter, *,
-                 store=None, **kwargs):
+                 store=None, type=None,
+                 registry=None,
+                 **kwargs):
         super().__init__(**kwargs)
         self.filter = filter
         self.store = store
+        self.type = type
+        self.registry = registry
 
     def all_objects(self):
-        if self.store: return self.store.values()
+        if self.store: yield from self.store.values()
+        elif self.registry and hasattr(self.registry, 'stores_by_class'):
+            for store in self.registry.stores_by_class.values():
+                yield from store.values()
         else: raise NotImplementedError
 
     def should_send(self, o, **info):
+        if self.type and not isinstance(o, self.type):
+            return None
+        if self.registry  and o.sync_type not in self.registry.registry:
+            return None
         return self.filter(o)
 
 class SyncOwnerFilter(FilterBase):
@@ -202,3 +217,7 @@ class SyncOwnerFilter(FilterBase):
             
         
 class FilteredSyncDestination(SyncDestination, FilteredDestinationMixin): pass
+
+def synthesize_withdrawl(o, manager, destination):
+    manager.synchronize(o, attributes_to_sync=o.sync_primary_keys, destinations=[destination], operation='delete')
+    
