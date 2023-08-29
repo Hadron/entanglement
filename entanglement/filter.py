@@ -216,7 +216,12 @@ class SyncOwnerFilter(FilterBase):
             yield o
             
         
-class FilteredSyncDestination(SyncDestination, FilteredDestinationMixin): pass
+class FilteredSyncDestination(SyncDestination, FilteredDestinationMixin):
+
+    async def connected(self, manager, *args, **kwargs):
+        res = await super().connected(manager, *args, **kwargs)
+        manager.loop.create_task(self.send_initial_objects(manager))
+        return res
 
 def synthesize_withdrawl(o, manager, destination):
     manager.synchronize(o, attributes_to_sync=o.sync_primary_keys, destinations=[destination], operation='delete')

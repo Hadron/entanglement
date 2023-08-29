@@ -129,6 +129,7 @@ class SyncStoreRegistry(SyncRegistry):
     def __init__(self, sync_store_factory=None):
         if sync_store_factory: self.sync_store_factory = sync_store_factory
         self.stores_by_class = {}
+        self.manager = None
         super().__init__()
         self.register_operation('sync', operations.sync_operation)
         self.register_operation('forward', operations.forward_operation)
