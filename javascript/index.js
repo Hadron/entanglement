@@ -1,6 +1,6 @@
 "use strict";
 /*
- * Copyright (C) 2017, 2020, Hadron Industries, Inc.
+ * Copyright (C) 2017, 2020, 2023, Hadron Industries, Inc.
  *  Entanglement is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU Lesser General Public License version 3
  *  as published by the Free Software Foundation. It is distributed
@@ -359,7 +359,9 @@ class SyncManager {
 
 class SyncRegistry {
 
-    constructor() {
+    constructor(options) {
+        options ||= {};
+        this.base_to_use = options.base || Synchronizable;
         this.registry = new Map();
         this.bases = {};
         this.event_handlers = {};
@@ -449,7 +451,7 @@ class SyncRegistry {
     _finalize() {
         for (let k in this.bases) {
             if (! this.registry.has(k))
-                this.registry.set(k, this.bases[k](Synchronizable))
+                this.registry.set(k, this.bases[k](this.base_to_use))
         }
     }
 

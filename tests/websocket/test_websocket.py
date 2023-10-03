@@ -364,3 +364,18 @@ def test_persistence(loop, layout_module, monkeypatch):
         layout.loop.run_until_complete(future)
     print(future.result())
     
+def test_auto_classes(loop, layout_module, monkeypatch):
+    entanglement.protocol.protocol_logger.setLevel(10)
+
+    layout = layout_module
+    future = run_js_test("testPersistentAutoClass.js")
+    def send_obj(connected_future):
+        ti = TableInherits()
+        ti.info = '90'
+        ti.info2 = 20
+        layout.server.session.add(ti)
+        layout.server.session.commit()
+    layout.server.websocket_destination.connected_future.add_done_callback(send_obj)
+    loop.run_until_complete(future)
+    print(future.result())
+    

@@ -84,12 +84,12 @@ Each schema exports a default function called register_schema:
     Typical usage is to import the function and call it on a registry::
 
         import schema from "./entanglement_schemas/schema"
-        const registry = new SyncRegistry()
+        const registry = new SyncRegistry({base:PersistentSynchronizable})
         schema(registry)
 
 So, going back to our sample project, we would register the two schemas::
 
-    registry = new SyncRegistry()
+    registry = new SyncRegistry({base: PersistentSynchronizable})
     MetaSchema(registry)
     Schema(registry)
 
@@ -130,7 +130,9 @@ If a class is :meth:`registered <SyncRegistry.register>` that is  in a schema at
 
 .. warning::
 
-    There is support for schema classes that are auto generated rather than calling register explicitly.  Also, there is support for using an application specific base hierarchy so classes do not need to extend *PersistentSynchronizable*.  Unfortunately both items are buggy.  In particular,  if a class does not extend *PersistentSynchronizable*, then only the methods of *Synchronizable* will be included.  As a result, each time an instance is synchronized, a new instance will be generated.  All the :ref:`filters <javascript:filters>` will fail.  Also methods required for updating, creating and deleting objects will not be present.
+    There is support for schema classes that are auto generated rather than calling register explicitly.  For this support to work in an application that uses :class:`PersistentSynchronizable`, the base class that is used to generate the auto-generated classes needs to be set when constructing the :class:`SyncRegestry` as is done in the examples above.
+
+    Also, there is support for using an application specific base hierarchy so classes do not need to extend *Synchronizable*.  This works fine for applications that only use the interfaces of *Synchronizable*.  Applications using *PersistentSynchronizable* must supply classes that extend *PersistentSynchronizable* or set the base class when constructing the registry and use the automatically generated classes.  If a class does not extend *PersistentSynchronizable*, then only the methods of *Synchronizable* will be included.  As a result, each time an instance is synchronized, a new instance will be generated.  All the :ref:`filters <javascript:filters>` will fail.  Also methods required for updating, creating and deleting objects will not be present.
 
 .. _javascript:filters
 
@@ -238,6 +240,22 @@ Filters provide a way to be notified about changes, additions or removals of :cl
     
 Javascript API
 **************
+
+.. class:: SyncRegistry(options)
+
+    Represents a javascript version of :py:class:`SyncRegistry`.
+    The constructor takes a dictionary of options:
+
+    :param base:  When auto-generating classes that are in the schema but for which :meth:`register()` has not been called, which base class should be extended.  Typically either *PersistentSynchronizable* or *Synchronizable*.  By default *Synchronizable*.
+
+    .. method:: register(class)
+
+        Add *class* to this registry.  *class* must either be a *Synchronizable* or a class with the same name must be in a schema attached to the registry.  If a schema containing the class is attached, then attributes and primary keys will be added to *class* when the registry is first attached to a :class:`SyncManager
+
+    .. attribute:: registry
+
+        A :class:`Map`.  Keys are the class names and values are the classes (either auto-generated or manually supplied).
+        
 
 .. class:: PersistentSynchronizable()
 
