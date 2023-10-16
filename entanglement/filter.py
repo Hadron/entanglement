@@ -35,6 +35,9 @@ class AllSentItemsSet(collections.abc.MutableSet):
 
 class FilteredMixin:
 
+    #: For now we do not run filters against should_listen.  Either
+    #set this to True or override should_listen.
+    filter_should_listen_returns_true = False
     def should_send(self, obj, old_filters=False, **kwargs):
         operation = kwargs.get('operation', 'sync')
         if operation == 'delete':
@@ -60,7 +63,13 @@ class FilteredMixin:
             manager = kwargs.get('manager')
             if manager: synthesize_withdrawl(obj, manager=manager, destination=self)
         return False
-    
+
+    def should_listen(self, *args, **kwargs):
+        if self.filter_should_listen_returns_true:
+            return super().should_listen(*args, **kwargs)
+        else:
+            raise NotImplementedError('Filter class does not yet support should_listen; please override this method')
+        
     def withdraw_objects(self, manager):
         for o in self._find_objects():
             if not o in self.all_sent_objects: continue

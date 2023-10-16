@@ -31,10 +31,14 @@ class B(A):
     sync_store_with = A
 
     value: int = sync_property()
+
+class OurFilteredSyncDestination(FilteredSyncDestination):
+    filter_should_listen_returns_true = True
+    
 @pytest.fixture()
 def filter_layout(registries, requested_layout):
     rl = requested_layout
-    rl['destination_class'] = FilteredSyncDestination
+    rl['destination_class'] = OurFilteredSyncDestination
     yield from conftest.layout_fn(registries=registries, requested_layout=rl)
     
 @pytest.fixture(scope='module')
