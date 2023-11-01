@@ -226,6 +226,7 @@ class SyncProtocolBase:
         try:
             self._handle_meta(sync_repr, flags)
             if '_sync_type' not in sync_repr: # metadata only
+                logger.error(f'unrecognized message: {sync_repr}')
                 return
             response_for = None
             if flags&_MSG_FLAG_RESPONSE_NEEDED:
