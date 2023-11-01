@@ -102,7 +102,7 @@ class SyncWsProtocol(SyncProtocolBase):
             self.ws_handler.close()
         self.connection_lost(None)
 
-    def _send_json(self, sync_rep, flags):
+    async def _send_json(self, sync_rep, flags):
         sync_rep['_flags'] = int(flags)
         js = bytes(json.dumps(sync_rep), 'utf-8')
         protocol_logger.debug("#{c}: Sending `{js}' to {d} (flags {f})".format(
