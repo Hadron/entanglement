@@ -99,7 +99,7 @@ class TestSql(SqlFixture, unittest.TestCase):
             self.session.commit()
             #While we're add it make sure that post-commit changes are not sent
             t.ch = DestHash(b'o' *32)
-        t2 = self.server.session.query(Table1).get(t.id)
+        t2 = self.server.session.get(Table1, t.id)
         assert t2 is not None
         assert t2.sync_owner.dest_hash is not None
         self.session.rollback()
@@ -144,7 +144,7 @@ class TestSql(SqlFixture, unittest.TestCase):
         with wait_for_call(self.loop, Base.registry, 'sync_receive'):
             self.manager.loop.run_until_complete(asyncio.wait([x.sync_drain() for x in self.manager.connections + self.server.connections]))
             pass
-        t2 = self.server.session.query(Table1).get(t1.id)
+        t2 = self.server.session.get(Table1, t1.id)
         assert t2 is not None
         assert t2.ch == t1.ch
 
@@ -171,7 +171,7 @@ class TestSql(SqlFixture, unittest.TestCase):
                 self.d1.connect_at = 0
                 with wait_for_call(self.loop, TableInherits, 'sync_receive_constructed'):
                     self.manager.run_until_complete(self.manager.add_destination(self.d1))
-        t2 = self.server.session.query(TableInherits).get(t.id)
+        t2 = self.server.session.get(TableInherits, t.id)
         assert t2.__class__ is  t.__class__
         assert t.info == t2.info
         self.assertEqual(calls, 1)
@@ -338,11 +338,11 @@ class TestSql(SqlFixture, unittest.TestCase):
         t2.info = "bazfutz"
         with wait_for_call(self.loop, sql.internal.sql_meta_messages, 'handle_you_have'):
             server_session.sync_commit()
-            t2 = server_session.query(TableInherits).get(t2.id)
+            t2 = server_session.get(TableInherits, t2.id)
             t2.info2 = "quux"
             server_session.sync_commit()
         self.session.expire(t)
-        t2 = server_session.query(TableInherits).get(t2.id)
+        t2 = server_session.get(TableInherits, t2.id)
         self.assertEqual(t.id, t2.id)
         self.assertEqual(t.info2, t2.info2)
         self.assertEqual(t.info, t2.info)
@@ -379,7 +379,7 @@ class TestSql(SqlFixture, unittest.TestCase):
         manager_session.add(t)
         manager_session.commit()
         settle_loop(self.loop)
-        t2 = self.server.session.query(TableInherits).get(t.id)
+        t2 = self.server.session.get(TableInherits, t.id)
         self.assertEqual(t.sync_owner_id, t2.sync_owner_id)
 
     def alternateDestinations(self, to_server, to_manager):

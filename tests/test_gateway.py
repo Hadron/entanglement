@@ -189,7 +189,7 @@ class TestGateway(SqlFixture, unittest.TestCase):
             for b in l:
                 if a is b: continue
                 session_b = b['session']
-                obj_b = session_b.query(TableInherits).get(a['obj'].id)
+                obj_b = session_b.get(TableInherits, a['obj'].id)
                 self.assertIsNotNone(obj_b, msg('Failed to propagate object'))
                 self.assertEqual(a['owner'].id, obj_b.sync_owner.id,
                                  msg("sync owner id"))
@@ -214,7 +214,7 @@ class TestGateway(SqlFixture, unittest.TestCase):
             for b in l:
                 session_b = b['session']
                 self.assertIsNone(
-                    session_b.query(TableInherits).get(a['obj'].id),
+                    session_b.get(TableInherits, a['obj'].id),
                     msg("Object not deleted"))
 
     def testDeleteDisconnected(self):
@@ -246,7 +246,7 @@ class TestGateway(SqlFixture, unittest.TestCase):
             for b in l:
                 session_b = b['session']
                 self.assertIsNone(
-                    session_b.query(TableInherits).get(a['obj'].id),
+                    session_b.get(TableInherits, a['obj'].id),
                     msg("Object not deleted"))
 
     def testForwardUpdate(self):
@@ -257,7 +257,7 @@ class TestGateway(SqlFixture, unittest.TestCase):
         settle_loop(self.loop)
         manager_session = manager_registry.sessionmaker()
         manager_session.manager = self.manager
-        t2 = manager_session.query(TableInherits).get(t.id)
+        t2 = manager_session.get(TableInherits, t.id)
         self.assertEqual(t2.id, t.id)
         self.assertEqual(t2.info2, t.info2)
         t2.info2 = "Force a forward update"
@@ -275,7 +275,7 @@ class TestGateway(SqlFixture, unittest.TestCase):
         settle_loop(self.loop)
         manager_session = manager_registry.sessionmaker()
         manager_session.manager = self.manager
-        t2 = manager_session.query(TableInherits).get(t.id)
+        t2 = manager_session.get(TableInherits, t.id)
         self.assertEqual(t2.id, t.id)
         self.assertEqual(t2.info2, t.info2)
         t2.info2 = "Force a forward update"
@@ -302,7 +302,7 @@ class TestGateway(SqlFixture, unittest.TestCase):
         settle_loop(self.loop)
         manager_session = manager_registry.sessionmaker()
         manager_session.manager = self.manager
-        t2 = manager_session.query(TableInherits).get(t.id)
+        t2 = manager_session.get(TableInherits, t.id)
         self.assertEqual(t2.id, t.id)
         self.assertEqual(t2.info2, t.info2)
         manager_session.delete(t2)
@@ -494,13 +494,13 @@ class TestGateway(SqlFixture, unittest.TestCase):
         manager_session = manager_registry.sessionmaker()
         manager_session.manager = self.manager
         manager_owner = manager_session.query(SyncOwner).filter_by(dest_hash = None).one()
-        t.sync_owner = self.client_session.query(SyncOwner).get(manager_owner.id)
+        t.sync_owner = self.client_session.get(SyncOwner, manager_owner.id)
         #logging.getLogger('entanglement.protocol').setLevel(10)
         fut = t.sync_create(self.client, t.sync_owner)
         self.loop.run_until_complete(asyncio.wait([fut], timeout = 0.6))
         self.assertTrue(fut.done())
         t = self.client_session.merge(fut.result())
-        t2 = manager_session.query(TableInherits).get(t.id)
+        t2 = manager_session.get(TableInherits, t.id)
         self.assertEqual(t.to_sync(), t2.to_sync())
 
     def testCreateError(self):
@@ -509,7 +509,7 @@ class TestGateway(SqlFixture, unittest.TestCase):
         manager_session = manager_registry.sessionmaker()
         manager_session.manager = self.manager
         manager_owner = manager_session.query(SyncOwner).filter_by(dest_hash = None).one()
-        t.sync_owner = self.client_session.query(SyncOwner).get(manager_owner.id)
+        t.sync_owner = self.client_session.get(SyncOwner, manager_owner.id)
         t.id = t.sync_owner.id # Will cause an error
         #logging.getLogger('entanglement.protocol').setLevel(10)
         fut = t.sync_create(self.client, t.sync_owner)
@@ -623,13 +623,13 @@ class TestGateway(SqlFixture, unittest.TestCase):
                 manager_session = l['manager']['session']
                 client_session.commit()
                 settle_loop(self.loop)
-                t2 = manager_session.query(TableInherits).get(t.id)
+                t2 = manager_session.get(TableInherits, t.id)
                 t2.info2 = "baz"
                 manager_session.sync_commit()
                 self.loop.run_until_complete(asyncio.wait([t2.sync_future], timeout=0.5))
                 if callback_exception is not None:
                     raise callback_exception
-                t2 = manager_session.query(TableInherits).get(t.id)
+                t2 = manager_session.get(TableInherits, t.id)
                 manager_session.delete(t2)
                 manager_session.sync_commit()
                 self.loop.run_until_complete(asyncio.wait([t2.sync_future], timeout = 0.5))

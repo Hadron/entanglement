@@ -140,7 +140,7 @@ def get_or_create(session, model, filter_by, defaults = {}):
     filter_by_set = set(filter_by.keys())
     if filter_by_set == primary_key_set:
         primary_key_values = tuple(map(lambda x: filter_by.get(x), primary_key))
-        inst = session.query(model).get(primary_key_values)
+        inst = session.get(model, primary_key_values)
     else: inst = session.query(model).filter_by(**filter_by).first()
     if inst: return inst
     d = filter_by.copy()

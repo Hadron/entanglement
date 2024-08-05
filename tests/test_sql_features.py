@@ -143,7 +143,7 @@ def test_foreign_key_sync(layout_module, order_fn, monkeypatch):
     csession = layout.client.session
     found_missing = False
     for id in t3_ids:
-        t3 = csession.query(T3).get(id)
+        t3 = csession.get(T3, id)
         if order_fn == order_100:
             if t3 is None:
                 found_missing = True

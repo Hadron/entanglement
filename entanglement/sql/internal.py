@@ -206,7 +206,7 @@ def populate_owner_from_msg(msg, obj, session):
     if not owner: owner = getattr(obj, '_sync_owner', None)
     if owner is None:
         raise interface.SyncBadEncodingError("Owner not specified")
-    obj.sync_owner = session.query(base.SyncOwner).get(owner)
+    obj.sync_owner = session.get(base.SyncOwner, owner)
     if not obj.sync_owner:
         raise SyncBadEncodingError("You must synchronize the sync_owner, then drain before synchronizing IHave", msg = msg)
     session.expunge(obj.sync_owner)

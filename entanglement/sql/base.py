@@ -65,7 +65,7 @@ class SqlSyncSession(sqlalchemy.orm.Session):
             for s in self.sync_dirty |self.sync_deleted:
                 if isinstance(s, tuple): s = s[0]
                 if s.sync_owner_id is not None and s.sync_owner is None:
-                    s.sync_owner = self.query(SyncOwner).get(s.sync_owner_id)
+                    s.sync_owner = self.get(SyncOwner, s.sync_owner_id)
 
 
 
@@ -620,7 +620,7 @@ class SqlSynchronizable(interface.Synchronizable):
             sender = info['sender']
             session = context.session
             if primary_key_values:
-                obj = session.query(cls).get(primary_key_values)
+                obj = session.get(cls, primary_key_values)
             owner = SyncOwner.find_from_msg(session, sender, msg)
             if owner and owner.dest_hash == sender.dest_hash: owner.destination = sender
         context.owner = owner
@@ -749,7 +749,7 @@ backref = sqlalchemy.orm.backref('owners',
     def sync_construct(cls, msg, context, sender, **info):
         obj = None
         if hasattr(context, 'session'):
-            obj = context.session.query(SyncOwner).get(msg['id'])
+            obj = context.session.get(SyncOwner, msg['id'])
             if obj and (obj.dest_hash  != sender.dest_hash):
                 raise interface.SyncBadOwner("{} sent by {} but belongs to {}".format(
                     obj, sender, obj.dest_hash))
@@ -776,7 +776,7 @@ backref = sqlalchemy.orm.backref('owners',
     def find_from_msg(self, session, dest, msg):
         if '_sync_owner' in msg: id = msg['_sync_owner']
         else: raise interface.SyncBadOwner("Unable to find owner for message")
-        try: return session.query(SyncOwner).get(id)
+        try: return session.get(SyncOwner, id)
         except sqlalchemy.orm.exc.NoResultFound:
             raise interface.SyncBadOwner("{} not found is an owner".format(id)) from None
 
