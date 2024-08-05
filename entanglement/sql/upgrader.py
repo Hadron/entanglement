@@ -21,14 +21,14 @@ Upgrade the database to the latest version.  If version_table is present in the 
     conf = config.Config()
     conf.set_main_option('script_location', script_location)
     conf.engine = engine
-    reflection_meta = MetaData(bind = engine) # Used to check for table presence
+    reflection_meta = MetaData() # Used to check for table presence
     try:
-        Table(version_table, reflection_meta, autoload = True)
+        Table(version_table, reflection_meta, autoload_with = engine)
         #If no exception, version_table exists.
     except NoSuchTableError:
         if user_table:
             try:
-                Table(user_table, reflection_meta, autoload = True)
+                Table(user_table, reflection_meta, autoload_with = engine)
                 #user table is present.
                 command.stamp(conf, user_table_version)
             except NoSuchTableError:
