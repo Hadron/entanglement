@@ -107,6 +107,7 @@ class TestGateway(SqlFixture, unittest.TestCase):
         self.base = Base
         self.manager_registry = manager_registry
         self.other_registries = [no_response_registry]
+        self.client = None
         super().__init__(*args, **kwargs)
 
     def setUp(self):
@@ -134,11 +135,10 @@ class TestGateway(SqlFixture, unittest.TestCase):
         self.client_session.manager = self.client
 
     def tearDown(self):
-        self.client.close()
-        del self.client
+        if self.client is not None:
+            self.client.close()
+            del self.client
         super().tearDown()
-
-
 
     def testGatewayFlood(self):
         "When a client creates an object it floods across to another client"
