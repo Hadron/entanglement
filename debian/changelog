@@ -1,3 +1,47 @@
+hadron-entanglement (0.30) unstable; urgency=medium
+
+  [ Sam Hartman ]
+  * Initial cut at Javascript documentation; work in progress
+  * Better documentation of javascript API
+  * Document relationship
+
+  [ Klee Dienes ]
+  * Use inserted_primary_key instead of lastrowid
+  * Add missing dependency on python3-sh for pki.py
+  * Support sqlalchemy.Date
+  * Add node-ws to allow testing
+  * Consistently use info2 as Integer
+  * Reformat docstring
+  * Clarify mapFilter documentation
+
+  [ Sam Hartman ]
+  * Add support for  autoclasses that extend PersistentSynchronizable.
+  * Fix test failure
+  * Initial implementation of non-sql objects
+  * Clarify when connections are brought down
+  * Filters
+  * Support sync_property(None)
+  * Add SyncStoreRegistry.get_or_create
+  * Add registry option to Filter
+  * Add support for enum types
+  * Need to support overriding destination class for in_memory tests
+  * Add initial objects
+  * Filter should_listen raises
+
+  [ Klee Dienes ]
+  * Sqlalchemy 2.0 wants autoload_with= instead of bind=
+  * Replace session.query with session.get for sqlalchemy 2.0
+  * Sqlalchemy 2.0 doesn't take explicit list to select
+  * Sqlalchemy 2.0 moves to sqlalchemy.orm.declarative_base
+  * Sqlalchemy 2.0 change to with_polymorphic
+  * Add __test__=False to prevent warning
+  * Add repr() to test data
+  * Make it easier to skip setup steps for debugging
+  * Allow modifying the timeout while debugging
+  * Sqlalchemy 2.0 no longer supports raw SQL to engine.execute
+
+ -- Klee Dienes <klee.dienes@hadronindustries.com>  Tue, 06 Aug 2024 17:13:23 -0400
+
 hadron-entanglement (0.29) unstable; urgency=medium
 
   [ Klee Dienes ]
