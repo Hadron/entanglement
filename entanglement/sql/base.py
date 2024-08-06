@@ -93,7 +93,7 @@ class SqlSyncSession(sqlalchemy.orm.Session):
     def _handle_dirty(session, internal = None, instances = None, expunge_nonlocal = False):
         serial_insert = Serial.__table__.insert().values(timestamp = datetime.datetime.now())
         serial_flushed = False
-        owner_stmt = select([SyncOwner.id]) \
+        owner_stmt = select(SyncOwner.id) \
             .where(SyncOwner.dest_hash == None)
         local_owner = None
         for inst in session.new | session.dirty:
