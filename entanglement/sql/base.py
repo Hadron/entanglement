@@ -408,8 +408,7 @@ class SqlSyncRegistry(interface.SyncRegistry):
         object.sync_owner
 
 
-
-_internal_base = sqlalchemy.ext.declarative.declarative_base()
+_internal_base = sqlalchemy.orm.declarative_base()
 
 class Serial(_internal_base):
     "Keep track of serial numbers.  A sequence would be better, but sqlite can't do them"
@@ -810,7 +809,7 @@ def sql_sync_declarative_base(*args, registry = None,
         class DeclarativeBase(SqlSynchronizable, cls): pass
         cls = DeclarativeBase
     else: cls = SqlSynchronizable
-    base =  sqlalchemy.ext.declarative.declarative_base(cls = cls, metaclass = SqlSyncMeta, *args, **kwargs)
+    base =  sqlalchemy.orm.declarative_base(cls = cls, metaclass = SqlSyncMeta, *args, **kwargs)
     base.registry = registry or registry_class()
     return base
 
