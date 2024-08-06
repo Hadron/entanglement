@@ -1,3 +1,9 @@
+hadron-entanglement (0.31) UNRELEASED; urgency=medium
+
+  * Convert to common CI
+
+ -- Klee Dienes <klee.dienes@hadronindustries.com>  Tue, 06 Aug 2024 19:46:42 -0400
+
 hadron-entanglement (0.30) unstable; urgency=medium
 
   [ Sam Hartman ]
