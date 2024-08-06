@@ -17,7 +17,7 @@ from ..network import logger
 from ..util import get_or_create
 from sqlalchemy import inspect
 from ..javascript_schema import javascript_registry
-
+from sqlalchemy.orm import with_polymorphic
 
 class _SqlMetaRegistry(SyncRegistry):
 
@@ -131,8 +131,8 @@ class _SqlMetaRegistry(SyncRegistry):
                     if c is base.SyncOwner or issubclass(c, base.SyncOwner): continue
                     if self.yield_between_classes: await asyncio.sleep(0)
                     if not session.is_active: session.rollback()
-                    to_sync = session.query(c).with_polymorphic('*') \
-                                              .outerjoin(base.SyncOwner).filter(c.sync_serial > obj.serial, owner_condition).all()
+                    poly = with_polymorphic(c, '*')
+                    to_sync = session.query(poly).outerjoin(base.SyncOwner).filter(c.sync_serial > obj.serial, owner_condition).all()
                 except:
                     logger.exception("Failed finding objects to send {} from  {}".format(sender, c.__name__))
                     raise
