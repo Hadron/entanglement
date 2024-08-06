@@ -122,7 +122,7 @@ def test_foreign_key_sync(layout_module, order_fn, monkeypatch):
     layout = layout_module
     order_fn(monkeypatch)
     for le in layout.layout_entries:
-        le.engine.execute('pragma foreign_keys = on')
+        le.engine.raw_connection().execute('pragma foreign_keys = on')
         layout.disconnect_all()
     session = Base.registry.sessionmaker(bind = layout.server.engine)
     t1 = T1()
