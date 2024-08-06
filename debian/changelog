@@ -1,4 +1,4 @@
-hadron-entanglement (0.31) UNRELEASED; urgency=medium
+hadron-entanglement (0.31) unstable; urgency=medium
 
   * Convert to common CI
 
