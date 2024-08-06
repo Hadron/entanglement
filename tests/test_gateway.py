@@ -70,6 +70,8 @@ class TableBase(Base):
     __mapper_args__ = {
         'polymorphic_on': 'type',
         'polymorphic_identity': 'base'}
+    def __repr__(self):
+        return f'TableBase(id={self.id}, type={self.type})'
 
 class TableInherits(TableBase):
     __tablename__ = "inherits_table"
@@ -79,6 +81,8 @@ class TableInherits(TableBase):
     info = Column(String(30))
     info2 = Column(String(30))
     __mapper_args__ = {'polymorphic_identity': "inherits"}
+    def __repr__(self):
+        return f'TableInherits(id={self.id}, info={self.info}, info2={self.info2})'
 
 class TableError(Base):
     __tablename__ = 'error'
