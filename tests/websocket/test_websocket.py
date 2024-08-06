@@ -72,6 +72,8 @@ class TableTransition(TableInherits, SqlTransitionTrackerMixin):
 
 class TestPhase(Base):
 
+    __test__ = False
+
     __tablename__ = "test_phase"
 
     id = Column(GUID, primary_key = True,
