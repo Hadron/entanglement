@@ -18,12 +18,13 @@ from entanglement import transition
 import pytest
 
 @contextmanager
-def wait_for_call(loop, obj, method, calls = 1, trap_exceptions = False):
+def wait_for_call(loop, obj, method, calls = 1, trap_exceptions = False, timeout = 0.5):
     fut = loop.create_future()
     num_calls = 0
     def cb(*args, **kwargs):
         nonlocal num_calls
-        try: res =  wraps(*args, **kwargs)
+        # print(f'cb: {num_calls+1}/{calls} {args} {kwargs}')
+        try: res = wraps(*args, **kwargs)
         except Exception as e:
             if trap_exceptions: fut.set_exception(e)
             raise
@@ -35,10 +36,9 @@ def wait_for_call(loop, obj, method, calls = 1, trap_exceptions = False):
                 
     try:
         wraps = getattr(obj, method)
-        with mock.patch.object(obj, method,
-                               new= cb):
+        with mock.patch.object(obj, method, new=cb):
             yield
-            loop.run_until_complete(asyncio.wait_for(fut, 0.5))
+            loop.run_until_complete(asyncio.wait_for(fut, timeout))
     except asyncio.TimeoutError:
         raise AssertionError("Timeout waiting for call to {} of {}".format(
             method, obj)) from None

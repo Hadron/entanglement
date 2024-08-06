@@ -145,7 +145,7 @@ class TestGateway(SqlFixture, unittest.TestCase):
         session = self.client_session
         t = TableBase()
         session.add(t)
-        with wait_for_call(self.loop, self.base.registry, 'incoming_sync'):
+        with wait_for_call(self.loop, self.manager_registry, 'incoming_sync'):
             session.commit()
         t2 = self.manager.session.query(TableBase).all()
         self.assertEqual(t2[0].id, t.id)
