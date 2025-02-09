@@ -50,15 +50,18 @@ def host_cert(pki_dir, hostname, adl_subj, prefix = "", *,
             extfile.write(host_cert_exts(hostname))
             extfile.flush()
             sh.openssl.x509(
-                sh.openssl( 'req',
-                            '-new', '-subj', '{adl_subj}/CN={}'.format(hostname, adl_subj = adl_subj),
-                            '-key', '{}.key'.format(hostfile),
-            ),
             '-CAkey', ca_key,
             '-CA', ca_pem,
             '-CAcreateserial',
             '-out', '{}.pem'.format(hostfile),
             '-days', '400',
                 "-extfile", extfile.name,
-                '-req')
+                '-req',
+                _in=sh.openssl( 'req',
+                            '-new', '-subj', '{adl_subj}/CN={}'.format(hostname, adl_subj = adl_subj),
+                            '-key', '{}.key'.format(hostfile),
+                            _piped=True,
+                            _truncate_exc=False,
+            ),
+                _truncate_exc=False)
 
