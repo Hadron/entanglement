@@ -1,3 +1,9 @@
+hadron-entanglement (0.31) unstable; urgency=medium
+
+  * Support sh 2.x style piping, hopefully backward-compatible
+
+ -- Sam Hartman <hartmans@debian.org>  Tue, 11 Mar 2025 14:50:53 -0600
+
 hadron-entanglement (0.30) unstable; urgency=medium
 
   [ Sam Hartman ]
