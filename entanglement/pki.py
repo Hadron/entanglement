@@ -24,6 +24,7 @@ def gen_site_ca(pki_dir, ca_name = "Root CA"):
                    '-subj','/CN={}'.format(ca_name),
                    '-days', '400',
                    '-extensions', 'v3_ca',
+                   '-addext', 'keyUsage = cRLSign, keyCertSign',
                    '-out', ca_pem)
 
 def host_cert_exts(host):
