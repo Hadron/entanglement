@@ -8,5 +8,6 @@ export PYBUILD_TEST_PYTEST
 
 
 override_dh_install:
+	rm -rf .pybuild/*/*/*.{key,pem,srl,sock}
 	dh_install
 	install -m644 javascript/index.js debian/libjs-entanglement/usr/share/javascript/entanglement/entanglement.js/entanglement.js
