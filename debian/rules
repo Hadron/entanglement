@@ -8,7 +8,7 @@ export PYBUILD_TEST_PYTEST
 
 
 override_dh_auto_install:
-	rm -rf .pybuild/*/*/*.{key,pem,srl,sock}
+	bash -c 'rm -rf .pybuild/*/*/*.{key,pem,srl,sock}'
 	dh_auto_install
 
 override_dh_install:
