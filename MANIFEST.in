@@ -1,0 +1,3 @@
+graft javascript
+graft tests
+global-exclude *~
