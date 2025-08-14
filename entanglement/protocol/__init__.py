@@ -1,4 +1,4 @@
-# Copyright (C) 2017, 2018, 2019, 2020, Hadron Industries, Inc.
+# Copyright (C) 2017, 2018, 2019, 2020, 2025, Hadron Industries, Inc.
 # Entanglement is free software; you can redistribute it and/or modify
 # it under the terms of the GNU Lesser General Public License version 3
 # as published by the Free Software Foundation. It is distributed
@@ -303,10 +303,6 @@ class SyncProtocolBase:
         assert self.waiter is not None
         self.waiter.set_result(None)
         self.waiter = None
-
-    @property
-    def confirm_outgoing_dest_hash(self):
-        return True
     
 
 
@@ -403,10 +399,5 @@ class UnixProtocol(SyncProtocol):
     def dest_hash(self):
         return DestHash.from_unix_dest_info(*self.credentials)
 
-    @property
-    def confirm_outgoing_dest_hash(self):
-        # For unix connections, we don't actually know the pid of the target until we connect
-        # Also, authentication is via the filesystem, so desthash confirmation would basically only confirm that you put the path into two places in the code.
-        return False
     
         

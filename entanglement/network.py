@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-# Copyright (C) 2017, 2018, 2019, 2020, Hadron Industries, Inc.
+# Copyright (C) 2017, 2018, 2019, 2020, 2025, Hadron Industries, Inc.
 # Entanglement is free software; you can redistribute it and/or modify
 # it under the terms of the GNU Lesser General Public License version 3
 # as published by the Free Software Foundation. It is distributed
@@ -174,7 +174,7 @@ class SyncManager:
                     logger.debug("Transport connection to {dest} made".format(dest = dest))
                     close_transport = transport
                     protocol = bwprotocol.protocol
-                    if protocol.dest_hash != dest.dest_hash and protocol.confirm_outgoing_dest_hash:
+                    if protocol.dest_hash != dest.dest_hash and dest.confirm_outgoing_dest_hash:
                         raise WrongSyncDestination(dest = dest, got_hash = protocol.dest_hash)
                     protocol._enable_reading()
 
@@ -507,6 +507,7 @@ class SyncDestinationBase:
 
     '''A SyncDestination represents a SyncManager other than ourselves that can receive (and generate) synchronizations.  The Synchronizable and subclasses of SyncDestination must cooperate to make sure that receiving and object does not create a loop by trying to Synchronize that object back to the sender.  One solution is for should_send on SyncDestination to return False (or raise) if the outgoing object is received from this destination.'''
 
+    confirm_outgoing_dest_hash:bool = True #: Confirm the specific dest hash rather than depending on  things like PKI validation
     def __init__(self, dest_hash, name, bw_per_sec = 10000000000):
         self.dest_hash = DestHash(dest_hash)
         self.name = name
@@ -605,6 +606,10 @@ class SyncDestination(SyncDestinationBase):
     
                     
 class OutgoingUnixDestination(SyncDestinationBase):
+
+    # For unix connections, we don't actually know the pid of the target until we connect
+    # Also, authentication is via the filesystem, so desthash confirmation would basically only confirm that you put the path into two places in the code.
+    confirm_outgoing_dest_hash = False
 
     def __init__(self, dest_hash, name, path,
                  *, bw_per_sec = 10000000000):
