@@ -9,6 +9,7 @@
 import sys, os.path
 sys.path = list(filter(lambda p: p != os.path.abspath(os.path.dirname(__file__)), sys.path))
 import pytest
+import pytest_asyncio
 import asyncio, concurrent.futures, glob, json, threading, subprocess, unittest, uuid
 from tornado.platform.asyncio import AsyncIOMainLoop
 import sqlalchemy.exc
@@ -38,6 +39,17 @@ def requested_layout(requested_layout):
 @pytest.fixture(scope = 'module')
 def registries():
     return [Base]
+
+
+@pytest.fixture(scope='session')
+def event_loop():
+    """
+    Ensure pytest-asyncio uses the same loop created by the layout fixture so
+    web server, SyncManager, and async tests share a single event loop.
+    """
+    loop = asyncio.get_event_loop()
+    yield loop
+    settle_loop(loop)
 
 js_test_path = os.path.abspath(os.path.dirname(__file__))
 
@@ -180,6 +192,19 @@ def javascriptTest(test_name, method_name):
     return testMethod
     
 
+@pytest.mark.asyncio
+async def test_send_message(websocket_test_context):
+    ctx = websocket_test_context
+    await ctx.wait_for_client()
+    ctx.client.write_message(json.dumps(
+        {'_sync_type': 'TableInherits',
+         'info': 'foobaz',
+         '_sync_operation': 'create',
+         '_flags': 1}))
+    m = await ctx.client.read_message()
+    js = json.loads(m)
+    assert js['_sync_type'] == 'SyncBadOwner'
+
 class TestWebsockets(SqlFixture, unittest.TestCase):
 
     def __init__(self, *args, **kwargs):
@@ -232,6 +257,8 @@ class TestWebsockets(SqlFixture, unittest.TestCase):
         m = await self.client.read_message()
         js = json.loads(m)
         self.assertEqual(js['_sync_type'], 'SyncBadOwner')
+
+
 
     @tornado.testing.gen_test
     async def testReceive(self):
@@ -380,3 +407,54 @@ def test_auto_classes(loop, layout_module, monkeypatch):
     loop.run_until_complete(future)
     print(future.result())
     
+
+class WebsocketTestContext:
+    """
+    Helper to mirror the websocket-specific setup/teardown from TestWebsockets
+    using the modern layout fixture. Provides access to the tornado app,
+    websocket destination, loop, and a convenience connector for clients.
+    """
+    def __init__(self, layout):
+        self.layout = layout
+        self.loop = layout.loop
+        self.server = layout.server
+        self.manager = layout.server.manager
+        self.client_destination = layout.server.websocket_destination
+        self.app = layout.server.web_app
+        self.http_server = layout.server.http_server
+        self.client = None
+
+    async def wait_for_client(self):
+        self.client = await tornado.websocket.websocket_connect(
+            f'ws://localhost:{test_port+2}/ws')
+        return self.client
+
+
+@pytest.fixture()
+def websocket_test_context(layout):
+    """
+    Fixture that exposes the websocket server/app created by the layout
+    fixture and mirrors TestWebsockets' setup/teardown behavior. Does not
+    modify the existing unittest-based tests; intended for pytest ports.
+    """
+    ctx = WebsocketTestContext(layout)
+    yield ctx
+    with entanglement_logs_disabled():
+        if ctx.client is not None:
+            try:
+                ctx.client.close()
+            except Exception:
+                pass
+        settle_loop(ctx.loop)
+
+
+@pytest.fixture()
+def websocket_client(websocket_test_context):
+    """
+    Convenience fixture to open a websocket client connection against the
+    layout-provided websocket server. Closes the client and settles the loop
+    on teardown via websocket_test_context.
+    """
+    websocket_test_context.loop.run_until_complete(
+        websocket_test_context.wait_for_client())
+    return websocket_test_context.client
