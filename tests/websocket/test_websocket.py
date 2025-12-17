@@ -10,7 +10,7 @@ import sys, os.path
 sys.path = list(filter(lambda p: p != os.path.abspath(os.path.dirname(__file__)), sys.path))
 import pytest
 import pytest_asyncio
-import asyncio, concurrent.futures, glob, json, threading, subprocess, unittest, uuid, inspect
+import asyncio, concurrent.futures, glob, json, threading, subprocess, unittest, uuid, inspect, copy
 from tornado.platform.asyncio import AsyncIOMainLoop
 import sqlalchemy.exc
 
@@ -29,12 +29,19 @@ from entanglement.util import GUID
 from tests.utils import *
 ioloop = tornado.ioloop.IOLoop.current()
 
+
+@pytest.fixture(scope="module", params=["tornado_webserver", "fastapi_webserver"], ids=["tornado", "fastapi"])
+def websocket_webserver(request):
+    return request.getfixturevalue(request.param)
+
+
 @pytest.fixture(scope = 'module')
-def requested_layout(requested_layout):
+def requested_layout(requested_layout, websocket_webserver):
     # We'll take this opportunity to output schemas as well.
     entanglement.javascript_schema.output_js_schemas(js_test_path+"/schemas")
-    requested_layout['server']['websocket'] = True
-    return requested_layout
+    layout = copy.deepcopy(requested_layout)
+    layout['server']['websocket'] = websocket_webserver
+    return layout
 
 @pytest.fixture(scope = 'module')
 def registries():

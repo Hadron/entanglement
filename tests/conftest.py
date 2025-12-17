@@ -40,12 +40,77 @@ def requested_layout():
     return {
         'server': {
             'server': True,
+            'websocket': None,
             },
         'client': {
             'server': False,
             'connections': ['server']
             },
         }
+
+
+@pytest.fixture(scope='module')
+def tornado_webserver():
+    created = []
+    def start(ctx):
+        find_sync_destination = getattr(ctx, 'find_sync_destination', None)
+        if find_sync_destination is None:
+            raise RuntimeError("Websocket destination not configured")
+        import tornado.web
+        import tornado.httpserver
+        from entanglement.websocket import SyncWsHandler
+        ctx.web_app = tornado.web.Application([(r'/ws', SyncWsHandler)])
+        ctx.http_server = tornado.httpserver.HTTPServer(ctx.web_app)
+        ctx.http_server.listen(test_port+2) # right now run_js_test hard codes this
+        ctx.web_app.sync_manager = ctx.manager
+        ctx.web_app.find_sync_destination = find_sync_destination
+        created.append(ctx)
+        return lambda: ctx.http_server.stop()
+    yield start
+    for ctx in created:
+        if getattr(ctx, 'http_server', None):
+            ctx.http_server.stop()
+
+
+@pytest.fixture(scope='module')
+def fastapi_webserver():
+    fastapi = pytest.importorskip("fastapi")
+    uvicorn = pytest.importorskip("uvicorn")
+    from entanglement import websocket as entanglement_websocket
+    entanglement_websocket.message = None
+    created = []
+    def start(ctx):
+        if ctx.websocket_destination is None:
+            raise RuntimeError("Websocket destination not configured")
+        app = fastapi.FastAPI()
+        @app.websocket("/ws")
+        async def websocket_endpoint(websocket: fastapi.WebSocket):
+            await entanglement_websocket.fastapi_entanglement_loop(websocket, ctx.websocket_destination, manager=ctx.manager)
+        loop = ctx.loop
+        ctx.web_app = app
+        config = uvicorn.Config(app, host="127.0.0.1", port=test_port+2, log_level="warning", loop="asyncio")
+        server = uvicorn.Server(config)
+        ctx.http_server = server
+        server_task = loop.create_task(server.serve())
+        async def wait_started():
+            while not server.started:
+                if server_task.done():
+                    return await server_task
+                await asyncio.sleep(0.01)
+        loop.run_until_complete(asyncio.wait_for(wait_started(), timeout=2.0))
+        def cleanup():
+            if not server_task.done():
+                server.should_exit = True
+                loop.run_until_complete(asyncio.wait_for(server_task, timeout=5.0))
+        created.append((server_task, cleanup))
+        return cleanup
+    yield start
+    for server_task, cleanup in created:
+        try:
+            cleanup()
+        except Exception:
+            if not server_task.done():
+                server_task.cancel()
 
 class LayoutContext:
 
@@ -76,6 +141,7 @@ class LayoutContext:
 def setup_manager(name, le, registries):
     "Given a layout entry, return a layout context"
     ctx = LayoutContext()
+    ctx.loop = asyncio.get_event_loop()
     ctx.port = test_port
     if 'port_offset' in le:
         ctx.port += le['port_offset']
@@ -121,24 +187,22 @@ def setup_manager(name, le, registries):
     ctx.connections = le.get('connections', [])
     ctx.session.manager = ctx.manager
     ctx.destinations = []
-    ctx.websocket = le.get('websocket', False)
-    if ctx.websocket:
-        def find_sync_destination( request, *args, **kwargs):
+    ctx.websocket_destination = None
+    ctx.websocket_factory = le.get('websocket')
+    ctx.websocket_cleanup = None
+    if ctx.websocket_factory:
+        loop = ctx.loop
+        destination = SyncDestination(b'n' * 32, 'websocket')
+        destination.connected_future = loop.create_future()
+        destination.on_connect(lambda: destination.connected_future.set_result(True))
+        def disconnect(_destination):
+            destination.connected_future = loop.create_future()
+        destination.on_connection_lost(disconnect)
+        ctx.websocket_destination = destination
+        def find_sync_destination(request, *args, **kwargs):
             return ctx.websocket_destination
-        ctx.websocket_destination = SyncDestination(b'n' * 32, 'websocket')
-        ctx.websocket_destination.connected_future = asyncio.get_event_loop().create_future()
-        ctx.websocket_destination.on_connect(lambda: ctx.websocket_destination.connected_future.set_result(True))
-        def disconnect(destination):
-            ctx.websocket_destination.connected_future = asyncio.get_event_loop().create_future()
-        ctx.websocket_destination.on_connection_lost(disconnect)
-        import tornado.web
-        import tornado.httpserver
-        from entanglement.websocket import SyncWsHandler
-        ctx.web_app = tornado.web.Application([(r'/ws', SyncWsHandler)])
-        ctx.http_server = tornado.httpserver.HTTPServer(ctx.web_app)
-        ctx.http_server.listen(test_port+2) # right now run_js_test hard codes this
-        ctx.web_app.sync_manager = ctx.manager
-        ctx.web_app.find_sync_destination = find_sync_destination
+        ctx.find_sync_destination = find_sync_destination
+        ctx.websocket_cleanup = ctx.websocket_factory(ctx)
 
     return ctx
 
@@ -166,9 +230,10 @@ def connect_layout(layout, destination_class):
             setattr(connect_to, 'to_'+le.name, d_in)
             setattr(le, 'from_'+connect_to.name, d_in)
             setattr(connect_to, "from_"+le.name, d_out)
-            
 
+            
 def layout_fn(registries, requested_layout):
+    requested_layout = copy.deepcopy(requested_layout)
     layout_dict = {}
     destination_class = requested_layout.pop('destination_class', SqlSyncDestination)
     for name, layout_entry in requested_layout.items():
@@ -183,8 +248,8 @@ def layout_fn(registries, requested_layout):
     yield layout
     for e in layout.layout_entries:
         e.session.close()
-        if e.websocket:
-            e.http_server.stop()
+        if getattr(e, 'websocket_cleanup', None):
+            e.websocket_cleanup()
         e.manager.close()
     layout_dict.clear()
     settle_loop(asyncio.get_event_loop())
