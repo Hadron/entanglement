@@ -10,7 +10,7 @@ import sys, os.path
 sys.path = list(filter(lambda p: p != os.path.abspath(os.path.dirname(__file__)), sys.path))
 import pytest
 import pytest_asyncio
-import asyncio, concurrent.futures, glob, json, threading, subprocess, unittest, uuid
+import asyncio, concurrent.futures, glob, json, threading, subprocess, unittest, uuid, inspect
 from tornado.platform.asyncio import AsyncIOMainLoop
 import sqlalchemy.exc
 
@@ -44,12 +44,54 @@ def registries():
 @pytest.fixture(scope='session')
 def event_loop():
     """
-    Ensure pytest-asyncio uses the same loop created by the layout fixture so
+    Ensure pytest-asyncio uses the same loop  so
     web server, SyncManager, and async tests share a single event loop.
     """
     loop = asyncio.get_event_loop()
     yield loop
     settle_loop(loop)
+
+
+js_helpers = {}
+
+def register_jstest_helper(js_name):
+    """
+    Decorator to register helper functions for specific JS tests.
+    Helpers receive (layout, future) and may be sync or async.
+    """
+    def decorator(func):
+        js_helpers[js_name] = func
+        return func
+    return decorator
+
+
+def pytest_generate_tests(metafunc):
+    if "js_file" in metafunc.fixturenames:
+        files = sorted(glob.glob(os.path.join(js_test_path, "wstest*.js")))
+        ids = [os.path.basename(f) for f in files]
+        metafunc.parametrize("js_file", files, ids=ids)
+
+
+@register_jstest_helper("wstestTransition.js")
+async def helper_wstest_transition(layout, future):
+    cm = transitions_partitioned()
+    cm.__enter__()
+    await layout.server.websocket_destination.connected_future
+    session = layout.server.session
+    t = TableTransition(info="test")
+    t.sync_owner = list(session.query(SyncOwner).filter_by(dest_hash=None).all())[0]
+    session.add(t)
+    session.commit()
+    return lambda: cm.__exit__(None, None, None)
+
+
+@register_jstest_helper("wstestBrokenTransition.js")
+def helper_wstest_broken_transition(layout, future):
+    cm = transitions_partitioned()
+    cm.__enter__()
+    layout.server.registries[0].register_operation('transition', operations.transition_operation)
+    layout.client.registries[0].register_operation('transition', operations.transition_operation)
+    return lambda: cm.__exit__(None, None, None)
 
 js_test_path = os.path.abspath(os.path.dirname(__file__))
 
@@ -158,6 +200,8 @@ class JsTest(threading.Thread):
                                                   timeout = 3.0,
                                                   cwd = os.path.dirname(self.testname))
             self.future.set_result(output)
+        except subprocess.TimeoutExpired as e:
+            self.future.set_exception(AssertionError(f'Process timed out: {e.stdout}, {e.stderr}'))
         except subprocess.CalledProcessError:
             self.future.set_exception(AssertionError())
         except Exception as e:
@@ -180,16 +224,6 @@ def run_js_test(test, session_maker= None):
     return asyncio.futures.wrap_future(t.future)
 
 
-def javascriptTest(test_name, method_name):
-    # This is the unittest only parts of run_js_test
-    def testMethod(self):
-        future = run_js_test(test_name)
-        helper_method = getattr(self, 'helper_'+method_name, None)
-        if helper_method:
-            ioloop.add_callback(helper_method)
-        
-        self.loop.run_until_complete(future)
-    return testMethod
     
 
 @pytest.mark.asyncio
@@ -205,97 +239,19 @@ async def test_send_message(websocket_test_context):
     js = json.loads(m)
     assert js['_sync_type'] == 'SyncBadOwner'
 
-class TestWebsockets(SqlFixture, unittest.TestCase):
+@pytest.mark.asyncio
+async def test_sync_receive(websocket_test_context):
+    ctx = websocket_test_context
+    await ctx.wait_for_client()
+    sess = ctx.server.session
+    t = TableInherits(info="baz")
+    sess.add(t)
+    sess.commit()
+    message = await ctx.client.read_message()
+    js = json.loads(message)
+    assert js["_sync_type"] == "TableInherits"
+    assert js["id"] == str(t.id)
 
-    def __init__(self, *args, **kwargs):
-        self.base = Base
-        self.manager_registry = manager_registry
-        super().__init__(*args, **kwargs)
-
-    def setUp(self):
-        def find_sync_destination( request, *args, **kwargs):
-            return self.client_destination
-        self.client_destination = SyncDestination(b'n' * 32, 'websocket')
-        super().setUp()
-        self.client_destination.connected_future = self.loop.create_future()
-        self.client_destination.on_connect(lambda: self.client_destination.connected_future.set_result(True))
-        self.app = tornado.web.Application([(r'/ws', SyncWsHandler)])
-        self.http_server = tornado.httpserver.HTTPServer(self.app)
-        self.http_server.listen(test_port+2)
-        self.app.sync_manager = self.manager
-        self.app.find_sync_destination = find_sync_destination
-        self.io_loop = ioloop
-        settle_loop(self.loop)
-
-    async def wait_for_client(self):
-        self.client = tornado.websocket.websocket_connect(
-            'ws://localhost:{}/ws'.format(test_port+2))
-        self.client = await self.client
-
-    def tearDown(self):
-        with entanglement_logs_disabled():
-            try:
-                self.client.close()
-            except AttributeError: pass
-            self.http_server.stop()
-            settle_loop(self.loop)
-        super().tearDown()
-
-    def testInit(self):
-        "Confirm setUp at least works"
-        ioloop.run_sync(self.wait_for_client)
-
-
-    @tornado.testing.gen_test
-    async def testSendMessage(self):
-        await self.wait_for_client()
-        self.client.write_message(json.dumps(
-            {'_sync_type': 'TableInherits',
-             'info': 'foobaz',
-             '_sync_operation': 'create',
-             '_flags': 1}))
-        m = await self.client.read_message()
-        js = json.loads(m)
-        self.assertEqual(js['_sync_type'], 'SyncBadOwner')
-
-
-
-    @tornado.testing.gen_test
-    async def testReceive(self):
-        await self.wait_for_client()
-        t = TableInherits(info = "baz")
-        sess = Base.registry.sessionmaker()
-        sess.manager = self.server
-        sess.add(t)
-        sess.commit()
-        m =await self.client.read_message()
-        m = json.loads(m)
-        self.assertEqual(m['_sync_type'], 'TableInherits')
-        self.assertEqual(m['id'], str(t.id))
-
-    async def helper_testTransition(self):
-        tp = transitions_partitioned()
-        tp.__enter__()
-        self.addCleanup(tp.__exit__, None, None, None)
-        manager_registry.register_operation('transition', operations.transition_operation)
-        await self.client_destination.connected_future
-        t = TableTransition(info = "test")
-        self.session.manager = self.manager
-        t.sync_owner = self.session.query(SyncOwner).filter_by(dest_hash = None).one()
-        self.session.add(t)
-        self.session.commit()
-
-    async def  helper_testBrokenTransition(self):
-        tp = transitions_partitioned()
-        tp.__enter__()
-        self.addCleanup(tp.__exit__, None, None, None)
-        Base.registry.register_operation('transition', operations.transition_operation)
-        manager_registry.register_operation('transition', operations.transition_operation)
-
-
-    for t in glob.glob(js_test_path+"/wstest*.js"):
-        test_method_name = t[len(js_test_path)+3:-3]
-        locals()[test_method_name] = javascriptTest(t, test_method_name)
 
 def test_sync_registry(loop):
     future =  run_js_test("testSyncRegistry.js")
@@ -318,7 +274,7 @@ def test_sync_receive_registry(layout_module):
 def test_sync_orig(layout_module):
     layout = layout_module
     # This test also tests that syncConstruct works  correctly.
-    future = run_js_test('testSyncOrig.js')
+    future = run_js_test('testSyncOrig.js', layout.server.registries[0].sessionmaker)
     ti = TableInherits()
     def send_obj(connected_future):
         nonlocal ti
@@ -393,20 +349,44 @@ def test_persistence(loop, layout_module, monkeypatch):
         layout.loop.run_until_complete(future)
     print(future.result())
     
-def test_auto_classes(loop, layout_module, monkeypatch):
+@pytest.mark.asyncio
+async def test_auto_classes(loop, layout_module, monkeypatch):
     entanglement.protocol.protocol_logger.setLevel(10)
     layout = layout_module
-    layout.server.websocket_destination = SqlSyncDestination(b'n' * 32, 'websocket')
-    future = run_js_test("testPersistentAutoClass.js")
+    layout.server.websocket_destination.connected_future = layout.loop.create_future()
+    future = run_js_test("testPersistentAutoClass.js", layout.server.registries[0].sessionmaker)
+    await layout.server.websocket_destination.connected_future
     ti = TableInherits()
     ti.info = 'string'
     ti.info2 = 20
     ti.sync_owner = SyncOwner()
     layout.server.session.add(ti)
     layout.server.session.commit()
-    loop.run_until_complete(future)
+    await future
     print(future.result())
     
+
+@pytest.mark.asyncio
+async def test_js_files(js_file, layout_module):
+    """
+    Pytest-native runner for JS websocket tests discovered dynamically.
+    """
+    layout = layout_module
+    js_name = os.path.basename(js_file)
+    future = run_js_test(js_name, layout.server.registries[0].sessionmaker)
+    helper = js_helpers.get(js_name)
+    cleanup = None
+    if helper is not None:
+        res = helper(layout, future)
+        if inspect.iscoroutine(res):
+            res = await res
+        if callable(res):
+            cleanup = res
+    try:
+        await future
+    finally:
+        if cleanup:
+            cleanup()
 
 class WebsocketTestContext:
     """

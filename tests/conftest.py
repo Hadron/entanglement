@@ -128,6 +128,9 @@ def setup_manager(name, le, registries):
         ctx.websocket_destination = SyncDestination(b'n' * 32, 'websocket')
         ctx.websocket_destination.connected_future = asyncio.get_event_loop().create_future()
         ctx.websocket_destination.on_connect(lambda: ctx.websocket_destination.connected_future.set_result(True))
+        def disconnect(destination):
+            ctx.websocket_destination.connected_future = asyncio.get_event_loop().create_future()
+        ctx.websocket_destination.on_connection_lost(disconnect)
         import tornado.web
         import tornado.httpserver
         from entanglement.websocket import SyncWsHandler
