@@ -12,8 +12,6 @@ from typing import get_type_hints
 from .types import type_map
 
 
-
-
 class EphemeralUnflooded:
 
     "A sync_owner value indicating that an object is not to be flooded and when received shall be considered belonging to the sender.  Used for protocol messages like errors, Ihave and the like"
@@ -55,6 +53,13 @@ class SynchronizableMeta(type):
             del ns['sync_registry']
         sync_meta = {}
         annotations = ns.get('__annotations__', {})
+        try:
+            import annotationlib
+            annotationfunc = annotationlib.get_annotate_from_class_namespace(ns)
+            if annotationfunc:
+                annotations = annotationfunc(annotationlib.Format.VALUE)
+        except ImportError:
+            pass
         for k,v in list(ns.items()):
             if isinstance(v, sync_property):
                 # Handle foo:type = sync_property()
