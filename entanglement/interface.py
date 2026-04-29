@@ -74,7 +74,9 @@ class SynchronizableMeta(type):
                     ns[k] = v.wraps
                 else: del ns[k]
                 del v.wraps
-                if not v.decoderfn: v.decoderfn = lambda  val: val
+                if not v.decoderfn:
+                    def noop(val): return val
+                    v.decoderfn = noop
             elif isinstance(v, no_sync_property):
                 if v.wraps is not NoWraps:
                     ns[k] = v.wraps
@@ -155,6 +157,9 @@ object using its default JSON representation
         if wraps is not NoWraps and not doc:
             if hasattr(wraps, '__doc__'):
                 self.__doc__ = wraps.__doc__
+
+    def __repr__(self):
+        return f'sync_property(encoderfn={self.encoderfn}, decoderfn={self.decoderfn}, doc={self.__doc__})'
 
     def _set_type(self, t):
         if t and t in type_map:
