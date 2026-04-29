@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-# Copyright (C) 2017, 2018, 2022, Hadron Industries, Inc.
+# Copyright (C) 2017, 2018, 2022, 2026, Hadron Industries, Inc.
 # Entanglement is free software; you can redistribute it and/or modify
 # it under the terms of the GNU Lesser General Public License version 3
 # as published by the Free Software Foundation. It is distributed
@@ -11,23 +11,24 @@ import sh, os, os.path, tempfile
 from os.path import exists
 
 def gen_site_ca(pki_dir, ca_name = "Root CA"):
+
     ca_key = os.path.join(pki_dir, 'ca.key')
     ca_pem = os.path.join(pki_dir, 'ca.pem')
+    if exists(ca_pem):
+        return
+
     os.makedirs(pki_dir, exist_ok = True)
     if not exists(ca_key):
-        sh.openssl('genrsa', '-out', ca_key, '2048',
-    )
-
-    
-    if not exists(ca_pem):
-        sh.openssl.req('-x509', '-key', ca_key,
-                   '-subj','/CN={}'.format(ca_name),
+        sh.openssl('genrsa', '-out', ca_key, '2048')
+    sh.openssl.req('-x509', '-key', ca_key,
+                   '-subj',f'/CN={ca_name}',
                    '-days', '400',
                    '-extensions', 'v3_ca',
+                   '-addext', 'keyUsage=keyCertSign,cRLSign',
                    '-out', ca_pem)
 
 def host_cert_exts(host):
-    return f'''
+    return f'''\
 basicConstraints=CA:FALSE
 subjectKeyIdentifier=hash
 authorityKeyIdentifier=keyid,issuer
