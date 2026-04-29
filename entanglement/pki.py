@@ -37,32 +37,34 @@ subjectAltName = DNS:{host}
 
 def host_cert(pki_dir, hostname, adl_subj, prefix = "", *,
               force = False):
-    if prefix != "":
-        prefix = prefix+"_"
+
+    if prefix:
+        prefix = prefix + '_'
     ca_key = os.path.join(pki_dir, 'ca.key')
     ca_pem = os.path.join(pki_dir, 'ca.pem')
-    gen_site_ca(pki_dir)
-    hostfile = os.path.join(pki_dir, prefix+hostname)
-    
-    if force or (not (exists (hostfile + '.key') and exists(hostfile + '.pem'))):
-        sh.openssl.genrsa('-out', '{}.key'.format(hostfile),
-                          '2048')
-        with tempfile.NamedTemporaryFile(dir=pki_dir, mode='w+t') as extfile:
-            extfile.write(host_cert_exts(hostname))
-            extfile.flush()
-            sh.openssl.x509(
-            '-CAkey', ca_key,
-            '-CA', ca_pem,
-            '-CAcreateserial',
-            '-out', '{}.pem'.format(hostfile),
-            '-days', '400',
-                "-extfile", extfile.name,
-                '-req',
-                _in=sh.openssl( 'req',
-                            '-new', '-subj', '{adl_subj}/CN={}'.format(hostname, adl_subj = adl_subj),
-                            '-key', '{}.key'.format(hostfile),
-                            _piped=True,
-                            _truncate_exc=False,
-            ),
-                _truncate_exc=False)
+    hostfile = os.path.join(pki_dir, prefix + hostname)
 
+    if (not force) and exists(hostfile + '.key') and exists(hostfile + '.pem'):
+        return
+
+    gen_site_ca(pki_dir)
+    
+    sh.openssl.genrsa('-out', f'{hostfile}.key', '2048')
+    with open(hostfile + '.ext', 'w+t') as extfile:
+        extfile.write(host_cert_exts(hostname))
+
+    sh.openssl.x509(
+        '-CAkey', ca_key,
+        '-CA', ca_pem,
+        '-CAcreateserial',
+        '-out', f'{hostfile}.pem',
+        '-days', '400',
+        '-extfile', hostfile + '.ext',
+        '-req',
+        _in=sh.openssl('req',
+                       '-new', '-subj', f'{adl_subj}/CN={hostname}',
+                       '-key', f'{hostfile}.key',
+                       _piped=True,
+                       _truncate_exc=False,
+        ),
+        _truncate_exc=False)
