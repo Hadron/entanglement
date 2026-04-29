@@ -24,6 +24,7 @@ import entanglement.protocol, entanglement.operations
 from entanglement.sql.transition import SqlTransitionTrackerMixin
 from entanglement.transition import BrokenTransition
 from .conftest import layout_fn
+from .utils import pki_dir, pki
 
 from copy import deepcopy
 
@@ -116,12 +117,12 @@ class TestGateway(SqlFixture, unittest.TestCase):
         client_registry.sessionmaker.configure(bind = self.client_engine)
         client_registry.create_bookkeeping(self.client_engine)
         Base.metadata.create_all(self.client_engine)
-        self.client = SyncManager(cafile = "ca.pem",
-                                 cert = "host3.pem", key = "host3.key",
+        self.client = SyncManager(cafile = pki("ca.pem"),
+                                 cert = pki("host3.pem"), key = pki("host3.key"),
                                  port = test_port,
                                  registries = [client_registry] + self.other_registries,
                                  loop = self.loop)
-        self.to_client = SqlSyncDestination(certhash_from_file("host3.pem"), 'client',
+        self.to_client = SqlSyncDestination(certhash_from_file(pki("host3.pem")), 'client',
                                             server_hostname = 'host3')
         self.client_to_server = self.client.session.merge(self.to_server)
         self.client_to_server.server_hostname = 'host1'

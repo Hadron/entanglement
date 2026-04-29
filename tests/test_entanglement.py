@@ -17,10 +17,7 @@ from entanglement.network import  SyncServer, SyncDestination
 from entanglement.util import certhash_from_file, DestHash, SqlDestHash, entanglement_logs_disabled
 
 from .utils import settle_loop, test_port
-
-
-
-
+from .utils import pki_dir, pki
 
 class MockProto(asyncio.Protocol):
 
@@ -80,12 +77,12 @@ class LoopFixture:
         self.transports = []
         self.loop = asyncio.new_event_loop()
         self.sslctx_server = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-        self.sslctx_server.load_cert_chain('host1.pem','host1.key')
-        self.sslctx_server.load_verify_locations(cafile='ca.pem')
+        self.sslctx_server.load_cert_chain(pki('host1.pem'), pki('host1.key'))
+        self.sslctx_server.load_verify_locations(cafile=pki('ca.pem'))
         self.sslctx_server.check_hostname = False
         self.sslctx_client = ssl.create_default_context()
-        self.sslctx_client.load_cert_chain('host1.pem','host1.key')
-        self.sslctx_client.load_verify_locations(cafile='ca.pem')
+        self.sslctx_client.load_cert_chain(pki('host1.pem'), pki('host1.key'))
+        self.sslctx_client.load_verify_locations(cafile=pki('ca.pem'))
         self.server= self.loop.run_until_complete(self.loop.create_server(lambda : MockProto(self), port = test_port, reuse_address = True, reuse_port = True, ssl=self.sslctx_server))
         self.client = self.loop.create_connection(lambda : bandwidth.BwLimitProtocol(
             chars_per_sec = 200, bw_quantum = 0.1,
@@ -181,7 +178,6 @@ class TestBandwidth(unittest.TestCase):
         fixture = self.fixture
         (transport, protocol) = fixture.loop.run_until_complete(fixture.client)
         transport.abort()
-        
 
     def testClamping(self):
         "Confirm that pause is called"
@@ -218,13 +214,13 @@ class TestSynchronization(unittest.TestCase):
 
     def setUp(self):
         warnings.filterwarnings('ignore', module = 'asyncio.sslproto')
-        self.manager = SyncServer(cafile = 'ca.pem',
-                                  cert = "host1.pem", key = "host1.key",
+        self.manager = SyncServer(cafile = pki('ca.pem'),
+                                  cert = pki("host1.pem"), key = pki("host1.key"),
                                   port = test_port,
                                   registries = [reg],
                                   )
         self.manager.listen_ssl(host = "127.0.0.1")
-        self.cert_hash = certhash_from_file("host1.pem")
+        self.cert_hash = certhash_from_file(pki("host1.pem"))
         client = self.manager.add_destination(SyncDestination(self.cert_hash,
                                                               "destination1", host = "127.0.0.1", server_hostname = "host1",
                                                               bw_per_sec = 2000000))
@@ -365,9 +361,9 @@ class TestSynchronization(unittest.TestCase):
             return SyncDestination(other_manager.cert_hash,
                                    "our manager")
         
-        other_manager = SyncManager(cert = "host2.pem",
-                                    key = "host2.key",
-                                    cafile = "ca.pem",
+        other_manager = SyncManager(cert = pki("host2.pem"),
+                                    key = pki("host2.key"),
+                                    cafile = pki("ca.pem"),
                                     port = test_port,
                                     registries = [reg],
                                     loop = self.manager.loop)

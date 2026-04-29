@@ -15,7 +15,7 @@ from unittest import mock
 from entanglement import transition
 from entanglement import pki
 import pytest
-from .utils import test_port, settle_loop
+from .utils import test_port, settle_loop, pki_dir
 
 @pytest.fixture()
 def loop():
@@ -185,10 +185,6 @@ def layout_fn(registries, requested_layout):
         e.manager.close()
     layout_dict.clear()
     settle_loop(asyncio.get_event_loop())
-    
-
-pki_dir = "."
-
 
 @pytest.fixture()
 def layout(registries, requested_layout):
