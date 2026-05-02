@@ -1,3 +1,21 @@
+hadron-entanglement (0.32) unstable; urgency=medium
+
+  [ Sam Hartman ]
+  * Support sh 2.x style piping, hopefully backward-compatible
+
+  [ Klee Dienes ]
+  * Convert to common CI
+  * Release as 0.31
+  * Release as 0.31
+  * Use more modern pytest invocation
+  * Support python 3.14 annotations
+  * Improve debugging output
+  * Add keyUsage=keyCertSign,cRLSign
+  * Save extfile next to certificate; simplify logic
+  * Move pki_dir from conftest to utils and set to './test-data/pki'
+
+ -- Klee Dienes <klee.dienes@hadronindustries.com>  Sat, 02 May 2026 16:23:47 -0400
+
 hadron-entanglement (0.31) unstable; urgency=medium
 
   * Convert to common CI
