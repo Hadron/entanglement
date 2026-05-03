@@ -1,3 +1,9 @@
+hadron-entanglement (0.35) unstable; urgency=medium
+
+  * Resync versions
+
+ -- Klee Dienes <klee.dienes@hadronindustries.com>  Sun, 03 May 2026 19:52:03 -0400
+
 hadron-entanglement (0.32) unstable; urgency=medium
 
   [ Sam Hartman ]
