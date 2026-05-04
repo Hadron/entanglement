@@ -1,18 +1,10 @@
-hadron-entanglement (0.35) unstable; urgency=medium
-
-  * Resync versions
-
- -- Klee Dienes <klee.dienes@hadronindustries.com>  Sun, 03 May 2026 19:52:03 -0400
-
-hadron-entanglement (0.32) unstable; urgency=medium
+hadron-entanglement (0.36) unstable; urgency=medium
 
   [ Sam Hartman ]
   * Support sh 2.x style piping, hopefully backward-compatible
 
   [ Klee Dienes ]
   * Convert to common CI
-  * Release as 0.31
-  * Release as 0.31
   * Use more modern pytest invocation
   * Support python 3.14 annotations
   * Improve debugging output
@@ -22,11 +14,32 @@ hadron-entanglement (0.32) unstable; urgency=medium
 
  -- Klee Dienes <klee.dienes@hadronindustries.com>  Sat, 02 May 2026 16:23:47 -0400
 
-hadron-entanglement (0.31) unstable; urgency=medium
+hadron-entanglement (0.35) unstable; urgency=medium
 
+  * Resync versions
+
+ -- Klee Dienes <klee.dienes@hadronindustries.com>  Sun, 03 May 2026 19:52:03 -0400
+
+hadron-entanglement (0.34) unstable; urgency=medium
+
+  * rebuild with passing tests
+
+ -- Sam Hartman <hartmans@debian.org>  Wed, 12 Mar 2025 10:29:07 -0600
+
+hadron-entanglement (0.33) unstable; urgency=medium
+
+  * Build sh 1.x fix
+
+ -- Sam Hartman <hartmans@debian.org>  Tue, 11 Mar 2025 16:05:40 -0600
+
+hadron-entanglement (0.32) unstable; urgency=medium
+
+  * Support sh 2.x style piping, hopefully backward-compatible
   * Convert to common CI
 
- -- Klee Dienes <klee.dienes@hadronindustries.com>  Tue, 06 Aug 2024 19:46:42 -0400
+ -- Sam Hartman <hartmans@debian.org>  Tue, 11 Mar 2025 14:50:53 -0600
+
+>>>>>>> hadron/master
 
 hadron-entanglement (0.30) unstable; urgency=medium
 

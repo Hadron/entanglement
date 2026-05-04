@@ -64,7 +64,6 @@ def host_cert(pki_dir, hostname, adl_subj, prefix = "", *,
         _in=sh.openssl('req',
                        '-new', '-subj', f'{adl_subj}/CN={hostname}',
                        '-key', f'{hostfile}.key',
-                       _piped=True,
                        _truncate_exc=False,
         ),
         _truncate_exc=False)

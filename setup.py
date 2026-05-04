@@ -16,8 +16,6 @@ setup(
     maintainer = "Sam Hartman",
     maintainer_email = "sam.hartman@hadronindustries.com",
     url = "http://www.hadronindustries.com/",
-    setup_requires = ['pytest-runner'],
-    tests_require = ['pytest'],
     packages = ["entanglement", "entanglement.sql",
                 'entanglement.javascript_schema',
                 'entanglement.protocol'],
@@ -27,6 +25,5 @@ setup(
     install_requires = ['alembic', 'SQLAlchemy', 'pyOpenSSL', 'iso8601'],
     scripts = ['bin/entanglement-cli',
                'bin/entanglement-pki'],
-    test_suite = "tests",
-    version = "0.22",
+    version = "0.33",
 )
