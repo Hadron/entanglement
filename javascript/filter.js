@@ -46,30 +46,29 @@ class FilterBase {
             self.onObjectChange(obj);
             // We want to treat null, undefined and false the same.
             if (new_category != old_category) {
-                self.onChange(obj, old_category, new_category);
                 if (old_category) {
-                    self.onRemove(obj, old_category);
                     remove(obj, old_category);
+                    self.onRemove(obj, old_category);
                 }
                 if (new_category) {
-                    self.onAdd(obj, new_category);
                     add(obj, new_category);
+                    self.onAdd(obj, new_category);
                     filter_category_map.set(obj, new_category);
                 }            else filter_category_map.delete(obj);
+                self.onChange(obj, old_category, new_category);
             }
         }
 
         function deleteOperationHandler(obj) {
             let old_category = filter_category_map.get(obj);
-            self.onObjectChange(obj);
             if (old_category) {
+                remove(obj, old_category);
                 self.onChange(obj, old_category, undefined);
                 self.onRemove(obj);
-                remove(obj, old_category);
                 filter_category_map.delete(obj);
             }
+            self.onObjectChange(obj);
         }
-
         let add_ops = new Set(default_add_ops);
         let delete_ops = new Set(default_delete_ops);
         if (options.includeTransitions) {
@@ -81,7 +80,7 @@ class FilterBase {
         // before adding listeners let's go add anything already in the collection
         if (options.collection)
             for (let o of options.collection) {
-                if (! (o instanceof target))
+                if (! (o instanceof options.target))
                     continue;
                 addOperationHandler(o);
             }
