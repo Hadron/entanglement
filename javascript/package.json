@@ -1,6 +1,7 @@
 {
-  "name": "entanglement",
-  "version": "0.21.0",
+  "name": "@hadron/entanglement",
+    "version": "0.21.0",
+    "type": "commonjs",
   "description": "Entanglement State Synchronization Protocol",
   "main": "index.js",
   "scripts": {
@@ -10,5 +11,8 @@
   "license": "LGPL-3",
   "dependencies": {
     "websocket": "^1.0.32"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
   }
 }
