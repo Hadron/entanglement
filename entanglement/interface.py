@@ -12,8 +12,6 @@ from typing import get_type_hints
 from .types import type_map
 
 
-
-
 class EphemeralUnflooded:
 
     "A sync_owner value indicating that an object is not to be flooded and when received shall be considered belonging to the sender.  Used for protocol messages like errors, Ihave and the like"
@@ -55,6 +53,13 @@ class SynchronizableMeta(type):
             del ns['sync_registry']
         sync_meta = {}
         annotations = ns.get('__annotations__', {})
+        try:
+            import annotationlib
+            annotationfunc = annotationlib.get_annotate_from_class_namespace(ns)
+            if annotationfunc:
+                annotations = annotationfunc(annotationlib.Format.VALUE)
+        except ImportError:
+            pass
         for k,v in list(ns.items()):
             if isinstance(v, sync_property):
                 # Handle foo:type = sync_property()
@@ -69,7 +74,9 @@ class SynchronizableMeta(type):
                     ns[k] = v.wraps
                 else: del ns[k]
                 del v.wraps
-                if not v.decoderfn: v.decoderfn = lambda  val: val
+                if not v.decoderfn:
+                    def noop(val): return val
+                    v.decoderfn = noop
             elif isinstance(v, no_sync_property):
                 if v.wraps is not NoWraps:
                     ns[k] = v.wraps
@@ -150,6 +157,9 @@ object using its default JSON representation
         if wraps is not NoWraps and not doc:
             if hasattr(wraps, '__doc__'):
                 self.__doc__ = wraps.__doc__
+
+    def __repr__(self):
+        return f'sync_property(encoderfn={self.encoderfn}, decoderfn={self.decoderfn}, doc={self.__doc__})'
 
     def _set_type(self, t):
         if t and t in type_map:

@@ -8,7 +8,7 @@
 # LICENSE for details.
 
 from contextlib import contextmanager
-import asyncio, gc, unittest, random, warnings, weakref
+import asyncio, gc, unittest, random, warnings, weakref, os
 from sqlalchemy import create_engine
 from entanglement import SyncManager, SyncServer, certhash_from_file, interface
 import entanglement.sql as sql
@@ -16,6 +16,9 @@ from entanglement.sql import SqlSyncDestination, sync_session_maker, SqlSyncRegi
 from unittest import mock
 from entanglement import transition
 import pytest
+
+pki_dir = "./test-data/pki"
+def pki(fn): return os.path.join(pki_dir, fn)
 
 @contextmanager
 def wait_for_call(loop, obj, method, calls = 1, trap_exceptions = False, timeout = 0.5):
@@ -58,24 +61,24 @@ class SqlFixture(unittest.TestCase):
         self.base.metadata.create_all(bind = self.e2)
         self.base.registry.create_bookkeeping(self.e1)
         self.base.registry.create_bookkeeping(self.e2)
-        self.server = SyncServer(cafile = "ca.pem",
-                                 cert = "host1.pem", key = "host1.key",
+        self.server = SyncServer(cafile = pki("ca.pem"),
+                                 cert = pki("host1.pem"), key = pki("host1.key"),
                                  port = test_port,
                                  registries = [self.base.registry] + self.other_registries,
                                  loop = asyncio.get_event_loop())
         self.server.listen_ssl()
         # We do not listen ssl for this item
-        self.manager = SyncServer(cafile = "ca.pem",
-                                   cert = "host2.pem",
-                                   key = "host2.key",
+        self.manager = SyncServer(cafile = pki("ca.pem"),
+                                   cert = pki("host2.pem"),
+                                   key = pki("host2.key"),
                                    loop = self.server.loop,
                                    registries = [self.manager_registry] + self.other_registries,
                                    port = test_port)
         self.loop = self.server.loop
-        self.d1 = self.to_server = SqlSyncDestination(certhash_from_file("host1.pem"),
+        self.d1 = self.to_server = SqlSyncDestination(certhash_from_file(pki("host1.pem")),
                                   "server", host = "127.0.0.1",
                                   server_hostname = "host1")
-        self.d2 = self.to_client = SqlSyncDestination(certhash_from_file("host2.pem"),
+        self.d2 = self.to_client = SqlSyncDestination(certhash_from_file(pki("host2.pem")),
                                   "manager")
         self.server.add_destination(self.d2)
         self.server.session.add(self.d2)

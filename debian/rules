@@ -7,6 +7,9 @@ export PYBUILD_TEST_PYTEST
 	dh $@ --with python3 --buildsystem=pybuild
 
 
+override_dh_auto_test:
+	python3 -m pytest
+
 override_dh_auto_install:
 	bash -c 'rm -rf .pybuild/*/*/*.{key,pem,srl,sock}'
 	dh_auto_install
