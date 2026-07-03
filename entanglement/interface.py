@@ -82,7 +82,7 @@ class SynchronizableMeta(type):
                     ns[k] = v.wraps
                 else: del ns[k]
         ns['_sync_meta'] = sync_meta
-        return type.__new__(cls, name, bases, ns, **kwargs)
+        return super().__new__(cls, name, bases, ns, **kwargs)
 
     sync_registry = property(doc = "A registry of classes that this Syncable belongs to.  Registries can be associated with a connection; only classes in registries associated with a connection are permitted to be synchronized over that connection")
 
