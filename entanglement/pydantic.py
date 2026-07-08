@@ -93,6 +93,8 @@ class SynchronizableModelMeta(SynchronizableMeta, ModelMetaclass):
             # The base class doesn't need sync_primary_keys
             return
         
+
+        
         # Check if sync_primary_keys is defined on this class (not inherited)
         # We check in __dict__ to avoid triggering the descriptor
         if 'sync_primary_keys' not in ns:
@@ -224,12 +226,25 @@ class SynchronizableBaseModel(Synchronizable, BaseModel, metaclass=Synchronizabl
             else:
                 optional_annotation = Optional[annotation]
 
-            overrides[name] = (optional_annotation, Field(default=None))
+            # Create a new FieldInfo that preserves metadata from the original
+            # while making it Optional with default None
+            new_fi = FieldInfo.from_annotated_attribute(optional_annotation, Field(default=None))
+            new_fi = FieldInfo.merge_field_infos(fi, new_fi)
+            overrides[name] = (optional_annotation, new_fi)
 
-        # Create the optional model using model_construct
+        # Add sync_primary_keys to the overrides with ClassVar annotation
+        # so the metaclass doesn't complain
+        if hasattr(cls, 'sync_primary_keys'):
+            overrides['sync_primary_keys'] = (
+                typing.ClassVar[tuple],
+                cls.sync_primary_keys
+            )
+
+        # Create the optional model using create_model
+        from pydantic import create_model
         optional_cls = typing.cast(
             type[BaseModel],
-            cls.model_construct(
+            create_model(
                 cls.__name__ + "_Optional",
                 __base__=cls,
                 **overrides,
