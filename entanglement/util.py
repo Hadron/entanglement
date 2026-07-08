@@ -8,7 +8,7 @@
 # LICENSE for details.
 
 
-import base64, contextlib, functools, hashlib, logging, re, uuid
+import base64, contextlib, functools, hashlib, logging, re, sys, uuid
 try:
     from OpenSSL import crypto as _crypto
 except ImportError:
@@ -19,7 +19,47 @@ try:
     from sqlalchemy import inspect
 except ImportError:
     TypeDecorator = None
-    
+
+
+def get_annotations(ns):
+    '''Return a dict of annotations from a class namespace.
+
+    Handles both the traditional ``__annotations__`` dict and Python 3.14's
+    annotationlib mechanism. This is intended for use in metaclasses that need
+    to inspect field annotations before the class is fully constructed.
+
+    For namespace dicts, we prefer __annotations__ directly. We only fall back
+    to annotationlib if annotationlib is available, __annotations__ is empty
+    or absent, and an __annotate__ function is present.
+    '''
+    annotations = ns.get('__annotations__', {})
+    # Only use annotationlib if __annotations__ is empty/absent and we have an
+    # __annotate__ function. Otherwise, __annotations__ is the source.
+    try:
+        import annotationlib
+    except ImportError:
+        pass
+    else:
+        if not annotations:
+            annotate_func = annotationlib.get_annotate_from_class_namespace(ns)
+            if annotate_func:
+                annotations = annotationlib.call_annotate_function(
+                    annotate_func, annotationlib.Format.VALUE)
+    return annotations
+
+
+def process_annotation(annotation, ns):
+    '''Resolve an annotation to a real type object.
+
+    String annotations are evaluated in the module globals of the class being
+    constructed, with ``ns`` available as the local namespace.
+    '''
+    if not isinstance(annotation, str):
+        return annotation
+    globals = sys.modules[ns['__module__']].__dict__
+    return eval(annotation, globals, ns)
+
+
 class DestHash(bytes):
     "represents a hash of a value that uniquely identifies a destination.  The most common DestHash is a CertHash (hash of a DER-encoded X.509 certificate)."
 

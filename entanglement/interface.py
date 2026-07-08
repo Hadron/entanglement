@@ -7,9 +7,10 @@
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the file
 # LICENSE for details.
 
-import asyncio, contextlib, sys, types
+import asyncio, contextlib, types
 from typing import get_type_hints
 from .types import type_map
+from .util import get_annotations, process_annotation
 
 
 class EphemeralUnflooded:
@@ -26,12 +27,6 @@ class EphemeralUnflooded:
     @classmethod
     def sync_encode_value(cls): return None
     
-
-def process_annotation(annotation, ns):
-    # Internal function to eval if necessary
-    if not isinstance(annotation, str): return annotation
-    globals = sys.modules[ns['__module__']].__dict__
-    return eval(annotation, globals, ns)
 
 class SynchronizableMeta(type):
     '''A metaclass for capturing Synchronizable classes.  In python3.6, no metaclass will be needed; __init__subclass will be sufficient.'''
@@ -52,14 +47,7 @@ class SynchronizableMeta(type):
             ns['_sync_registry'] = ns['sync_registry']
             del ns['sync_registry']
         sync_meta = {}
-        annotations = ns.get('__annotations__', {})
-        try:
-            import annotationlib
-            annotationfunc = annotationlib.get_annotate_from_class_namespace(ns)
-            if annotationfunc:
-                annotations = annotationfunc(annotationlib.Format.VALUE)
-        except ImportError:
-            pass
+        annotations = get_annotations(ns)
         for k,v in list(ns.items()):
             if isinstance(v, sync_property):
                 # Handle foo:type = sync_property()

@@ -37,19 +37,10 @@ except ImportError:
     PYDANTIC_AVAILABLE = False
 
 from .interface import Synchronizable, SynchronizableMeta, sync_property, no_sync_property, NotPresent, SyncBadEncodingError, SyncRegistry
-from . import util
+from .util import get_annotations
 
 # Module-level cache for optional models (to avoid Pydantic treating it as a field)
 _optional_model_cache: weakref.WeakKeyDictionary = weakref.WeakKeyDictionary()
-
-
-def process_annotation(annotation, ns):
-    '''Internal function to eval if necessary (mirrors interface.py).'''
-    if not isinstance(annotation, str):
-        return annotation
-    import sys
-    globals = sys.modules[ns['__module__']].__dict__
-    return eval(annotation, globals, ns)
 
 
 class NoWraps:
@@ -67,16 +58,7 @@ class SynchronizableModelMeta(SynchronizableMeta, ModelMetaclass):
 
     def __new__(cls, name, bases, ns, **kwargs):
         # Collect annotations before we start modifying ns
-        annotations = ns.get('__annotations__', {})
-        
-        # Try to use annotationlib if available for Python 3.14 support
-        try:
-            import annotationlib
-            annotationfunc = annotationlib.get_annotate_from_class_namespace(ns)
-            if annotationfunc:
-                annotations = annotationfunc(annotationlib.Format.VALUE)
-        except ImportError:
-            pass
+        annotations = get_annotations(ns)
         
         # Handle sync_registry specially - Pydantic treats _ prefixed attributes as private
         # If sync_registry is set, we need to also add _sync_registry with ClassVar annotation
@@ -87,51 +69,20 @@ class SynchronizableModelMeta(SynchronizableMeta, ModelMetaclass):
                 ns['__annotations__'] = {}
             ns['__annotations__']['_sync_registry'] = typing.ClassVar[SyncRegistry]
         
-        # Process all items in ns to handle sync_property wrappers
-        for k, v in list(ns.items()):
-            if isinstance(v, sync_property):
-                # Handle foo:type = sync_property()
-                if (not v.encoderfn) or (not v.decoderfn):
-                    if k in annotations:
-                        annotation = process_annotation(annotations[k], ns)
-                        v._set_type(annotation)
-                # Keep in _sync_meta, strip wrapper and replace value
-                if v.wraps is not NoWraps:
-                    ns[k] = v.wraps
-                else:
-                    del ns[k]
-                del v.wraps
-                if not v.decoderfn:
-                    def noop(val): return val
-                    v.decoderfn = noop
-
-            elif isinstance(v, no_sync_property):
-                # Unwrap for Pydantic
-                if v.wraps is not NoWraps:
-                    ns[k] = v.wraps
-                else:
-                    del ns[k]
-
-        # Auto-promote plain annotations
-        # Any annotation in __annotations__ that is NOT already wrapped
-        # in sync_property or no_sync_property should be auto-promoted
+        # Auto-promote plain annotations.
+        # Any annotation that is not already a sync_property or
+        # no_sync_property (or whose value is a FieldInfo) should be wrapped in
+        # a bare sync_property() so SynchronizableMeta picks it up.
         for k, annotation in annotations.items():
-            if k in ns and isinstance(ns[k], (sync_property, no_sync_property)):
-                # Already processed
-                continue
             if k.startswith('_'):
-                # Underscore fields are not auto-promoted
+                continue
+            if hasattr(annotation, '__origin__') and annotation.__origin__ is typing.ClassVar:
+                continue
+            if isinstance(ns.get(k), (sync_property, no_sync_property)):
                 continue
             if FieldInfo is not None and isinstance(ns.get(k), FieldInfo):
-                # For FieldInfo instances, we need to add them to _sync_meta
-                # without replacing them in the namespace (Pydantic needs to see them)
                 ns[k] = sync_property(wraps=ns[k])
                 continue
-            # Check if this is a ClassVar or similar - don't auto-promote
-            if hasattr(annotation, '__origin__') and annotation.__origin__ is typing.ClassVar:
-                # This is a ClassVar - don't auto-promote
-                continue
-            # Auto-promote: wrap in sync_property()
             ns[k] = sync_property()
 
         # Now delegate to super().__new__() which will chain through the MRO
