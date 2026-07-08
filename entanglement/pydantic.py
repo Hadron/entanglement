@@ -43,10 +43,6 @@ from .util import get_annotations
 _optional_model_cache: weakref.WeakKeyDictionary = weakref.WeakKeyDictionary()
 
 
-class NoWraps:
-    pass
-
-
 class SynchronizableModelMeta(SynchronizableMeta, ModelMetaclass):
     '''Metaclass combining SynchronizableMeta and Pydantic's ModelMetaclass.
     
@@ -59,6 +55,8 @@ class SynchronizableModelMeta(SynchronizableMeta, ModelMetaclass):
     def __new__(cls, name, bases, ns, **kwargs):
         # Collect annotations before we start modifying ns
         annotations = get_annotations(ns)
+        # Explicitly set __annotations__ to ensure Python 3.14's annotationlib works correctly
+        ns['__annotations__'] = annotations
         
         # Handle sync_registry specially - Pydantic treats _ prefixed attributes as private
         # If sync_registry is set, we need to also add _sync_registry with ClassVar annotation
@@ -70,9 +68,8 @@ class SynchronizableModelMeta(SynchronizableMeta, ModelMetaclass):
             ns['__annotations__']['_sync_registry'] = typing.ClassVar[SyncRegistry]
         
         # Auto-promote plain annotations.
-        # Any annotation that is not already a sync_property or
-        # no_sync_property (or whose value is a FieldInfo) should be wrapped in
-        # a bare sync_property() so SynchronizableMeta picks it up.
+        # Any annotation not already wrapped in sync_property or no_sync_property
+        # should be wrapped in a bare sync_property() so SynchronizableMeta picks it up.
         for k, annotation in annotations.items():
             if k.startswith('_'):
                 continue
@@ -80,10 +77,9 @@ class SynchronizableModelMeta(SynchronizableMeta, ModelMetaclass):
                 continue
             if isinstance(ns.get(k), (sync_property, no_sync_property)):
                 continue
-            if FieldInfo is not None and isinstance(ns.get(k), FieldInfo):
-                ns[k] = sync_property(wraps=ns[k])
-                continue
-            ns[k] = sync_property()
+            # If the annotation has no entry in ns, use bare sync_property()
+            # Otherwise wrap the existing value (e.g., FieldInfo)
+            ns[k] = sync_property(ns[k]) if k in ns else sync_property()
 
         # Now delegate to super().__new__() which will chain through the MRO
         return super().__new__(cls, name, bases, ns, **kwargs)
@@ -105,6 +101,13 @@ class SynchronizableModelMeta(SynchronizableMeta, ModelMetaclass):
                 "Example: sync_primary_keys = ('id',)"
             )
         
+        # Add _sync_meta to __annotations__ so pydantic treats it as a class variable
+        # This is needed because _sync_meta is set by SynchronizableMeta.__new__
+        # but pydantic needs it to not be treated as a private attribute
+        if '__annotations__' not in ns:
+            ns['__annotations__'] = {}
+        ns['__annotations__']['_sync_meta'] = typing.ClassVar[types.MappingProxyType]
+
         # Add FieldInfo instances to _sync_meta for Pydantic fields
         # These are not sync_property instances but should be treated as sync properties
         if hasattr(cls, '_sync_meta') and FieldInfo is not None:
@@ -321,4 +324,14 @@ __all__ = [
     'SynchronizableBaseModel',
     'sync_property',
     'no_sync_property',
+    '_get_optional_model',
 ]
+
+
+def _get_optional_model(cls):
+    """Get or build the optional model for a class.
+    
+    This is a module-level wrapper around the classmethod 
+    `SynchronizableBaseModel._get_optional_model()`.
+    """
+    return cls._get_optional_model()
