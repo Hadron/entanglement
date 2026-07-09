@@ -86,10 +86,12 @@ try:
     import fastapi
 
     async def fastapi_entanglement_loop(socket:fastapi.WebSocket, destination:SyncDestination, *, manager:SyncManager):
+        already_closed = False
         async def send(message):
             await socket.send_text(message)
         async def close():
-            await socket.close()
+            if not alreday_closed:
+                await socket.close()
         if destination             in manager.destinations:
             if destination.dest_hash in manager._connections:
                 logger.warning("Web socket destination {} replaces a        connection".format(destination))
@@ -103,13 +105,15 @@ try:
                     f = flags, c = protocol._in_counter,
                     js = message, d = destination))
                 protocol._handle_receive(js, flags)
+            already_closed = True
         finally:
             if destination.protocol:
                 protocol.close()
                 destination.protocol = None
                 if getattr(destination, 'ephemeral', True):
                     manager.remove_destination(destination)
-                await socket.close()
+                if not already_closed:
+                    await socket.close()
 
     found_websocket_implementation = True
 except ImportError: pass
