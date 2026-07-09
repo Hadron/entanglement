@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-# Copyright (C) 2017, 2018, 2019, 2020, 2022, 2023, Hadron Industries, Inc.
+# Copyright (C) 2026, Hadron Industries, Inc.
 # Entanglement is free software; you can redistribute it and/or modify
 # it under the terms of the GNU Lesser General Public License version 3
 # as published by the Free Software Foundation. It is distributed
@@ -55,17 +55,20 @@ class SynchronizableModelMeta(SynchronizableMeta, ModelMetaclass):
     def __new__(cls, name, bases, ns, **kwargs):
         # Collect annotations before we start modifying ns
         annotations = get_annotations(ns)
-        # Explicitly set __annotations__ to ensure Python 3.14's annotationlib works correctly
+        # Explicitly set __annotations__ to ensure Python 3.14's annotation algorithm finds our changes.
+        # The __annotations__ descriptor prefers annotations in th
+        # eclass dict to calling __annotate__.  
         ns['__annotations__'] = annotations
         
         # Handle sync_registry specially - Pydantic treats _ prefixed attributes as private
         # If sync_registry is set, we need to also add _sync_registry with ClassVar annotation
         # so Pydantic treats it as a class variable instead of a private attribute
         if 'sync_registry' in ns:
-            # Mark _sync_registry as ClassVar so Pydantic doesn't treat it as a private attribute
-            if '__annotations__' not in ns:
-                ns['__annotations__'] = {}
             ns['__annotations__']['_sync_registry'] = typing.ClassVar[SyncRegistry]
+        
+        # Mark _sync_meta as ClassVar so Pydantic doesn't treat it as a private attribute
+        # and will properly preserve it instead of clearing it
+        ns['__annotations__']['_sync_meta'] = typing.ClassVar[types.MappingProxyType]
         
         # Auto-promote plain annotations.
         # Any annotation not already wrapped in sync_property or no_sync_property
@@ -95,28 +98,22 @@ class SynchronizableModelMeta(SynchronizableMeta, ModelMetaclass):
         
 
         
-        # Check if sync_primary_keys is defined on this class (not inherited)
-        # We check in __dict__ to avoid triggering the descriptor
-        if 'sync_primary_keys' not in ns:
+        # Check if sync_primary_keys is available (defined on this class or inherited)
+        # We need to check if any class in the MRO has sync_primary_keys defined as a real value
+        # (not the _sync_primary_keys descriptor)
+        def is_real_sync_primary_keys(val):
+            return not (hasattr(val, '__class__') and val.__class__.__name__ == '_sync_primary_keys')
+        
+        has_sync_primary_keys = any(
+            'sync_primary_keys' in base.__dict__ and is_real_sync_primary_keys(base.__dict__['sync_primary_keys'])
+            for base in cls.__mro__
+        )
+        if not has_sync_primary_keys:
             raise TypeError(
                 f"Class {name} must set sync_primary_keys. "
                 "Example: sync_primary_keys = ('id',)"
             )
         
-        # Add _sync_meta to __annotations__ so pydantic treats it as a class variable
-        # This is needed because _sync_meta is set by SynchronizableMeta.__new__
-        # but pydantic needs it to not be treated as a private attribute
-        if '__annotations__' not in ns:
-            ns['__annotations__'] = {}
-        ns['__annotations__']['_sync_meta'] = typing.ClassVar[types.MappingProxyType]
-
-        # Add FieldInfo instances to _sync_meta for Pydantic fields
-        # These are not sync_property instances but should be treated as sync properties
-        if hasattr(cls, '_sync_meta') and FieldInfo is not None:
-            for field_name, field_info in cls.model_fields.items():
-                if field_name not in cls._sync_meta:
-                    # Add a sync_property wrapper for this field
-                    cls._sync_meta[field_name] = sync_property()
 
 
 class SynchronizableBaseModel(Synchronizable, BaseModel, metaclass=SynchronizableModelMeta):
