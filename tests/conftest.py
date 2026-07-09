@@ -1,4 +1,4 @@
-# Copyright (C) 2018, 2019, 2020, 2023, Hadron Industries, Inc.
+# Copyright (C) 2018, 2019, 2020, 2023, 2026, Hadron Industries, Inc.
 # Entanglement is free software; you can redistribute it and/or modify
 # it under the terms of the GNU Lesser General Public License version 3
 # as published by the Free Software Foundation. It is distributed
@@ -15,11 +15,16 @@ from unittest import mock
 from entanglement import transition
 from entanglement import pki
 import pytest
+import pytest_asyncio
+
 from .utils import test_port, settle_loop, pki_dir
 
-@pytest.fixture()
-def loop():
-    return asyncio.get_event_loop()
+@pytest_asyncio.fixture(scope='session', loop_scope='session')
+async def loop():
+    loop = asyncio.get_event_loop()
+    asyncio.set_event_loop(loop)
+    return loop
+
 
 @pytest.fixture(scope = 'module')
 def registries():
@@ -138,10 +143,10 @@ class LayoutContext:
         settle_loop(asyncio.get_event_loop(), timeout = 1.0)
 
 
-def setup_manager(name, le, registries):
+def setup_manager(name, le, registries, loop):
     "Given a layout entry, return a layout context"
     ctx = LayoutContext()
-    ctx.loop = asyncio.get_event_loop()
+    ctx.loop = loop
     ctx.port = test_port
     if 'port_offset' in le:
         ctx.port += le['port_offset']
@@ -175,7 +180,7 @@ def setup_manager(name, le, registries):
                       key = ctx.key,
                       cert = ctx.cert,
                       port = ctx.port,
-                      loop = asyncio.get_event_loop(),
+                      loop = ctx.loop,
                       registries = ctx.registries
                       )
     if cls is SyncServer:
@@ -231,20 +236,20 @@ def connect_layout(layout, destination_class):
             setattr(le, 'from_'+connect_to.name, d_in)
             setattr(connect_to, "from_"+le.name, d_out)
 
-            
-def layout_fn(registries, requested_layout):
+
+def layout_fn(registries, requested_layout, loop):
     requested_layout = copy.deepcopy(requested_layout)
     layout_dict = {}
     destination_class = requested_layout.pop('destination_class', SqlSyncDestination)
     for name, layout_entry in requested_layout.items():
-        layout_dict[name] = setup_manager(name, layout_entry, registries)
+        layout_dict[name] = setup_manager(name, layout_entry, registries, loop)
     connect_layout(layout_dict, destination_class)
     layout_dict['layout_entries'] = tuple(layout_dict.values())
     layout = LayoutContext()
     layout.__dict__ = layout_dict
     layout.wait_connecting(True)
-   
-    layout.loop = asyncio.get_event_loop()
+
+    layout.loop = loop
     yield layout
     for e in layout.layout_entries:
         e.session.close()
@@ -255,10 +260,9 @@ def layout_fn(registries, requested_layout):
     settle_loop(asyncio.get_event_loop())
 
 @pytest.fixture()
-def layout(registries, requested_layout):
-    yield from layout_fn(registries = registries, requested_layout = requested_layout)
+def layout(registries, requested_layout, loop):
+    yield from layout_fn(registries = registries, requested_layout = requested_layout, loop=loop)
 
 @pytest.fixture(scope = 'module')
-def layout_module(registries, requested_layout):
-    yield from layout_fn(registries = registries, requested_layout = requested_layout)
-    
+def layout_module(registries, requested_layout, loop):
+    yield from layout_fn(registries = registries, requested_layout = requested_layout, loop=loop)

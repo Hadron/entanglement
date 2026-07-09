@@ -11,12 +11,9 @@ sys.path = list(filter(lambda p: p != os.path.abspath(os.path.dirname(__file__))
 import pytest
 import pytest_asyncio
 import asyncio, concurrent.futures, glob, json, threading, subprocess, unittest, uuid, inspect, copy
-from tornado.platform.asyncio import AsyncIOMainLoop
 import sqlalchemy.exc
 
-try: AsyncIOMainLoop().install()
-except: pass
-import tornado.web, tornado.websocket, tornado.ioloop, tornado.testing, tornado.httpserver
+import tornado.web, tornado.websocket,  tornado.testing, tornado.httpserver
 import entanglement.protocol
 from entanglement import SyncServer, SyncDestination, operations
 import entanglement.javascript_schema
@@ -27,7 +24,6 @@ from entanglement.websocket import SyncWsHandler
 from sqlalchemy import Column, String, Integer, ForeignKey
 from entanglement.util import GUID
 from tests.utils import *
-ioloop = tornado.ioloop.IOLoop.current()
 
 
 @pytest.fixture(scope="module", params=["tornado_webserver", "fastapi_webserver"], ids=["tornado", "fastapi"])
@@ -47,16 +43,6 @@ def requested_layout(requested_layout, websocket_webserver):
 def registries():
     return [Base]
 
-
-@pytest.fixture(scope='session')
-def event_loop():
-    """
-    Ensure pytest-asyncio uses the same loop  so
-    web server, SyncManager, and async tests share a single event loop.
-    """
-    loop = asyncio.get_event_loop()
-    yield loop
-    settle_loop(loop)
 
 
 js_helpers = {}
