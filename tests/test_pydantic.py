@@ -62,8 +62,8 @@ class TestSynchronizableBaseModel:
         assert 'id' in TestModel.model_fields
         assert 'color' in TestModel.model_fields
         assert TestModel.sync_primary_keys == ('id',)
-        assert TestModel._sync_meta is not None
-        assert '_sync_owner' in TestModel._sync_meta
+        assert TestModel._sync_properties is not None
+        assert '_sync_owner' in TestModel._sync_properties
 
     def test_auto_promotion_of_plain_annotations(self, my_registry):
         """Test that plain annotations are auto-promoted to sync properties."""

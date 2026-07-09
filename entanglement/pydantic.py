@@ -24,20 +24,18 @@ import types
 import weakref
 from typing import Optional, get_type_hints
 
-# Try to import pydantic
-try:
-    from pydantic import BaseModel, Field, ConfigDict
-    from pydantic._internal._model_construction import ModelMetaclass
-    from pydantic.fields import FieldInfo
-    PYDANTIC_AVAILABLE = True
-except ImportError:
-    BaseModel = None
-    ModelMetaclass = None
-    FieldInfo = None
-    PYDANTIC_AVAILABLE = False
+# Import pydantic - let ImportError propagate if not available
+from pydantic import BaseModel, Field, ConfigDict
+from pydantic.fields import FieldInfo
+from typing import ClassVar
+
+# ModelMetaclass is the metaclass of BaseModel
+ModelMetaclass = type(BaseModel)
 
 from .interface import Synchronizable, SynchronizableMeta, sync_property, no_sync_property, NotPresent, SyncBadEncodingError, SyncRegistry
 from .util import get_annotations
+
+# BaseModel is imported from pydantic above - it will raise ImportError if not available
 
 # Module-level cache for optional models (to avoid Pydantic treating it as a field)
 _optional_model_cache: weakref.WeakKeyDictionary = weakref.WeakKeyDictionary()
@@ -89,7 +87,7 @@ class SynchronizableModelMeta(SynchronizableMeta, ModelMetaclass):
 
     def __init__(cls, name, bases, ns, **kwargs):
         # Call super().__init__() which will chain through the MRO
-        super().__init__(name, bases, ns, **kwargs)
+        super().__init__(name, bases, ns)
         
         # Validate that sync_primary_keys is set (but skip the base class)
         if name == 'SynchronizableBaseModel':
@@ -99,20 +97,13 @@ class SynchronizableModelMeta(SynchronizableMeta, ModelMetaclass):
 
         
         # Check if sync_primary_keys is available (defined on this class or inherited)
-        # We need to check if any class in the MRO has sync_primary_keys defined as a real value
-        # (not the _sync_primary_keys descriptor)
-        def is_real_sync_primary_keys(val):
-            return not (hasattr(val, '__class__') and val.__class__.__name__ == '_sync_primary_keys')
-        
-        has_sync_primary_keys = any(
-            'sync_primary_keys' in base.__dict__ and is_real_sync_primary_keys(base.__dict__['sync_primary_keys'])
-            for base in cls.__mro__
-        )
-        if not has_sync_primary_keys:
+        try:
+            cls.sync_primary_keys
+        except NotImplementedError:
             raise TypeError(
                 f"Class {name} must set sync_primary_keys. "
                 "Example: sync_primary_keys = ('id',)"
-            )
+            ) from None
         
 
 
@@ -196,61 +187,6 @@ class SynchronizableBaseModel(Synchronizable, BaseModel, metaclass=Synchronizabl
         instance = cls.model_validate(msg)
         return instance
 
-    @classmethod
-    def _get_optional_model(cls) -> type[BaseModel]:
-        '''Get or build the optional model (all fields Optional with default None).
-
-        The optional model is built lazily on first use and cached.
-        Using __base__=cls means the optional model inherits all field-level
-        validators, model validators, and FieldInfo metadata from cls.
-        '''
-        if cls in _optional_model_cache:
-            return _optional_model_cache[cls]
-
-        # Build overrides: every field becomes Optional[T] with default None
-        overrides = {}
-        for name, fi in cls.model_fields.items():
-            annotation = fi.annotation
-            # Convert annotation to Optional[annotation]
-            if hasattr(typing, 'get_args'):
-                # Check if it's already Optional
-                args = typing.get_args(annotation)
-                if args and args[0] is type(None):
-                    # Already Optional or Union with None
-                    optional_annotation = annotation
-                else:
-                    optional_annotation = Optional[annotation]
-            else:
-                optional_annotation = Optional[annotation]
-
-            # Create a new FieldInfo that preserves metadata from the original
-            # while making it Optional with default None
-            new_fi = FieldInfo.from_annotated_attribute(optional_annotation, Field(default=None))
-            new_fi = FieldInfo.merge_field_infos(fi, new_fi)
-            overrides[name] = (optional_annotation, new_fi)
-
-        # Add sync_primary_keys to the overrides with ClassVar annotation
-        # so the metaclass doesn't complain
-        if hasattr(cls, 'sync_primary_keys'):
-            overrides['sync_primary_keys'] = (
-                typing.ClassVar[tuple],
-                cls.sync_primary_keys
-            )
-
-        # Create the optional model using create_model
-        from pydantic import create_model
-        optional_cls = typing.cast(
-            type[BaseModel],
-            create_model(
-                cls.__name__ + "_Optional",
-                __base__=cls,
-                **overrides,
-            )
-        )
-
-        _optional_model_cache[cls] = optional_cls
-        return optional_cls
-
     def sync_receive_constructed(self, msg, **kwargs):
         '''Given a constructed object, fill in the remaining fields from a message.
 
@@ -276,7 +212,7 @@ class SynchronizableBaseModel(Synchronizable, BaseModel, metaclass=Synchronizabl
                 incoming_keys.add(k)
 
         # Get optional model
-        optional_model = self._get_optional_model()
+        optional_model = _get_optional_model(self.__class__)
 
         # Validate against optional model to get a temp object
         temp_obj = optional_model.model_validate(msg)
@@ -341,9 +277,55 @@ __all__ = [
 
 
 def _get_optional_model(cls):
-    """Get or build the optional model for a class.
-    
-    This is a module-level wrapper around the classmethod 
-    `SynchronizableBaseModel._get_optional_model()`.
+    """Get or build the optional model (all fields Optional with default None).
+
+    The optional model is built lazily on first use and cached.
+    Using __base__=cls means the optional model inherits all field-level
+    validators, model validators, and FieldInfo metadata from cls.
     """
-    return cls._get_optional_model()
+    if cls in _optional_model_cache:
+        return _optional_model_cache[cls]
+
+    # Build overrides: every field becomes Optional[T] with default None
+    overrides = {}
+    for name, fi in cls.model_fields.items():
+        annotation = fi.annotation
+        # Convert annotation to Optional[annotation]
+        if hasattr(typing, 'get_args'):
+            # Check if it's already Optional
+            args = typing.get_args(annotation)
+            if args and args[0] is type(None):
+                # Already Optional or Union with None
+                optional_annotation = annotation
+            else:
+                optional_annotation = Optional[annotation]
+        else:
+            optional_annotation = Optional[annotation]
+
+        # Create a new FieldInfo that preserves metadata from the original
+        # while making it Optional with default None
+        new_fi = FieldInfo.from_annotated_attribute(optional_annotation, Field(default=None))
+        new_fi = FieldInfo.merge_field_infos(fi, new_fi)
+        overrides[name] = (optional_annotation, new_fi)
+
+    # Add sync_primary_keys to the overrides with ClassVar annotation
+    # so the metaclass doesn't complain
+    if hasattr(cls, 'sync_primary_keys'):
+        overrides['sync_primary_keys'] = (
+            typing.ClassVar[tuple],
+            cls.sync_primary_keys
+        )
+
+    # Create the optional model using create_model
+    from pydantic import create_model
+    optional_cls = typing.cast(
+        type[BaseModel],
+        create_model(
+            cls.__name__ + "_Optional",
+            __base__=cls,
+            **overrides,
+        )
+    )
+
+    _optional_model_cache[cls] = optional_cls
+    return optional_cls
