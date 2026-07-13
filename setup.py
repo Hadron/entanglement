@@ -25,5 +25,5 @@ setup(
     install_requires = ['alembic', 'SQLAlchemy', 'pyOpenSSL', 'iso8601'],
     scripts = ['bin/entanglement-cli',
                'bin/entanglement-pki'],
-    version = "0.33",
+    version = "0.34",
 )
