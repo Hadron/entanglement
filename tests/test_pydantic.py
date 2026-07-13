@@ -1,4 +1,4 @@
-#!/usr/bin/python3
+#!/usr/bin/env python3
 # Copyright (C) 2026, Hadron Industries, Inc.
 # Entanglement is free software; you can redistribute it and/or modify
 # it under the terms of the GNU Lesser General Public License version 3
@@ -20,8 +20,8 @@ except ImportError:
     ValidationError = None
 
 from entanglement import SyncRegistry
-from entanglement.pydantic import SynchronizableBaseModel, SynchronizableModelMeta, _get_optional_model
-from entanglement.memory import StoreInSyncStoreMixin
+from entanglement.pydantic import SynchronizableBaseModel, SynchronizableModelMeta, _get_optional_model, PydanticSyncStoreRegistry, class_store_property
+from entanglement.memory import StoreInSyncStoreMixin, SyncOwner
 from entanglement.interface import sync_property
 from .conftest import layout_fn
 
@@ -255,3 +255,145 @@ class TestSynchronizableBaseModel:
             "sync_property doc was silently replaced by a bare sync_property(); "
             "Loop 1 is stealing the field before the superclass can register it"
         )
+
+
+# Tests for PydanticSyncStoreRegistry and class_store_property
+class TestPydanticSyncStoreRegistry:
+    """Tests for PydanticSyncStoreRegistry and class_store_property."""
+
+    def test_class_store_property_registry(self):
+        """Test that class_store_property instances register on the class and merge through subclasses."""
+        class Device(SynchronizableBaseModel):
+            sync_registry: typing.ClassVar[SyncRegistry] = SyncRegistry()
+            sync_primary_keys: typing.ClassVar[tuple] = ('id',)
+            id: str
+            color: str = "red"
+
+        class BaseRegistry(PydanticSyncStoreRegistry):
+            devices = class_store_property(Device)
+
+        class ChildRegistry(BaseRegistry):
+            pass
+
+        assert 'devices' in BaseRegistry._class_store_properties
+        assert 'devices' in ChildRegistry._class_store_properties
+        assert BaseRegistry._class_store_properties['devices'].target is Device
+
+    def test_instance_access_returns_store(self):
+        """Test that accessing the property on an instance returns the per-instance store."""
+        class Device(SynchronizableBaseModel):
+            sync_registry: typing.ClassVar[SyncRegistry] = SyncRegistry()
+            sync_primary_keys: typing.ClassVar[tuple] = ('id',)
+            id: str
+            color: str = "red"
+
+        class Registry(PydanticSyncStoreRegistry):
+            devices = class_store_property(Device)
+
+        r = Registry()
+        d1 = Device(id="a", color="blue")
+        r.devices.add(d1)
+
+        assert r.devices["a"] is d1
+        assert "a" in r.devices
+
+    def test_deserialization_populates_store(self):
+        """Test that constructing a registry from dict validates and stores devices."""
+        class Device(SynchronizableBaseModel):
+            sync_registry: typing.ClassVar[SyncRegistry] = SyncRegistry()
+            sync_primary_keys: typing.ClassVar[tuple] = ('id',)
+            id: str
+            color: str = "red"
+
+        class Registry(PydanticSyncStoreRegistry):
+            devices = class_store_property(Device)
+
+        r = Registry(devices={"a": {"id": "a", "color": "green"}, "b": {"id": "b"}})
+        assert "a" in r.devices
+        assert "b" in r.devices
+        assert r.devices["a"].color == "green"
+        assert r.devices["b"].color == "red"
+
+    def test_serialization_includes_class_stores(self):
+        """Test that model_dump includes the class store property data."""
+        class Device(SynchronizableBaseModel):
+            sync_registry: typing.ClassVar[SyncRegistry] = SyncRegistry()
+            sync_primary_keys: typing.ClassVar[tuple] = ('id',)
+            id: str
+            color: str = "red"
+
+        class Registry(PydanticSyncStoreRegistry):
+            devices = class_store_property(Device)
+
+        r = Registry(devices={"a": {"id": "a", "color": "green"}})
+        dumped = r.model_dump()
+        assert dumped["devices"] == {"a": {"id": "a", "color": "green"}}
+
+    def test_class_store_property_readonly(self):
+        """Test that assigning to a class_store_property raises."""
+        class Device(SynchronizableBaseModel):
+            sync_registry: typing.ClassVar[SyncRegistry] = SyncRegistry()
+            sync_primary_keys: typing.ClassVar[tuple] = ('id',)
+            id: str
+            color: str = "red"
+
+        class Registry(PydanticSyncStoreRegistry):
+            devices = class_store_property(Device)
+
+        r = Registry()
+        with pytest.raises((TypeError, ValueError)):
+            r.devices = {}
+
+
+# Module-level registry and syncable types for layout-based tests.
+class _PydanticLayoutDevice(StoreInSyncStoreMixin, SynchronizableBaseModel):
+    sync_primary_keys: typing.ClassVar[tuple] = ('id',)
+    sync_registry: typing.ClassVar[SyncRegistry] = None  # set after registry creation
+    id: str
+    color: str = "red"
+
+
+class _PydanticLayoutRegistry(PydanticSyncStoreRegistry):
+    devices = class_store_property(_PydanticLayoutDevice)
+
+
+pydantic_registry = _PydanticLayoutRegistry()
+_PydanticLayoutDevice.sync_registry = pydantic_registry
+# Re-register the class now that sync_registry is set
+pydantic_registry.register_syncable(_PydanticLayoutDevice.sync_type, _PydanticLayoutDevice)
+pydantic_registry.register_syncable(SyncOwner.sync_type, SyncOwner)
+
+
+@pytest.fixture
+def registries():
+    return [pydantic_registry]
+
+
+
+def test_class_store_dumped_after_sync( layout):
+    """Synchronize a registry with class_store_properties across a layout; the server model_dump includes them."""
+    from tests.utils import settle_loop
+
+    # Create a registry on the client with some devices and synchronize it.
+    client_registry = layout.client.registries[0]
+    assert isinstance(client_registry, _PydanticLayoutRegistry)
+
+    device = _PydanticLayoutDevice(id="dev1", color="blue")
+    client_registry.manager = layout.client.manager
+    settle_loop(layout.loop, timeout=2)
+    client_registry.store_synchronize(device)
+
+    settle_loop(layout.loop, timeout=2)
+
+    # The server registry should now contain the device.
+    server_registry = layout.server.registries[0]
+    assert isinstance(server_registry, _PydanticLayoutRegistry)
+    print(f"DEBUG: server_registry.devices = {server_registry.devices}")
+    print(f"DEBUG: server_registry.devices.store = {server_registry.devices.store}")
+    print(f"DEBUG: 'dev1' in store = {'dev1' in server_registry.devices.store}")
+    assert "dev1" in server_registry.devices
+    assert server_registry.devices["dev1"].color == "blue"
+
+    # model_dump on the server registry should include the class store.
+    dumped = server_registry.model_dump()
+    assert dumped["devices"] == {"dev1": {"id": "dev1", "color": "blue"}}

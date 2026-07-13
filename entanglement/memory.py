@@ -185,7 +185,7 @@ class SyncStoreRegistry(SyncRegistry):
                 self.remove_from_store(obj)
             except KeyError: pass
 
-    @memoproperty
+    @property
     def local_owner(self):
         owner_store = self.store_for_class(SyncOwner)
         for o in owner_store.values():

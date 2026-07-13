@@ -254,3 +254,31 @@ class error_operation(ResponseOperation):
     name = 'error'
 
 error_operation = error_operation()
+
+class RpcOperation(SyncOperation):
+
+    def __init__(self, name, method, primary_keys_required = False):
+        self.primary_keys_required = primary_keys_required
+        self.name = name
+        self.method =  method
+
+    def incoming(self, obj, registry, **info):
+        if obj.sync_is_local:
+            res = self.method(obj, registry=registry, **info)
+            try: del info['attributes']
+            except Exception: pass
+            ResponseOperation.flood(self, res, registry=registry, **info)
+        else:
+            return self.flood(obj, registry=registry, **info)
+
+    def flood(self, obj, manager, **info):
+        dest = manager.dest_by_hash(obj.sync_owner.dest_hash)
+        manager.synchronize(obj, operation=str(self),
+                            destinations=[dest],
+                            response_for=info['response_for'],
+                            attributes=info.get('attributes', None),
+                            )
+
+    def should_listen_constructed(self, obj, msg, **info):
+        return True
+    

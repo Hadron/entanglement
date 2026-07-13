@@ -401,6 +401,8 @@ class SyncRegistry:
 
     '''
 
+    registry: dict[str, "type[Synchronizable]"] = {}
+    operations: dict = {}
     def __init__(self):
         self.registry = {}
         self.operations = {}

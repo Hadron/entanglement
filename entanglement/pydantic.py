@@ -23,16 +23,19 @@ import typing
 import types
 import weakref
 from typing import Optional, get_type_hints
-
+import uuid
 # Import pydantic - let ImportError propagate if not available
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, model_validator, model_serializer, PrivateAttr
 from pydantic.fields import FieldInfo
 from typing import ClassVar
+
+from . import memory
+from .memory  import SyncStoreRegistry
 
 # ModelMetaclass is the metaclass of BaseModel
 ModelMetaclass = type(BaseModel)
 
-from .interface import Synchronizable, SynchronizableMeta, sync_property, no_sync_property, NotPresent, SyncBadEncodingError, SyncRegistry
+from .interface import Synchronizable, SynchronizableMeta, sync_property, no_sync_property, NotPresent, SyncBadEncodingError, SyncRegistry, EphemeralUnflooded
 from .util import get_annotations
 
 # BaseModel is imported from pydantic above - it will raise ImportError if not available
@@ -54,8 +57,7 @@ class SynchronizableModelMeta(SynchronizableMeta, ModelMetaclass):
         # Collect annotations before we start modifying ns
         annotations = get_annotations(ns)
         # Explicitly set __annotations__ to ensure Python 3.14's annotation algorithm finds our changes.
-        # The __annotations__ descriptor prefers annotations in th
-        # eclass dict to calling __annotate__.  
+        # The __annotations__ descriptor prefers annotations in the class dict to calling __annotate__.  
         ns['__annotations__'] = annotations
         
         # Handle sync_registry specially - Pydantic treats _ prefixed attributes as private
@@ -93,7 +95,6 @@ class SynchronizableModelMeta(SynchronizableMeta, ModelMetaclass):
         if name == 'SynchronizableBaseModel':
             # The base class doesn't need sync_primary_keys
             return
-        
 
         
         # Check if sync_primary_keys is available (defined on this class or inherited)
@@ -104,7 +105,6 @@ class SynchronizableModelMeta(SynchronizableMeta, ModelMetaclass):
                 f"Class {name} must set sync_primary_keys. "
                 "Example: sync_primary_keys = ('id',)"
             ) from None
-        
 
 
 class SynchronizableBaseModel(Synchronizable, BaseModel, metaclass=SynchronizableModelMeta):
@@ -125,8 +125,6 @@ class SynchronizableBaseModel(Synchronizable, BaseModel, metaclass=Synchronizabl
     - Cross-field `@model_validator(mode='after')` will run on partial state during
       `sync_receive_constructed`. Subclass authors must not rely on these for
       invariants that must hold on partial updates.
-    - `_sync_owner` is handled outside Pydantic fields (via setattr), so it won't
-      appear in `model_dump()`.
 
     **Example:**
 
@@ -139,7 +137,7 @@ class SynchronizableBaseModel(Synchronizable, BaseModel, metaclass=Synchronizabl
             sync_primary_keys = ('id',)
 
             # Pydantic validators work normally
-            @field_validator('color')
+        @field_validator('color')
             def validate_color(cls, v):
                 if v not in ('red', 'blue', 'green'):
                     raise ValueError('Invalid color')
@@ -150,6 +148,29 @@ class SynchronizableBaseModel(Synchronizable, BaseModel, metaclass=Synchronizabl
         validate_assignment=False,  # Default; can be overridden by subclasses
     )
 
+    sync_store_with: ClassVar[Optional[type]] = None
+    sync_owner_id: typing.Optional[uuid.UUID] = Field(exclude=True, default=None)
+    sync_owner_object: typing.Any = Field(exclude=True, default=Synchronizable.sync_owner)
+
+    @property
+    def sync_owner(self):
+        return self.sync_owner_object
+
+    @sync_owner.setter
+    def sync_owner(self, val):
+        self.sync_owner_object = val
+        return val
+
+    @property
+    def _sync_owner(self):
+        return self.sync_owner_id
+
+    @_sync_owner.setter
+    def _sync_owner(self, val):
+        self.sync_owner_id = val
+        return val
+
+            
     def __init__(self, **data):
         # Call BaseModel's __init__ which will handle Field validation
         BaseModel.__init__(self, **data)
@@ -172,17 +193,6 @@ class SynchronizableBaseModel(Synchronizable, BaseModel, metaclass=Synchronizabl
         from a validated temp object (not from msg directly), double-processing
         is harmless.
         '''
-        # First, look up existing objects via StoreInSyncStoreMixin if applicable
-        # Subclasses like StoreInSyncStoreMixin will override sync_construct
-        # and return existing objects; we only handle new object creation
-        cls_ref = cls
-        while hasattr(cls_ref, '__mro__'):
-            for base in cls_ref.__mro__:
-                if base.__name__ == 'StoreInSyncStoreMixin':
-                    # Defer to StoreInSyncStoreMixin's sync_construct
-                    return StoreInSyncStoreMixin.sync_construct(cls, msg, **kwargs)
-            break
-
         # Validate the full message against the model
         instance = cls.model_validate(msg)
         return instance
@@ -239,7 +249,10 @@ class SynchronizableBaseModel(Synchronizable, BaseModel, metaclass=Synchronizabl
                 continue
             if k in dumped:
                 result[k] = dumped[k]
-
+            try:
+                if self._sync_owner and self._sync_owner is not EphemeralUnflooded:
+                    result['_sync_owner'] = str(self._sync_owner)
+            except AttributeError: pass
         return result
 
     @classmethod
@@ -273,6 +286,8 @@ __all__ = [
     'sync_property',
     'no_sync_property',
     '_get_optional_model',
+    'PydanticSyncStoreRegistry',
+    'class_store_property',
 ]
 
 
@@ -329,3 +344,118 @@ def _get_optional_model(cls):
 
     _optional_model_cache[cls] = optional_cls
     return optional_cls
+
+
+class class_store_property:
+    '''
+    A descriptor that exposes a per-class sync store for a given Synchronizable type.
+
+    Typical usage::
+
+        class registry(PydanticSyncStoreRegistry):
+            devices = class_store_property(Device)
+
+    Accessing ``registry.devices`` returns the store holding all registered
+    ``Device`` objects.  These properties are read-only; assigning to them
+    raises ``TypeError``.
+    '''
+
+    def __init__(self, target):
+        if not isinstance(target, type) or not issubclass(target, Synchronizable):
+            raise TypeError(
+                f"class_store_property target must be a Synchronizable, got {target!r}"
+            )
+        self.target = target
+
+    def __set_name__(self, owner, name):
+        props = owner.__dict__.get('_class_store_properties')
+        if props is None:
+            props = {}
+            owner._class_store_properties = props
+        props[name] = self
+
+    def __get__(self, instance, owner):
+        if instance is None:
+            return self
+        return instance.store_for_class(self.target)
+
+    def __set__(self, instance, value):
+        raise TypeError("class store properties are readonly")
+
+
+class PydanticSyncStoreRegistry(SyncStoreRegistry, BaseModel):
+    '''
+    A SyncStoreRegistry that also supports dumping a subset of stored models as a json object.
+    '''
+
+    model_config = ConfigDict(ignored_types=(class_store_property,))
+
+    stores_by_class: dict = {}
+    manager: typing.Any = None
+    _class_store_properties: ClassVar[dict[str, class_store_property]] = {}
+
+    def __init__(self, **kwargs):
+        # Initialize Pydantic first so __pydantic_fields_set__ exists
+        BaseModel.__init__(self, **kwargs)
+        stores_by_class = self.stores_by_class
+        SyncStoreRegistry.__init__(self)
+        self.stores_by_class = stores_by_class
+
+    def __hash__(self):
+        return id(self)
+
+    def __eq__(self, other):
+        '''
+        Equality is identity for registries
+        '''
+        return other is self
+
+    def __init_subclass__(cls, **kwargs):
+        super().__init_subclass__(**kwargs)
+        merged = {}
+        for base in cls.__mro__[:0:-1]:
+            merged.update(base.__dict__.get('_class_store_properties', {}))
+        if '_class_store_properties' in cls.__dict__:
+            merged.update(cls._class_store_properties)
+        cls._class_store_properties = merged
+
+    @model_validator(mode='wrap')
+    @classmethod
+    def _class_store_property_validator(cls, data, handler):
+        validated = {}
+        if isinstance(data, dict):
+            for name, prop in cls._class_store_properties.items():
+                if name not in data:
+                    continue
+                values = data.pop(name)
+                if not isinstance(values, dict):
+                    raise TypeError(
+                        f"{cls.__name__}.{name} must be a dict, got {type(values).__name__}"
+                    )
+                validated[name] = {}
+                for key, value in values.items():
+                    if not isinstance(key, str):
+                        raise TypeError(
+                            f"{cls.__name__}.{name} keys must be strings, got {type(key).__name__}"
+                        )
+                    validated[name][key] = prop.target.model_validate(value)
+
+        instance = handler(data)
+
+        for objs in validated.values():
+            for obj in objs.values():
+                instance.add_to_store(obj)
+
+        return instance
+
+    @model_serializer(mode='wrap')
+    def _class_store_property_serializer(self, handler):
+        output_data = handler(self)
+        for name in self.__class__._class_store_properties.keys():
+            store = getattr(self, name)
+            output_data[name] = {k: v.model_dump() for k, v in store.items()}
+        # Exclude parent SyncStoreRegistry fields that are inferred as Pydantic fields
+        output_data.pop('registry', None)
+        output_data.pop('operations', None)
+        output_data.pop('sync_store_factory', None)
+        return output_data
