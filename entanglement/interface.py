@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-# Copyright (C) 2017, 2018, 2020, 2022, Hadron Industries, Inc.
+# Copyright (C) 2017, 2018, 2020, 2022, 2026, Hadron Industries, Inc.
 # Entanglement is free software; you can redistribute it and/or modify
 # it under the terms of the GNU Lesser General Public License version 3
 # as published by the Free Software Foundation. It is distributed
@@ -8,7 +8,7 @@
 # LICENSE for details.
 
 import asyncio, contextlib, types
-from typing import get_type_hints
+from typing import get_type_hints, ClassVar
 from .types import type_map
 from .util import get_annotations, process_annotation
 
@@ -33,9 +33,7 @@ class SynchronizableMeta(type):
 
     def __init__(cls, name, bases, _dict):
         if cls.sync_registry:
-            if not isinstance(cls.sync_registry, SyncRegistry):
-                raise TypeError("Class {cls} sets sync_registry to something that is not a SyncRegistry".format(cls = cls.__name__))
-            cls.sync_registry.register_syncable(cls.sync_type, cls)
+            register_synchronizables(cls.sync_registry, cls)
         super().__init__( name, bases, _dict)
 
     def __new__(cls, name, bases, ns, **kwargs):
@@ -403,9 +401,16 @@ class SyncRegistry:
 
     registry: dict[str, "type[Synchronizable]"] = {}
     operations: dict = {}
+    class_registry: ClassVar[dict[str, type[Synchronizable]]|None] = None
+    
     def __init__(self):
         self.registry = {}
         self.operations = {}
+        # Merge in the entire MRO of class_registries.
+        # We may get duplicates, but we traverse the mro in the right order so we get the correct value.
+        for c in reversed(self.__class__.__mro__):
+            if 'class_registry' in c.__dict__ and c.class_registry is not None:
+                self.registry.update(c.class_registry)
         self.register_operation( 'sync', lambda obj, **kw: True)
 
     def associate_with_manager(self, manager):
@@ -414,6 +419,11 @@ class SyncRegistry:
 
     def register_syncable(self, type_name, cls):
         "Called to add a Synchronizable to this registry"
+        if self.class_registry:
+            # We actually should check the mro in case our first base
+            # has None and a later base has a registry, but that's
+            # kind of expensive on each register_syncable
+            raise TypeError('Cannot register both at instance and subclass level')
         if type_name in self.registry:
             raise ValueError("`{} is already registered in this registry.".format(type_name))
         self.registry[type_name] = cls
@@ -493,6 +503,31 @@ class SyncRegistry:
         yield
 
 
+def register_synchronizables(registry: type[SyncRegistry]|SyncRegistry, *synchronizables: list[type[Synchronizable]]):
+    '''
+        Register one or more :class:`Synchronizable` types in either a :class:`SyncRegistry` subclass or instance.
+
+        A subclass of *SyncRegistry* may have types registered at the subclass or instance level, but not both.
+        '''
+    registry_dict: dict[str, type[Synchronizable]]
+    match registry:
+        case type() if issubclass(registry, SyncRegistry):
+            if 'class_registry'not in registry.__dict__:
+                registry_dict = registry.class_registry = {}
+            else:
+                registry_dict = registry.class_registry
+        case SyncRegistry():
+            if registry.class_registry:
+                raise TypeError('Cannot register both at class and instance level.')
+            registry_dict = registry.registry
+        case _:
+            raise TypeError('Requires a SyncRegistry instance or subclass')
+    for s in synchronizables:
+        sync_type = s.sync_type
+        if sync_type in registry_dict:
+            raise TypeError(f'{sync_type} already registered in {registry}')
+        registry_dict[sync_type] = s
+        
 error_registry = SyncRegistry()
 
 class SyncError(RuntimeError, Synchronizable):
@@ -589,6 +624,7 @@ error_registry.register_operation('error', operations.error_operation)
 
 __all__ = '''Synchronizable
 SyncRegistry sync_property no_sync_property
+register_synchronizables
 EphemeralUnflooded SyncUnauthorized WrongSyncDestination
 error_registry
 SynchronizableMeta
