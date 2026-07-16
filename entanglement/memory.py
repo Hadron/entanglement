@@ -1,4 +1,4 @@
-# Copyright (C)  2022, Hadron Industries, Inc.
+# Copyright (C)  2022, 2026, Hadron Industries, Inc.
 # Entanglement is free software; you can redistribute it and/or modify
 # it under the terms of the GNU Lesser General Public License version 3
 # as published by the Free Software Foundation. It is distributed
@@ -167,13 +167,26 @@ class SyncStoreRegistry(SyncRegistry):
         store = self.store_for_class(type(obj))
         store.remove(obj)
 
-    def store_synchronize(self, obj, **kwargs):
+    def store_synchronize(self, obj, operation='sync', **kwargs):
         if getattr(obj, '_sync_owner', None) is None:
             obj._sync_owner = self.local_owner._sync_owner
-        self.add_to_store(obj)
+        if operation != 'delete':
+            self.add_to_store(obj)
+        else:
+            self.remove_from_store(obj)
         if self.manager:
-            return self.manager.synchronize(obj, **kwargs)
+            return self.manager.synchronize(obj, operation=operation, **kwargs)
 
+    def store_synchronize_multiple(self, objs, **kwargs):
+        match objs:
+            case collections.abc.Sequence(): pass
+            case collections.abc.Mapping() as m:
+                objs = list(m.values())
+            case _:
+                raise TypeError('Do not know how to handle that type')
+        for o in objs:
+            self.store_synchronize(o, **kwargs)
+            
     def incoming_sync(self, obj, **info):
         assert not obj.sync_is_local
         self.add_to_store(obj)
