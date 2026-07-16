@@ -36,10 +36,10 @@ class OurFilteredSyncDestination(FilteredSyncDestination):
     filter_should_listen_returns_true = True
     
 @pytest.fixture()
-def filter_layout(registries, requested_layout):
+def filter_layout(registries, requested_layout, loop):
     rl = requested_layout
     rl['destination_class'] = OurFilteredSyncDestination
-    yield from conftest.layout_fn(registries=registries, requested_layout=rl)
+    yield from conftest.layout_fn(registries=registries, requested_layout=rl, loop=loop)
     
 @pytest.fixture(scope='module')
 def registries():

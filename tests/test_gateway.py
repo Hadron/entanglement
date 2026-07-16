@@ -644,7 +644,7 @@ def registries ():
     return [Base]
 
 @pytest.fixture()
-def layout_two_servers(registries, requested_layout, monkeypatch):
+def layout_two_servers(registries, requested_layout, monkeypatch, loop):
     r_layout = deepcopy(requested_layout)
     r_layout['server2'] = {
         'server': True,
@@ -658,7 +658,7 @@ def layout_two_servers(registries, requested_layout, monkeypatch):
         errors['bad_owner_count'] += 1
     bad_owner_count = 0
     monkeypatch.setattr(SyncBadOwner, 'sync_receive_constructed', receive_error)
-    layout_gen = layout_fn(requested_layout = r_layout, registries = registries)
+    layout_gen = layout_fn(requested_layout = r_layout, registries = registries, loop=loop)
     layout = next(layout_gen)
     layout.errors = errors
     yield layout
