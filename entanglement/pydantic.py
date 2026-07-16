@@ -361,11 +361,30 @@ class class_store_property:
     '''
 
     def __init__(self, target):
-        if not isinstance(target, type) or not issubclass(target, Synchronizable):
-            raise TypeError(
-                f"class_store_property target must be a Synchronizable, got {target!r}"
-            )
         self.target = target
+        if not isinstance(target, str):
+            if not isinstance(target, type) or not issubclass(target, Synchronizable):
+                raise TypeError(
+                    f"class_store_property target must be a Synchronizable, got {target!r}"
+                )
+
+
+    def _resolve_target(self, owner_or_instance):
+        if isinstance(self.target, str):
+            match owner_or_instance:
+                case SyncRegistry() as instance:
+                    target = instance.registry[self.target]
+                case type() as owner:
+                    registry = {}
+                    for c in reversed(owner.__mro__):
+                        if getattr(c, 'class_registry', None):
+                            registry.update(c.class_registry)
+                    target = registry[self.target]
+            if not isinstance(target, type) or not issubclass(target, Synchronizable):
+                raise TypeError(
+                    f"class_store_property target must be a Synchronizable, got {target!r}"
+                )
+            self.target = target
 
     def __set_name__(self, owner, name):
         props = owner.__dict__.get('_class_store_properties')
@@ -375,6 +394,7 @@ class class_store_property:
         props[name] = self
 
     def __get__(self, instance, owner):
+        self._resolve_target(owner)
         if instance is None:
             return self
         return instance.store_for_class(self.target)
@@ -390,8 +410,8 @@ class PydanticSyncStoreRegistry(SyncStoreRegistry, BaseModel):
 
     model_config = ConfigDict(ignored_types=(class_store_property,))
 
-    stores_by_class: dict = {}
-    manager: typing.Any = None
+    stores_by_class: dict = Field(default_factory=lambda: {}, exclude=True)
+    manager: typing.Any = Field(None, exclude=True)
     _class_store_properties: ClassVar[dict[str, class_store_property]] = {}
 
     def __init__(self, **kwargs):
@@ -427,6 +447,7 @@ class PydanticSyncStoreRegistry(SyncStoreRegistry, BaseModel):
             for name, prop in cls._class_store_properties.items():
                 if name not in data:
                     continue
+                prop._resolve_target(cls)
                 values = data.pop(name)
                 if not isinstance(values, dict):
                     raise TypeError(
