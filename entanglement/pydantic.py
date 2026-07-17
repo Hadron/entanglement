@@ -171,12 +171,6 @@ class SynchronizableBaseModel(Synchronizable, BaseModel, metaclass=Synchronizabl
         return val
 
             
-    def __init__(self, **data):
-        # Call BaseModel's __init__ which will handle Field validation
-        BaseModel.__init__(self, **data)
-        # Synchronizable doesn't need its own __init__ but we ensure
-        # the instance is properly initialized
-        Synchronizable.__init__(self)
 
     @classmethod
     def sync_construct(cls, msg, **kwargs):
@@ -470,11 +464,13 @@ class PydanticSyncStoreRegistry(SyncStoreRegistry, BaseModel):
         return instance
 
     @model_serializer(mode='wrap')
-    def _class_store_property_serializer(self, handler):
+    def serialize_model(self, handler, info):
         output_data = handler(self)
         for name in self.__class__._class_store_properties.keys():
+            if info.include and name not in info.include: continue
+            if info.exclude and name in info.exclude: continue
             store = getattr(self, name)
-            output_data[name] = {k: v.model_dump() for k, v in store.items()}
+            output_data[name] = {k: v.model_dump(context=info.context) for k, v in store.items()}
         # Exclude parent SyncStoreRegistry fields that are inferred as Pydantic fields
         output_data.pop('registry', None)
         output_data.pop('operations', None)
