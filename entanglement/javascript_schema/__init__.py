@@ -58,6 +58,11 @@ def javascript_registry(registry, file):
 def output_js_schemas(directory):
     j = os.path.join
     os.makedirs(directory, exist_ok = True)
+    # Output package.json for tsx/Vite CJS resolution
+    package_json_path = j(directory, 'package.json')
+    if not os.path.exists(package_json_path):
+        with open(package_json_path, 'wt') as out:
+            out.write('{\n  "type": "commonjs",\n  "private": true\n}\n')
     for reg, entry in _js_regmap.items():
         os.makedirs(os.path.dirname(j(directory,entry.file)), exist_ok = True)
         with open(j(directory, entry.file), 'wt') as out:
