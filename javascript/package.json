@@ -1,7 +1,7 @@
 {
   "name": "@hadron/entanglement",
     "version": "0.21.0",
-    "type": "commonjs",
+    "type": "module",
   "description": "Entanglement State Synchronization Protocol",
   "main": "index.js",
   "scripts": {

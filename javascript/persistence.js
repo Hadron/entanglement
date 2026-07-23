@@ -16,11 +16,11 @@
 * has not been implemented yet.
 */
 
-const entanglement = require('./index');
-const util = require('./util')
+import { Synchronizable } from './index.js';
+import * as filter from './filter.js';
 const classStorageMaps = new WeakMap();
 
-class PersistentSynchronizable extends entanglement.Synchronizable {
+class PersistentSynchronizable extends Synchronizable {
 
     static storageKey(msg) {
         // Returns the storage key for a given object either from an instance or an entanglement message
@@ -168,7 +168,7 @@ class SyncOwner extends PersistentSynchronizable {
 
 SyncOwner.syncStorageMap = SyncOwner.syncStorageMap; //All classes extending SyncOwner get the same map
 
-class YouHave extends entanglement.Synchronizable {
+class YouHave extends Synchronizable {
 
     async syncReceive(msg, options) {
         await super.syncReceive(msg, options);
@@ -183,7 +183,7 @@ class YouHave extends entanglement.Synchronizable {
 
 }
 
-class MyOwners extends entanglement.Synchronizable {
+class MyOwners extends Synchronizable {
 
     async syncReceive(msg, options) {
         let registry = options.registry;
@@ -198,7 +198,7 @@ class MyOwners extends entanglement.Synchronizable {
 
 };
 
-class IHave extends entanglement.Synchronizable {
+class IHave extends Synchronizable {
 
     constructor(o) {
         super();
@@ -216,18 +216,14 @@ function setupPersistence(registry) {
     registry.register(MyOwners);
 }
 
+export { SyncOwner, IHave, YouHave, MyOwners, PersistentSynchronizable, setupPersistence };
+export const relationship = filter.relationship;
 
-
-                 
-
-var filter = require('./filter');
-   
-module.exports = {
+export default {
         SyncOwner,
         IHave,
         YouHave,
         MyOwners,
         PersistentSynchronizable,
         setupPersistence,
-    relationship:filter.relationship,
-    };
+    relationship};

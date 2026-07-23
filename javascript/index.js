@@ -12,7 +12,7 @@ var WebSocket;
 try {
     WebSocket = window.WebSocket;
 } catch(e) {
-    WebSocket =require('websocket').w3cwebsocket;
+    import('websocket').then(m => WebSocket = m.w3cwebsocket);
 }
 
 
@@ -135,8 +135,7 @@ class SyncManager {
             a = new Uint8Array(16);
             window.crypto.getRandomValues(a);
         }catch (err){
-            let crypto = require('crypto');
-            a = crypto.randomBytes(16);
+            import('crypto').then(crypto => { a = crypto.randomBytes(16); });
         }
 
         // Mark as v4
@@ -582,14 +581,5 @@ class Synchronizable {
 EventHandlerMixin(Synchronizable, syncHandledEvents);
 
 
-        
-        
-try {
-    module.exports = {        
-        SyncManager,
-        SyncRegistry,
-        Synchronizable,
-        default: SyncManager
-    }
-} catch (err) { }
-
+export default SyncManager;
+export { SyncManager, SyncRegistry, Synchronizable };

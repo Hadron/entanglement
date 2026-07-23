@@ -12,5 +12,5 @@
 function downFirst(s) {
     return s[0].toLowerCase()+s.substring(1)
 }
-module.exports = {
-    downFirst}
+export default { downFirst };
+export { downFirst };

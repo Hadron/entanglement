@@ -9,7 +9,7 @@
  *  LICENSE for details.
 */
 
-const util = require('./util');
+import { downFirst } from './util.js';
 
 const default_delete_ops = Object.freeze(new Set([
      'delete',
@@ -240,10 +240,10 @@ function relationship(local, remote, options) {
     const use_list = options.use_list;
     const debug = options.debug || false;
     const missing_node = options.missing_node || null;
-    const local_prop = options.local_prop ||util.downFirst(remote.name);
+    const local_prop = options.local_prop || downFirst(remote.name);
     let remote_prop;
     if (options.remote_prop === undefined) {
-        remote_prop = util.downFirst(local.name);
+        remote_prop = downFirst(local.name);
         if (use_list) remote_prop = remote_prop+'s';
     } else remote_prop = options.remote_prop;
 
@@ -345,7 +345,9 @@ function relationship(local, remote, options) {
     
 }
 
-module.exports = {
+export { FilterBase, filter as 'filter', mapFilter, relationship };
+
+export default {
     FilterBase,
     filter,
     mapFilter,
