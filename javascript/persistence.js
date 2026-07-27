@@ -37,16 +37,16 @@ class PersistentSynchronizable extends Synchronizable {
         return JSON.stringify(res);
     }
 
-static     get syncStorageMap() {
+    static get syncStorageMap() {
         if (this._overrideStorageMap !== undefined)
             return this._overrideStorageMap;
         let res = classStorageMaps.get(this);
-    if (res)
+        if (res)
+            return res;
+        res = new Map();
+        classStorageMaps.set(this, res);
         return res;
-    res = new Map();
-    classStorageMaps.set(this, res);
-    return res;
-}
+    }
 
     static set syncStorageMap(v) {
         Object.defineProperty(this, "_overrideStorageMap",
@@ -74,7 +74,7 @@ static     get syncStorageMap() {
             registry._dispatchEvent("disappear", this, {});
         if (this.constructor._dispatchEvent)
             this.constructor._dispatchEvent('disappear', this, {});
-            }
+    }
 
     syncModified() {
         let attrs = new Set();
@@ -124,7 +124,7 @@ static     get syncStorageMap() {
     }
                 
     
-};
+}
 
 class SyncOwner extends PersistentSynchronizable {
 
@@ -135,10 +135,12 @@ class SyncOwner extends PersistentSynchronizable {
             this.incoming_serial = 0;
             await this.clearAllObjects(options.registry);}
         this.incoming_serial = this.incoming_serial || 0;
-        let ihave = new IHave({
-            _sync_owner : this.id,
-            serial: this.incoming_serial});
-        options.manager.synchronize(ihave, {operation: 'forward'});
+        if (options.registry.registry.has("IHave")){ 
+            let ihave = new IHave({
+                _sync_owner : this.id,
+                serial: this.incoming_serial});
+            options.manager.synchronize(ihave, {operation: 'forward'});
+        }
         return this;
     }
 
@@ -164,7 +166,7 @@ class SyncOwner extends PersistentSynchronizable {
     }
     
     
-};
+}
 
 SyncOwner.syncStorageMap = SyncOwner.syncStorageMap; //All classes extending SyncOwner get the same map
 
@@ -196,7 +198,7 @@ class MyOwners extends Synchronizable {
         }
     }
 
-};
+}
 
 class IHave extends Synchronizable {
 
@@ -216,8 +218,8 @@ function setupPersistence(registry) {
     registry.register(MyOwners);
 }
 
-export { SyncOwner, IHave, YouHave, MyOwners, PersistentSynchronizable, setupPersistence };
 export const relationship = filter.relationship;
+export { SyncOwner, IHave, YouHave, MyOwners, PersistentSynchronizable, setupPersistence };
 
 export default {
         SyncOwner,
@@ -226,4 +228,5 @@ export default {
         MyOwners,
         PersistentSynchronizable,
         setupPersistence,
-    relationship};
+        relationship
+};
