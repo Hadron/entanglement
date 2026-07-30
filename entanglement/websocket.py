@@ -90,7 +90,7 @@ try:
         async def send(message):
             await socket.send_text(message)
         async def close():
-            if not alreday_closed:
+            if not already_closed:
                 await socket.close()
         if destination             in manager.destinations:
             if destination.dest_hash in manager._connections:
