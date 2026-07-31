@@ -53,15 +53,15 @@ Then, run the schema generator:
 
 .. code-block:: none
 
-    python3 -m entanglement.javascript_schema packages_containaing_registries
+    python3 -m entanglement.javascript_schema --out entanglement_schemas --type esm packages_containaing_registries
 
 For example if ``project.entanglement.schema``  contains several sync registries, you might run:
 
 .. code-block:: none
 
-    python3 -mentanglement.javascript_schema project.entanglement.schema
+    python3 -m entanglement.javascript_schema --out entanglement_schemas --type esm project.entanglement.schema
 
-That would produce schema for any call to :py:func:`javascript_registry` in the ``project.entanglement.schema`` package.  Generally, Entanglement Javascript projects also require the ``sql_meta.js`` schema produced by ``entanglement.sql.internal``.
+That would produce ESM schema for any call to :py:func:`javascript_registry` in the ``project.entanglement.schema`` package.  Use ``--type cjs`` (the default) to generate CommonJS instead.  Generated schema files include a do-not-edit header and their output directory contains a ``package.json`` whose ``type`` matches the selected format.  Generally, Entanglement Javascript projects also require the ``sql_meta.js`` schema produced by ``entanglement.sql.internal``.
 
 Using a Schema
 **************

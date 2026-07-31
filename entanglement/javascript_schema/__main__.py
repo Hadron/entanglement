@@ -20,10 +20,15 @@ def main():
                         metavar = 'directory',
                         help = "Output directory",
                         required = True)
+    parser.add_argument('--type', '--tye',
+                        dest='type',
+                        choices=('esm', 'cjs'),
+                        default='cjs',
+                        help='Javascript module format (default: cjs)')
     args = parser.parse_args()
     for m in args.module:
         importlib.import_module(m)
-    output_js_schemas(args.out)
+    output_js_schemas(args.out, type=args.type)
 
 if __name__ == '__main__':
     main()
