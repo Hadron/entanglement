@@ -1,6 +1,6 @@
 {
   "name": "entanglement-core",
-    "version": "0.34.0",
+    "version": "0.34.1",
     "type": "module",
   "description": "Entanglement State Synchronization Protocol",
   "main": "index.js",
@@ -8,7 +8,7 @@
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "author": "Sam Hartman",
-  "license": "LGPL-3",
+  "license": "LGPL-3.0-only",
   "devDependencies": {
     "websocket": "^1.0.32"
   }

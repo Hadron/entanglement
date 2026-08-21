@@ -1,9 +1,9 @@
-name: Publish JavaScript Package to GitHub Packages
+name: Publish JavaScript Package
 
 on:
   push:
-    branches:
-      - master
+    tags:
+      - 'v*'
 
 jobs:
   publish:
@@ -11,24 +11,33 @@ jobs:
 
     permissions:
       contents: read
-      packages: write
+      id-token: write
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Verify tag matches package version
+        working-directory: javascript
+        run: |
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          if [ "$PKG_VERSION" != "$TAG_VERSION" ]; then
+            echo "::error::Tag $TAG_VERSION does not match package.json version $PKG_VERSION"
+            exit 1
+          fi
+          echo "Version match: $PKG_VERSION"
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '22'
-          registry-url: 'https://npm.pkg.github.com'
+          registry-url: 'https://registry.npmjs.org'
 
       - name: Install dependencies
         working-directory: javascript
         run: npm ci
 
-      - name: Publish package to GitHub Packages
+      - name: Publish package to npm
         working-directory: javascript
         run: npm publish
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
