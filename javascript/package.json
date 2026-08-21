@@ -1,6 +1,6 @@
 {
-  "name": "@hadron/entanglement",
-    "version": "0.21.0",
+  "name": "entanglement-core",
+    "version": "0.34.0",
     "type": "module",
   "description": "Entanglement State Synchronization Protocol",
   "main": "index.js",
@@ -9,10 +9,7 @@
   },
   "author": "Sam Hartman",
   "license": "LGPL-3",
-  "dependencies": {
+  "devDependencies": {
     "websocket": "^1.0.32"
-  },
-  "publishConfig": {
-    "registry": "https://npm.pkg.github.com"
   }
 }
