@@ -1,6 +1,6 @@
 {
   "name": "entanglement-core",
-    "version": "0.34.1",
+    "version": "0.34.2",
     "type": "module",
   "description": "Entanglement State Synchronization Protocol",
   "main": "index.js",
