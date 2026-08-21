@@ -3,6 +3,7 @@
     "version": "0.34.2",
     "type": "module",
   "description": "Entanglement State Synchronization Protocol",
+  "repository": "https://github.com/Hadron/entanglement",
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
