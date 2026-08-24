@@ -103,7 +103,7 @@ try:
                 flags = js.pop('_flags', 0)
                 protocol_logger.debug("#{c}: Receiving {js} from {d} (flags {f})".format(
                     f = flags, c = protocol._in_counter,
-                    js = message, d = destination))
+                    js = js, d = destination))
                 protocol._handle_receive(js, flags)
             already_closed = True
         finally:
